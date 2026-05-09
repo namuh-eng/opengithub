@@ -107,6 +107,8 @@ function labelForField(field: string) {
   return FIELD_LABELS[field] ?? field;
 }
 
+type PolicyField = keyof OrganizationMemberPrivilegesPolicies;
+
 function SettingsCard({
   children,
   kicker,
@@ -421,7 +423,48 @@ export function OrganizationMemberPrivilegesPage({
     }
   }
 
+  function fieldChanged(field: PolicyField) {
+    return form[field] !== currentSettings.policies[field];
+  }
+
+  function fieldEditable(field: PolicyField) {
+    return !disabled && !lockMap[field];
+  }
+
+  function cardHasEditableChanges(fields: PolicyField[]) {
+    return fields.some((field) => fieldEditable(field) && fieldChanged(field));
+  }
+
+  function patchForEditableChanges(
+    fields: PolicyField[],
+  ): UpdateOrganizationMemberPrivilegesRequest {
+    return Object.fromEntries(
+      fields
+        .filter((field) => fieldEditable(field) && fieldChanged(field))
+        .map((field) => [field, form[field]]),
+    ) as UpdateOrganizationMemberPrivilegesRequest;
+  }
+
   const disabled = !canUpdate || saveState.pending;
+  const repositoryCreationFields: PolicyField[] = [
+    "membersCanCreateInternalRepositories",
+    "membersCanCreatePrivateRepositories",
+    "membersCanCreatePublicRepositories",
+  ];
+  const repositoryFeatureFields: PolicyField[] = [
+    "membersCanForkPrivateRepositories",
+    "repositoryDiscussionsEnabled",
+  ];
+  const pagesPublishingFields: PolicyField[] = [
+    "pagesPrivatePublishing",
+    "pagesPublicPublishing",
+  ];
+  const destructiveActionFields: PolicyField[] = [
+    "membersCanChangeRepositoryVisibility",
+    "membersCanDeleteIssues",
+    "membersCanDeleteRepositories",
+    "membersCanTransferRepositories",
+  ];
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -495,14 +538,7 @@ export function OrganizationMemberPrivilegesPage({
             event.preventDefault();
             saveCard(
               "repository-creation",
-              {
-                membersCanCreateInternalRepositories:
-                  form.membersCanCreateInternalRepositories,
-                membersCanCreatePrivateRepositories:
-                  form.membersCanCreatePrivateRepositories,
-                membersCanCreatePublicRepositories:
-                  form.membersCanCreatePublicRepositories,
-              },
+              patchForEditableChanges(repositoryCreationFields),
               "Repository creation policy updated",
             );
           }}
@@ -548,7 +584,7 @@ export function OrganizationMemberPrivilegesPage({
           <LockNotice lock={lockMap.membersCanCreateInternalRepositories} />
           <div className="flex justify-end">
             <SaveButton
-              disabled={disabled}
+              disabled={!cardHasEditableChanges(repositoryCreationFields)}
               label="Save repository creation"
               pending={
                 saveState.pending && saveState.card === "repository-creation"
@@ -568,11 +604,7 @@ export function OrganizationMemberPrivilegesPage({
             event.preventDefault();
             saveCard(
               "repository-features",
-              {
-                membersCanForkPrivateRepositories:
-                  form.membersCanForkPrivateRepositories,
-                repositoryDiscussionsEnabled: form.repositoryDiscussionsEnabled,
-              },
+              patchForEditableChanges(repositoryFeatureFields),
               "Repository feature policy updated",
             );
           }}
@@ -601,7 +633,7 @@ export function OrganizationMemberPrivilegesPage({
           />
           <div className="flex justify-end">
             <SaveButton
-              disabled={disabled}
+              disabled={!cardHasEditableChanges(repositoryFeatureFields)}
               label="Save repository features"
               pending={
                 saveState.pending && saveState.card === "repository-features"
@@ -656,10 +688,7 @@ export function OrganizationMemberPrivilegesPage({
             event.preventDefault();
             saveCard(
               "pages-publishing",
-              {
-                pagesPrivatePublishing: form.pagesPrivatePublishing,
-                pagesPublicPublishing: form.pagesPublicPublishing,
-              },
+              patchForEditableChanges(pagesPublishingFields),
               "Pages publishing policy updated",
             );
           }}
@@ -682,7 +711,7 @@ export function OrganizationMemberPrivilegesPage({
           />
           <div className="flex justify-end">
             <SaveButton
-              disabled={disabled}
+              disabled={!cardHasEditableChanges(pagesPublishingFields)}
               label="Save Pages policy"
               pending={
                 saveState.pending && saveState.card === "pages-publishing"
@@ -735,7 +764,10 @@ export function OrganizationMemberPrivilegesPage({
           </fieldset>
           <div className="flex justify-end">
             <SaveButton
-              disabled={disabled || Boolean(lockMap.appAccessRequestPolicy)}
+              disabled={
+                !fieldEditable("appAccessRequestPolicy") ||
+                !fieldChanged("appAccessRequestPolicy")
+              }
               label="Save app access"
               pending={saveState.pending && saveState.card === "app-access"}
             />
@@ -753,14 +785,7 @@ export function OrganizationMemberPrivilegesPage({
             event.preventDefault();
             saveCard(
               "destructive-actions",
-              {
-                membersCanChangeRepositoryVisibility:
-                  form.membersCanChangeRepositoryVisibility,
-                membersCanDeleteIssues: form.membersCanDeleteIssues,
-                membersCanDeleteRepositories: form.membersCanDeleteRepositories,
-                membersCanTransferRepositories:
-                  form.membersCanTransferRepositories,
-              },
+              patchForEditableChanges(destructiveActionFields),
               "Destructive action policy updated",
             );
           }}
@@ -809,7 +834,7 @@ export function OrganizationMemberPrivilegesPage({
           />
           <div className="flex justify-end">
             <SaveButton
-              disabled={disabled}
+              disabled={!cardHasEditableChanges(destructiveActionFields)}
               label="Save destructive actions"
               pending={
                 saveState.pending && saveState.card === "destructive-actions"
@@ -841,7 +866,10 @@ export function OrganizationMemberPrivilegesPage({
           />
           <div className="flex justify-end">
             <SaveButton
-              disabled={disabled || Boolean(lockMap.membersCanCreateTeams)}
+              disabled={
+                !fieldEditable("membersCanCreateTeams") ||
+                !fieldChanged("membersCanCreateTeams")
+              }
               label="Save team creation"
               pending={saveState.pending && saveState.card === "team-creation"}
             />

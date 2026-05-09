@@ -133,7 +133,8 @@ async fn organization_profile_settings_are_owner_only_and_persist_profile_fields
     };
 
     let config = app_config();
-    let marker = format!("orgsettings{}", Uuid::new_v4().simple());
+    let suffix = Uuid::new_v4().simple().to_string();
+    let marker = format!("orgsettings{}", &suffix[..16]);
     let owner = create_user(&pool, "org-settings-owner").await;
     let member = create_user(&pool, "org-settings-member").await;
     let outsider = create_user(&pool, "org-settings-outsider").await;
@@ -399,7 +400,8 @@ async fn organization_profile_settings_validate_inputs_and_redact_errors() {
     };
 
     let config = app_config();
-    let marker = format!("orgsettings{}", Uuid::new_v4().simple());
+    let suffix = Uuid::new_v4().simple().to_string();
+    let marker = format!("orgsettings{}", &suffix[..16]);
     let owner = create_user(&pool, "org-settings-valid").await;
     let cookie = cookie_header(&pool, &config, &owner).await;
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);

@@ -333,13 +333,21 @@ pub struct OrganizationMemberPrivilegesPatch {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizationProfileSettingsPatch {
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub display_name: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub description: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub website_url: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub location: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub public_email: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub contact_email: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub billing_email: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_patch_value")]
     pub company_name: Option<serde_json::Value>,
     pub social_accounts: Option<Vec<OrganizationSocialAccountInput>>,
 }
@@ -1514,6 +1522,15 @@ fn patch_text_required(
         )));
     }
     Ok(normalized)
+}
+
+fn deserialize_patch_value<'de, D>(
+    deserializer: D,
+) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde_json::Value::deserialize(deserializer).map(Some)
 }
 
 fn patch_text_optional(
@@ -4183,7 +4200,7 @@ fn apply_organization_team_filters(
     match filters.visibility.as_str() {
         "visible" => teams.retain(|team| team.visibility == "visible"),
         "secret" => teams.retain(|team| team.visibility == "secret"),
-        "member" => teams.retain(|team| team.viewer_capabilities.can_mention),
+        "member" => teams.retain(|team| team.viewer_capabilities.is_member),
         _ => {}
     }
 }

@@ -185,6 +185,17 @@ describe("repository branches page", () => {
     expect(screen.getByRole("heading", { name: "Branches" })).toBeVisible();
     expect(screen.getByText("Default branch")).toBeVisible();
     expect(screen.getByText("Active branches")).toBeVisible();
+    for (const column of [
+      "Branch",
+      "Updated",
+      "Check status",
+      "Behind",
+      "Ahead",
+      "Pull request",
+      "Actions",
+    ]) {
+      expect(screen.getAllByText(column)[0]).toBeVisible();
+    }
     expect(screen.getAllByRole("link", { name: "main" })[0]).toHaveAttribute(
       "href",
       "/namuh-eng/opengithub/tree/main",

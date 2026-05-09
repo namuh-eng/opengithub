@@ -1,5 +1,17 @@
 [
   {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Dense branch directory columns are covered: Branch, Updated, Check status, Behind, Ahead, Pull request, and Actions labels render, with Behind/Ahead as separate row columns.",
+      "DB-backed repository_branches_contract passed 1/1 against localhost:55433 with TEST_DATABASE_URL set, covering privacy, filters, pagination, protection/check/PR metadata, capability flags, invalid-tab errors, telemetry, and no secret leakage.",
+      "Focused RepositoryBranchesPage Vitest passed 6/6 and focused Chromium repository-branches Playwright passed 2/2, including search/tab/page URL round trips, slash branch refs, activity/rules links, copy feedback, disabled destructive controls, Escape close, no dead anchors, and mobile no-overflow.",
+      "make doctor and make check passed after rebasing onto origin/main ed26bb66."
+    ],
+    "needs_deeper_qa": [
+      "Future cleanup: migrate this legacy Playwright spec to web/tests/e2e/_fixtures/auth.ts per the E2E contract; this QA only removed the pointer-click flake by submitting branch search with Enter."
+    ]
+  },
+  {
     "feature_id": "projects-003",
     "tests_written": [
       "Completed Phase 1 Layout-Aware Workspace Read Contract without marking projects-003 build_pass=true.",
@@ -4990,6 +5002,20 @@
     ]
   },
   {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Independent QA attempt on 2026-05-09 found and fixed a focused UI bug: grouped member-privileges saves now only submit changed editable fields and no-op saves are disabled.",
+      "Focused Vitest now covers disabled no-op repository creation save state and omits locked unchanged fields from grouped PATCH payloads.",
+      "Verification evidence collected: cd web && npx vitest run tests/organization-member-privileges-page.test.tsx passed 4/4; CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract passed 1/1; CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target make check passed; Editorial banned-token scan over web/src had no hits."
+    ],
+    "needs_deeper_qa": [
+      "qa_pass remains false because make doctor reported Docker daemon not running, postgres-test not running, and Postgres not reachable on localhost:55433; docker info returned permission denied for unix:///run/user/1000/podman/podman.sock.",
+      "make setup-local could not start Docker in this environment, so DB-backed Playwright/E2E and live API probes must be rerun with the committed .env.test test DB at postgresql://opengithub:opengithub@localhost:55433/opengithub_test.",
+      "Default Cargo commands hit read-only shared target path /home/jaeyunha/.cache/opengithub/cargo-target/debug/.cargo-lock in this sandbox; use CARGO_TARGET_DIR=/tmp/opengithub-cargo-target here or fix write access before full make check/test-e2e.",
+      "Repeat focused organization-member-privileges Playwright and axe/manual keyboard review once Docker/test DB and the dev server can start; retry with /tmp target got past Cargo but the API process exited with Operation not permitted."
+    ]
+  },
+  {
     "feature_id": "commits-001",
     "tests_written": [
       "Completed Phase 1 Commit List Contract without marking commits-001 build_pass=true.",
@@ -5234,88 +5260,6 @@
       "Probe branch activity for very large commit histories, merge-heavy ahead/behind graphs, repositories where matching branch rules/rulesets change while the page is open, and branch deletion/restore once those mutation phases exist.",
       "Run keyboard-only and screen-reader traversal through branch tabs, search, pagination, row links, copy controls, action menus, activity/rules links, recent commits, PR links, compare/history/tree navigation, and mobile no-overflow.",
       "Re-run Rust branch contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 1 Pulse API Contract and Snapshot Cache without marking insights-001 build_pass=true.",
-      "Added authenticated GET /api/repos/{owner}/{repo}/pulse with period normalization for 24h, 3d, 1w, and 1m; private repository outsider 404 privacy; repository metadata; summary counts; metric hrefs; top committers; release, merged PR, and issue activity lists; and bounded snapshot/view telemetry.",
-      "Added additive commit_file_changes, repository_insight_snapshots, and recent_insight_views migrations so Pulse can return file/addition/deletion rollups and cache freshness metadata.",
-      "Added focused Rust contract coverage for anonymous denial, private-repo privacy, aggregate counts, metric destinations, top committer ordering, activity hrefs, snapshot persistence, recent-view telemetry, invalid period validation, and no secret leakage."
-    ],
-    "needs_deeper_qa": [
-      "Phase 2 still needs the Editorial Insights shell, real /{owner}/{repo}/pulse UI, browser smoke screenshot, and no-dead-control checks.",
-      "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive Pulse migration to the shared test DB.",
-      "Probe imported repositories with large commit histories, missing/deleted commit authors, commits without file-change rows, bot-heavy activity, draft/prerelease releases, and overlapping issue/PR records.",
-      "Validate period-boundary behavior around exact start/end timestamps, time zones, and high-frequency refreshes that update repository_insight_snapshots.",
-      "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 2 Editorial Insights Shell and Pulse Overview without marking insights-001 build_pass=true.",
-      "Replaced the /{owner}/{repo}/pulse placeholder with a server-fetched Editorial Insights page backed by GET /api/repos/{owner}/{repo}/pulse.",
-      "Added typed Pulse frontend DTOs, signed-cookie server fetch helper, repository Insights sidebar links, Pulse overview metric cards, summary sentence, accessible top-committers chart plus table fallback, activity lists, unavailable state, and concrete recovery links.",
-      "Added focused Vitest coverage and Playwright browser smoke; screenshot saved at ralph/screenshots/build/insights-001-phase2-pulse-overview.jpg."
-    ],
-    "needs_deeper_qa": [
-      "Phase 3 still needs a full URL-backed Period selector menu for 24h, 3d, 1w, and 1m plus metric-link period preservation.",
-      "Phase 4 still needs hardening for committer/activity edge cases, missing authors, bot-heavy activity, very large file-change counts, empty repositories, and public/private permission differences.",
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with many commits, releases, merged pull requests, closed/new issues, commits without file-change rows, deleted users, and long activity titles.",
-      "The make test-e2e wrapper silently stalled and was terminated; direct full Playwright completed 125 tests successfully."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 3 Period Selector and Metric Navigation without marking insights-001 build_pass=true.",
-      "Added RepositoryPulsePeriodSelector with accessible menu button, concrete 24h/3d/1w/1m links, selected state, Escape close behavior, outside-click close behavior, and URL-backed period reloads.",
-      "Corrected the Pulse New issues metric destination so it opens a valid repository issues list state with created-desc ordering instead of the invalid state=created query.",
-      "Extended Rust Pulse contract coverage for 24h, 3d, 1w, 1m, invalid period validation, metric href shape, snapshot persistence, and no secret leakage.",
-      "Extended Vitest and Playwright coverage for period menu URL round trips, metric-card destinations, exact date range reloads, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-001-phase3-period-selector.jpg."
-    ],
-    "needs_deeper_qa": [
-      "Phase 4 still needs hardening for committer chart/table links, activity links, empty repositories, bot-only activity, deleted authors, and very large file-change counts.",
-      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with period-boundary activity exactly at start/end timestamps, long activity titles, mixed open/closed issue creation windows, and high-frequency snapshot refreshes.",
-      "Date range parameters are emitted on Pulse metric links, but issue/PR list date filtering needs deeper QA once final filter semantics are broadened beyond the current list state/sort handling.",
-      "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 4 Committer Chart, Activity Links, and Bounded Edge Cases without marking insights-001 build_pass=true.",
-      "Extended the Pulse API contract with authorStatus/isBot metadata, unavailable-author handling, period-bounded commit history hrefs, author profile hrefs for activity rows, public empty-repository behavior, and private repository privacy checks.",
-      "Hardened RepositoryPulsePage so top committer chart/table entries, bot/unmatched author chips, author labels, release/PR/issue activity rows, empty states, and commit-range links are concrete and not nested dead controls.",
-      "Extended Rust contract, Vitest component tests, and Playwright Pulse smoke for bot/unmatched authors, empty repositories, large file-change counts, long activity titles, unsafe markup guardrails, no dead controls, and screenshot ralph/screenshots/build/insights-001-phase4-activity-links.jpg."
-    ],
-    "needs_deeper_qa": [
-      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with deleted release authors once release author deletion is supported, bot-only repositories, commits without file-change rows, extremely large commit histories, and activity titles near UI limits.",
-      "Run keyboard-only and screen-reader traversal through the top committer chart/table, author profile links, commit-range links, release/PR/issue activity links, empty-state CTAs, and mobile layout.",
-      "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build Pass and marked insights-001 build_pass=true.",
-      "Documented GET /api/repos/{owner}/{repo}/pulse?period=1w in /docs/api, including auth/privacy, 24h/3d/1w/1m periods, date bounds, snapshot cache metadata, response shape, metric hrefs, top committers, activity lists, invalid-period errors, and no-secret guarantees.",
-      "Extended API docs and Pulse component assertions for endpoint coverage, accessible chart/table fallback, keyboard-safe period controls, Editorial token usage, no banned GitHub visual values/imports, no dead anchors, no inert inline handlers, and unsafe-markup guardrails.",
-      "Extended Playwright Pulse smoke to save final desktop and mobile screenshots while exercising Insights sidebar navigation, period menu, metric links, committer profile/commit links, release/PR/issue activity links, no dead controls, and mobile no-overflow."
-    ],
-    "needs_deeper_qa": [
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with very large commit histories, bot-only repositories, deleted release authors once deletion is supported, commits without file-change rows, and activity titles near UI limits.",
-      "Probe period-boundary events exactly at the normalized startedAt/endedAt timestamps and concurrent snapshot refreshes for repository_insight_snapshots/recent_insight_views.",
-      "Run keyboard-only and screen-reader traversal through the Insights sidebar, period menu, metric cards, top committer chart/table, author links, commit-range links, activity links, empty-state CTAs, and mobile layout.",
-      "Re-run Rust Pulse contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
     ]
   },
   {
@@ -8286,7 +8230,7 @@
     ],
     "needs_deeper_qa": [
       "qa_pass remains false because controller-required Ever CLI browser QA was not completed: app booted, but dashboard_e2e_seed failed with a DB pool timeout after Docker/test DB became unavailable, and ever start hung without producing an active session.",
-      "Re-run Ever CLI snapshot→act→snapshot once Docker/test DB and Ever extension connectivity are healthy: start http://localhost:3015, seed/sign in admin, visit /{owner}/{repo}/settings/secrets, create/update/delete one secret and one variable, verify write-only secret redaction, no dead controls, restricted non-admin state, and mobile no-overflow.",
+      "Re-run Ever CLI snapshot\u2192act\u2192snapshot once Docker/test DB and Ever extension connectivity are healthy: start http://localhost:3015, seed/sign in admin, visit /{owner}/{repo}/settings/secrets, create/update/delete one secret and one variable, verify write-only secret redaction, no dead controls, restricted non-admin state, and mobile no-overflow.",
       "Broad make test-e2e was attempted; first run failed outside settings-005 after 65 passing tests due worktree target no-space in profile-overview, and the shared-target rerun hung after a db-wait warning before being stopped to pursue mandatory Ever QA.",
       "Continue deeper production hardening from prior hints: real KMS/Secrets Manager backing, inherited org/environment scopes, fork/reusable/environment workflow policies, masking bypasses, and concurrent admin edits."
     ]
@@ -8402,5 +8346,48 @@
       "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
       "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
     ]
+  },
+  {
+    "feature_id": "settings-006",
+    "tests_written": [
+      "QA reran settings-006 from fresh origin/main HEAD 743da307 after make doctor reported the local verification stack healthy and TEST_DATABASE_URL pointed at localhost:55433/opengithub_test.",
+      "Fixed the focused Pages Playwright spec to fall back to docker exec psql inside opengithub-postgres-test when host psql is absent, preserving the real DB state transitions needed for DNS/certificate/provisioning display checks.",
+      "Verified DB-backed Rust repository_pages_settings_contract 2/2, focused Pages/API-docs Vitest 11/11, focused signed-in Chromium Pages settings E2E 2/2 including setup, and make check."
+    ],
+    "needs_deeper_qa": [
+      "Automated axe was not rerun in this lane; focused Playwright covered accessible button names, no dead controls, and mobile overflow for Pages settings.",
+      "Provider-backed Cloudflare DNS, ACM certificate readiness, CloudFront alias activation, cache invalidation, real S3/CloudFront publication, and real workflow artifact archives still require production/provider integration verification.",
+      "Continue stress testing concurrent admin edits, large static file sets, binary assets, CNAME/takeover-prevention behavior, and custom-domain conflicts across repositories."
+    ],
+    "created_at": "2026-05-09T18:58:00Z"
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Accepted independent QA rerun on 2026-05-09: grouped member-privileges saves only submit changed editable fields and no-op saves are disabled.",
+      "Focused Vitest covers disabled no-op repository creation save state and omits locked unchanged fields from grouped PATCH payloads.",
+      "Focused member-privileges Playwright spec now falls back to docker/podman exec for opengithub-postgres-test when host psql is unavailable.",
+      "Fresh verification passed: make doctor; cd web && npx vitest run tests/organization-member-privileges-page.test.tsx (4/4); DB-backed ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract (1/1); focused Chromium Playwright organization-member-privileges.spec.ts (2/2); make check."
+    ],
+    "needs_deeper_qa": [
+      "Repeat the complete member-privileges flow with a real Google OAuth owner/member session using TEST_ACCOUNT_EMAIL rather than deterministic signed-cookie fixtures.",
+      "Stress concurrent policy writes from two owner sessions and stale browser forms during repository creation, Pages source changes, and team creation.",
+      "Run screen-reader traversal and keyboard-only review across the long settings page, confirmation dialog, disabled policy states, and mobile layout.",
+      "Probe large organizations with many repositories, teams, inherited base permission rows, and long policy-lock reasons."
+    ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "QA pass verified repository_pulse_contract 1/1 against real test Postgres on localhost:55433 with no self-skip.",
+      "Focused RepositoryPulsePage Vitest passed 5/5 after formatting period bounds in UTC.",
+      "Focused Chromium repository-pulse Playwright passed 2/2, covering signed live page, period selector, metrics links, chart/table fallback, activity links, no dead controls, mobile no-overflow, and screenshots."
+    ],
+    "needs_deeper_qa": [
+      "Run automated axe if/when the shared QA harness requires it; this lane covered accessibility via component assertions and Playwright semantic/no-dead-control/mobile checks.",
+      "Stress larger repositories with many commits, releases, merged/closed issue/PR events, and sparse periods to verify chart/table density and query performance.",
+      "Repeat with real OAuth sessions outside deterministic signed-cookie fixtures before production acceptance."
+    ],
+    "created_at": "2026-05-09T20:05:00Z"
   }
 ]

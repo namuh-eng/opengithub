@@ -1340,7 +1340,7 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "org-admin-004",
@@ -1382,7 +1382,7 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "commits-001",
@@ -1445,7 +1445,7 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "insights-001",

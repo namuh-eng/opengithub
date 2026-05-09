@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 52,
+    "features_passed": 65,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 42,
+      "pass": 65,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 38,
+      "pass": 61,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 39,
+      "pass": 62,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 5,
+      "pass": 27,
       "fail": 0,
       "skip": 39
     }
@@ -1054,7 +1054,7 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
+          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
         },
         "api_contract": {
           "status": "pass",
@@ -1084,7 +1084,7 @@
         "accessibility": {
           "status": "pass",
           "violations": [],
-          "notes": "Files changed page uses semantic primitives — t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
+          "notes": "Files changed page uses semantic primitives \u2014 t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
         }
       },
       "overall_status": "pass"
@@ -1973,46 +1973,185 @@
       "feature_id": "org-admin-001",
       "description": "Create organization flow with plan picker, setup form, slug validation, contact ",
       "category": "onboarding",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh retest after infra recovery passed the focused org-create Vitest suite (11/11), DB-backed Rust organization_create_contract tests (3/3), and focused Playwright organization-create E2E (5/5), covering plan picker, setup form, slug validation, mobile usability, keyboard-only selection/error recovery, successful free organization creation, redirect/navigation, contact email, ownership type, and terms acceptance."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /organizations/new/slug-availability",
+            "POST /organizations/new/create",
+            "GET /api/organizations/slug-availability",
+            "POST /api/organizations"
+          ],
+          "notes": "Focused Vitest verifies the Next slug-availability proxy forwards to API_URL and preserves non-OK backend JSON/status envelopes. DB-backed Rust organization_create_contract passed 3/3 against localhost:55433, covering anonymous rejection, reserved/duplicate/invalid fields, slug normalization, persistence defaults, audit records, race handling, canonical casing, and personal company redaction. Playwright exercised the signed-in Next create proxy through the live app/API."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_envelope_preservation",
+            "anonymous_rejection",
+            "reserved_and_duplicate_slug_rejection",
+            "input_validation",
+            "data_exposure"
+          ],
+          "notes": "Unauthenticated organization creation and slug availability return preserved JSON auth envelopes instead of generic proxy failures. DB-backed contract tests cover reserved slugs, duplicate conflicts, invalid fields, concurrent create races, and no company-name leakage for personal ownership. No stack traces/secrets were exposed in verified error envelopes."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component and Playwright coverage passed for accessible plan buttons, labels/descriptions, required/invalid field state, no unnamed buttons/dead anchors, keyboard-only plan selection and error recovery, focus movement to the setup heading/first invalid field, and mobile no-overflow usability."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "org-admin-002",
       "description": "Render and save organization profile/settings shell with public profile fields, ",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh retest after infra recovery passed make doctor, make check, focused Vitest (2 files/8 tests), DB-backed Rust organization profile/settings contracts (2 files/4 tests), and focused Playwright organization profile/settings E2E (6/6 chromium). Browser coverage verified public organization overview/header controls, mobile secondary panels, owner settings shell, saving profile/contact/social fields, rename validation, and typed danger guardrails."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "PATCH /organizations/{org}/settings/profile/actions",
+            "POST /organizations/{org}/settings/profile/actions",
+            "PATCH /api/orgs/{org}/settings/profile",
+            "GET /api/orgs/{org}/settings/profile",
+            "POST /api/orgs/{org}/settings/profile/rename"
+          ],
+          "notes": "Focused Rust organization_profile_contract and organization_profile_settings_contract passed 4/4 against localhost:55433. Focused Vitest route tests passed and verify the Next action route preserves upstream 403/409 status and error codes. Rust deserialization distinguishes omitted profile patch fields from explicit null values."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "owner_only_settings",
+            "anonymous_redaction",
+            "private_org_redaction",
+            "conflict_error_redaction",
+            "reserved_slug_error_redaction",
+            "data_exposure"
+          ],
+          "notes": "DB-backed contracts verify owner-only settings writes, member/outsider rejection, anonymous/private organization redaction, conflict/reserved rename errors without leaking user/reserved-slug internals, and audit metadata redaction for emails/social handles."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright exercised the settings form labels/buttons and mobile organization panels; no dead controls were found in the covered org profile/settings flows. Banned Editorial design token scan found no GitHub/Primer/Octicon tokens in web/src outside og CSS."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "org-admin-003",
       "description": "Manage organization people, invitations, membership visibility, owner/member rol",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh rerun from origin/main 4131813c verified the organization people administration shell for owner/admin members, URL-backed tab/search/pagination behavior, disabled-safe bulk action state, final-owner demotion/removal guards, invite dialog/degraded delivery, failed invitation retry/cancel, visibility toggle, role confirmation, member removal confirmation, filtered JSON/CSV export links and response bodies, mobile no-overflow screenshots, and no dead controls via focused Chromium Playwright against the real localhost:55433 test DB."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/orgs/{org}/people/admin",
+            "POST /api/orgs/{org}/people/invitations",
+            "POST /api/orgs/{org}/people/invitations/{id}/retry",
+            "DELETE /api/orgs/{org}/people/invitations/{id}",
+            "PATCH /api/orgs/{org}/people/{user_id}/visibility",
+            "PATCH /api/orgs/{org}/people/{user_id}/role",
+            "DELETE /api/orgs/{org}/people/{user_id}",
+            "GET /api/orgs/{org}/people/export?format=json",
+            "GET /api/orgs/{org}/people/export?format=csv",
+            "GET /api/orgs/{org}/people/export via Next same-origin proxy"
+          ],
+          "notes": "DB-backed Rust organization_people_admin_contract passed 4/4 non-skipped using TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test. Coverage includes owner/admin reads, private organization outsider 404, invite/retry/cancel, visibility persistence, role mutation, final-owner demotion/removal blocks, member removal with team-membership cleanup, filtered exports, unauthorized export denial, audit rows, and no token/email-hash leakage. Direct curl probes confirmed both API :3016 and Next proxy :3015 JSON exports returned 200 with application/json bodies."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "owner_admin_authorization",
+            "private_org_outsider_404",
+            "member_forbidden",
+            "final_owner_guard",
+            "export_authz",
+            "token_and_hash_redaction",
+            "audit_redaction"
+          ],
+          "notes": "The non-skipped Rust contract exercises member/outsider denial, private-org not-found behavior, final-owner protections, unauthorized export denial, audit metadata, and no invitation token/email-hash exposure. Playwright also verified final-owner controls remain disabled in the browser."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused Playwright exercised the People administration navigation, named controls/dialogs, row selection, role/remove confirmations, screenshots, and mobile viewport without horizontal overflow. Focused Vitest preserved no-dead-anchor/control expectations for the Editorial shell."
+        }
+      }
     },
     {
       "feature_id": "org-admin-004",
       "description": "Build organization teams list, empty state, team creation form, nested-team rule",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh retest after infra recovery passed focused Vitest and Playwright org teams flows for directory, filters, team detail, collaborator visibility, empty state, mobile overflow, creation redirect, and nested secret-team validation."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "DB-backed organization_teams_contract passed 3/3 non-skipped against localhost:55433, covering teams directory filters/counts, creation/nesting policy, detail, private org privacy, auth, and redaction."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Focused Rust contract verifies anonymous rejection, outsider/private-org hiding, secret-team privacy, invalid-filter validation without stack/env leakage, final-owner/nesting protections, audit rows, and invitation/token redaction."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused Playwright covers named controls, no dead controls, no horizontal overflow on directory/detail/create/empty/mobile states, and screenshots for review."
+        }
+      }
     },
     {
       "feature_id": "org-admin-005",
       "description": "Implement organization member privilege and repository policy settings that cont",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh post-infra rerun passed focused Vitest 4/4, focused Chromium Playwright member-privileges E2E 2/2, make doctor, and make check; per-card changed-field-only PATCH behavior verified."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "DB-backed Rust organization_member_privileges_contract passed 1/1 against localhost:55433 with TEST_DATABASE_URL/DATABASE_URL set, covering owner-only GET/PATCH, validation, confirmation_required, persistence, and audit redaction."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Contract covers auth bypass prevention, owner-only writes, private outsider 404/redaction, invalid enum validation, confirmation gating, audit redaction, and no stack/session-secret leakage."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Component and Playwright coverage verifies accessible names, confirmation dialogs, no dead controls, mobile/no-overflow screenshots, and Editorial token expectations."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "commits-001",
@@ -2036,19 +2175,77 @@
       "feature_id": "branches-001",
       "description": "Render repository branches page with Overview/Active/Stale/All tabs, branch sear",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh post-infra verification passed on origin/main ed26bb66 rebase: branch directory renders explicit Branch, Updated, Check status, Behind, Ahead, Pull request, and Actions labels; Behind/Ahead are separate row columns; focused RepositoryBranchesPage Vitest passed 6/6; focused Chromium repository-branches Playwright passed 2/2 after making the search path keyboard-submit instead of pointer-click flaky."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/branches",
+            "GET /api/repos/{owner}/{repo}/branches/activity?branch=..."
+          ],
+          "notes": "make doctor confirmed Podman and opengithub-postgres-test healthy on localhost:55433. DB-backed repository_branches_contract passed 1/1 with TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test and no self-skip."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "privacy_not_found",
+            "redacted_errors",
+            "destructive_action_gating"
+          ],
+          "notes": "DB-backed repository_branches_contract passed its anonymous denial, private outsider privacy, invalid-tab/redacted-error, and capability flag coverage; focused browser flow verified destructive Delete remains disabled and all row actions route to concrete destinations."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component and Chromium E2E coverage verify tablist/search labeling, accessible copy/action controls, no dead anchors, keyboard-submit search, Escape closes the action menu, and no mobile horizontal overflow at 390px."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "insights-001",
       "description": "Render repository Pulse activity summary with period selector, overview metrics,",
       "category": "data",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fixed Pulse exact date range rendering to format API period boundaries in UTC, preventing May 1, 2026 UTC from displaying as Apr 30 in America/Los_Angeles. Focused RepositoryPulsePage Vitest passed 5/5, and focused Chromium Playwright verified the live Pulse page, period selector, overview metrics, concrete destination links, chart/table fallback, no dead controls, mobile no-overflow, and screenshot capture."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
+          ],
+          "notes": "DB-backed repository_pulse_contract passed 1/1 against the required test Postgres on localhost:55433 with TEST_DATABASE_URL from .env.test; no self-skip."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "private_repo_redaction",
+            "input_validation",
+            "data_exposure",
+            "cache_metadata"
+          ],
+          "notes": "repository_pulse_contract covers privacy/cache behavior against real Postgres, including private repository access/redaction paths and request validation; focused browser smoke used a signed session and concrete links without leaking internal storage/secrets."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component tests and Chromium Playwright verify named controls, Insights navigation/menu semantics, accessible chart role plus table fallback, no dead anchors, mobile no-overflow, and keyboard-reachable links/buttons. Automated axe was not separately run for this lane."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "insights-002",
@@ -2414,7 +2611,7 @@
     },
     {
       "feature_id": "search-007",
-      "description": "File finder widget — keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2423,7 +2620,7 @@
     },
     {
       "feature_id": "security-002",
-      "description": "Active web sessions panel — list devices, locations, signed-in time; revoke indi",
+      "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke indi",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2463,7 +2660,7 @@
     },
     {
       "feature_id": "security-003",
-      "description": "Security log — append-only audit trail of security-relevant actions (sign-in, si",
+      "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, si",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2502,7 +2699,7 @@
     },
     {
       "feature_id": "globalpulls-001",
-      "description": "Global pull-request dashboard at /pulls — every PR the signed-in user opened, wa",
+      "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, wa",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2539,7 +2736,7 @@
     },
     {
       "feature_id": "globalissues-001",
-      "description": "Global issue dashboard at /issues — every issue the signed-in user opened, was a",
+      "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was a",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2761,7 +2958,7 @@
     },
     {
       "feature_id": "gist-001",
-      "description": "Gists — single-file or multi-file snippets at /gist/<id> with their own git hist",
+      "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git hist",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2770,7 +2967,7 @@
     },
     {
       "feature_id": "ai-001",
-      "description": "AI surface — repository auto-summary card, AI-generated PR summary + suggested r",
+      "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
       "category": "feature",
       "qa_pass": false,
       "attempts": 2,

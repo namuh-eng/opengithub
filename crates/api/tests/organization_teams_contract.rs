@@ -478,6 +478,17 @@ async fn organization_teams_directory_authorizes_filters_and_redacts() {
         true
     );
 
+    let (status, _, owner_member_filter) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams?visibility=member"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(owner_member_filter["total"], 0);
+    assert_eq!(owner_member_filter["counts"]["memberTeams"], 0);
+    assert!(owner_member_filter["items"].as_array().unwrap().is_empty());
+
     let (status, _, admin_page) = get_json(
         app.clone(),
         &format!("/api/orgs/{marker}/teams?page=2&pageSize=1"),

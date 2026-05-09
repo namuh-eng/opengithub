@@ -4117,5 +4117,485 @@
       "make doctor/setup-local cannot own the shared fixed Postgres container because opengithub-postgres-test is already running under another worktree compose project; exact container id f620bdc19e81, project qa-opengithub-packages-001-mainqa-20260508. DB-backed focused tests still ran against the required localhost:55433 opengithub_test database."
     ],
     "overall_status": "pass"
+  },
+  {
+    "feature_id": "org-admin-001",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retest after infra recovery passed the focused org-create Vitest suite (11/11), DB-backed Rust organization_create_contract tests (3/3), and focused Playwright organization-create E2E (5/5), covering plan picker, setup form, slug validation, mobile usability, keyboard-only selection/error recovery, successful free organization creation, redirect/navigation, contact email, ownership type, and terms acceptance."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /organizations/new/slug-availability",
+          "POST /organizations/new/create",
+          "GET /api/organizations/slug-availability",
+          "POST /api/organizations"
+        ],
+        "notes": "Focused Vitest verifies the Next slug-availability proxy forwards to API_URL and preserves non-OK backend JSON/status envelopes. DB-backed Rust organization_create_contract passed 3/3 against localhost:55433, covering anonymous rejection, reserved/duplicate/invalid fields, slug normalization, persistence defaults, audit records, race handling, canonical casing, and personal company redaction. Playwright exercised the signed-in Next create proxy through the live app/API."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_envelope_preservation",
+          "anonymous_rejection",
+          "reserved_and_duplicate_slug_rejection",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated organization creation and slug availability return preserved JSON auth envelopes instead of generic proxy failures. DB-backed contract tests cover reserved slugs, duplicate conflicts, invalid fields, concurrent create races, and no company-name leakage for personal ownership. No stack traces/secrets were exposed in verified error envelopes."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright coverage passed for accessible plan buttons, labels/descriptions, required/invalid field state, no unnamed buttons/dead anchors, keyboard-only plan selection and error recovery, focus movement to the setup heading/first invalid field, and mobile no-overflow usability."
+      }
+    },
+    "tested_steps": [
+      "Identified feature_id org-admin-001 from branch qa-opengithub-org-admin-001-mainqa-20260509 and prd.json.",
+      "Ran make doctor first: Docker daemon not running, opengithub-postgres-test not running, Postgres not reachable on localhost:55433; .env.test and .env were present.",
+      "Ran make setup-local: Docker did not become ready within 120s; required localhost:55433/opengithub_test DB remained unavailable.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check after formatting touched files: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 test file passed, 11 tests passed.",
+      "Ran focused Rust org-create contract with repo .env.test values and worktree CARGO_TARGET_DIR: binary completed but printed skip messages for all three DB-backed contract bodies because the test DB was unreachable; not counted as DB verification.",
+      "Ran focused Playwright org-create spec once with default Cargo target: blocked by read-only /home/jaeyunha/.cache/opengithub/cargo-target.",
+      "Reran focused Playwright org-create spec with exported worktree CARGO_TARGET_DIR: webServer compiled the API but failed with Operation not permitted (os error 1); no E2E assertions ran.",
+      "Fresh controller retest after infra recovery: make doctor reported Podman/Postgres/.env/.env.test/Cargo target all healthy.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 file passed, 11 tests passed.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_create_contract -- --nocapture with .env.test DATABASE_URL/TEST_DATABASE_URL and worktree CARGO_TARGET_DIR: 3 tests passed, 0 skipped.",
+      "Ran focused Playwright organization-create.spec.ts with DATABASE_URL/TEST_DATABASE_URL and worktree CARGO_TARGET_DIR: 5/5 passed, including setup auth state and 4 chromium org-create scenarios.",
+      "Worked around local Playwright ubuntu26 browser installer mismatch by pointing the expected conductor-profile browser cache entry at the already-installed Chrome-for-Testing 147 binary; this is test-runner cache hygiene, not product code.",
+      "Ran make check with worktree CARGO_TARGET_DIR after clearing stale generated web/.next dev types: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "The Next slug-availability proxy collapsed unauthenticated backend responses into a generic availability_unavailable 502, hiding the real not_authenticated API envelope from the organization create form.",
+        "expected": "GET /organizations/new/slug-availability should preserve backend error status and JSON envelopes such as 401 not_authenticated.",
+        "actual": "The prior helper returned null for non-OK backend responses, so the route returned a generic 502 availability_unavailable envelope.",
+        "file": "web/src/app/organizations/new/slug-availability/route.ts"
+      }
+    ],
+    "fix_description": "Changed the slug availability route to fetch the backend endpoint directly, forward cookies, disable caching, preserve non-OK backend JSON/status envelopes, and retain a 502 fallback only for transport/non-JSON failures. Fresh DB/API/E2E retest now passes.",
+    "known_gaps": [],
+    "timestamp": "2026-05-09T18:50:59Z"
+  },
+  {
+    "feature_id": "org-admin-002",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retest after infra recovery passed make doctor, make check, focused Vitest (2 files/8 tests), DB-backed Rust organization profile/settings contracts (2 files/4 tests), and focused Playwright organization profile/settings E2E (6/6 chromium). Browser coverage verified public organization overview/header controls, mobile secondary panels, owner settings shell, saving profile/contact/social fields, rename validation, and typed danger guardrails."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "PATCH /organizations/{org}/settings/profile/actions",
+          "POST /organizations/{org}/settings/profile/actions",
+          "PATCH /api/orgs/{org}/settings/profile",
+          "GET /api/orgs/{org}/settings/profile",
+          "POST /api/orgs/{org}/settings/profile/rename"
+        ],
+        "notes": "Focused Rust organization_profile_contract and organization_profile_settings_contract passed 4/4 against localhost:55433. Focused Vitest route tests passed and verify the Next action route preserves upstream 403/409 status and error codes. Rust deserialization distinguishes omitted profile patch fields from explicit null values."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "owner_only_settings",
+          "anonymous_redaction",
+          "private_org_redaction",
+          "conflict_error_redaction",
+          "reserved_slug_error_redaction",
+          "data_exposure"
+        ],
+        "notes": "DB-backed contracts verify owner-only settings writes, member/outsider rejection, anonymous/private organization redaction, conflict/reserved rename errors without leaking user/reserved-slug internals, and audit metadata redaction for emails/social handles."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright exercised the settings form labels/buttons and mobile organization panels; no dead controls were found in the covered org profile/settings flows. Banned Editorial design token scan found no GitHub/Primer/Octicon tokens in web/src outside og CSS."
+      }
+    },
+    "tested_steps": [
+      "Rebased org-admin-002 onto origin/main 4d8893ec and resolved qa-report merge conflicts preserving org-admin-001/settings-006 evidence.",
+      "Ran make doctor: container runtime reachable via Podman, postgres-test up, Postgres reachable on localhost:55433, .env/.env.test present, Cargo target dir writable.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npx vitest run tests/organization-profile-settings-page.test.tsx tests/organization-profile-actions-route.test.ts: 2 files passed, 8 tests passed.",
+      "Ran TEST_DATABASE_URL/DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test --test organization_profile_settings_contract --test organization_profile_contract: 2 contract files passed, 4 tests passed.",
+      "Initial focused Playwright run saw localhost:3015 connection refused after the setup project; reran with webserver debug, confirmed the app server was available, and then reran the combined focused specs successfully.",
+      "Ran cd web && TEST_DATABASE_URL/DATABASE_URL set CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target npx playwright test tests/e2e/organization-settings-profile.spec.ts tests/e2e/organization-profile.spec.ts --project=chromium --workers=1 --timeout=90000: 6 tests passed.",
+      "Ran banned Editorial design token scan over web/src excluding og.css/og-themes.css: 0 hits for GitHub hex colors, Primer, or Octicon."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Organization profile settings PATCH could not clear optional text fields because serde deserialized explicit JSON null the same as an omitted field for Option<Value> patch members.",
+        "fix": "Added a custom deserialize_with helper plus serde(default) for profile patch value fields so explicit null is preserved as Some(Value::Null) while omitted fields remain None."
+      },
+      {
+        "severity": "major",
+        "description": "The Next profile actions route flattened upstream owner-access and rename conflict errors into 422 validation_failed responses.",
+        "fix": "Shared apiErrorResponse now preserves upstream cause.status and cause.error.code for PATCH and POST action failures."
+      },
+      {
+        "severity": "minor",
+        "description": "Browser-native form validation could prevent the custom inline save/error path from running for intentionally invalid org profile values.",
+        "fix": "Added noValidate to the profile, contact, and social settings forms and covered the profile form behavior in Vitest."
+      },
+      {
+        "severity": "minor",
+        "description": "The DB-backed profile settings contract generated a marker slug longer than the product slug limit, so rename conflict probes could be truncated before the '-taken' suffix and miss the intended user-slug conflict.",
+        "fix": "Shortened the generated contract-test marker suffix so conflict/reserved/rename probes exercise distinct valid slugs."
+      }
+    ],
+    "fix_description": "Preserved explicit null profile patch semantics, propagated upstream action-route error statuses/codes, disabled native validation so app-level validation handles saves consistently, fixed the profile settings contract slug fixture, and verified fresh DB/API/browser coverage after infra recovery.",
+    "recorded_at": "2026-05-09"
+  },
+  {
+    "feature_id": "settings-006",
+    "attempt": 1,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-09T18:58:00Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh rerun from origin/main HEAD 743da307 verified repository Pages settings source selection, branch/folder save and deployment queueing, Actions source controls, custom-domain save/recheck, DNS/certificate/provisioning states, HTTPS gating, unpublish, mobile no-overflow, and non-admin metadata redaction with the focused signed-in Chromium Playwright scenario against the real local test DB on localhost:55433. QA fixed the spec's host-psql dependency by falling back to the committed opengithub-postgres-test container when psql is unavailable."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/settings/pages",
+          "PUT /api/repos/{owner}/{repo}/settings/pages/source",
+          "PUT /api/repos/{owner}/{repo}/settings/pages/domain",
+          "DELETE /api/repos/{owner}/{repo}/settings/pages/domain",
+          "POST /api/repos/{owner}/{repo}/settings/pages/domain/recheck",
+          "PATCH /api/repos/{owner}/{repo}/settings/pages/https",
+          "POST /api/repos/{owner}/{repo}/settings/pages/deployments",
+          "POST /api/repos/{owner}/{repo}/settings/pages/actions-deployments",
+          "POST /api/repos/{owner}/{repo}/settings/pages/unpublish"
+        ],
+        "notes": "DB-backed Rust repository_pages_settings_contract passed 2/2 without self-skip using TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test. Focused API docs Vitest also passed and verifies documented Pages endpoint coverage and response metadata."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_and_permission_boundaries",
+          "private_metadata_redaction",
+          "validation_errors",
+          "audit_events"
+        ],
+        "notes": "Rust contract covers repository admin/member boundaries, privacy mutations, organization Pages policy lockout, branch/folder validation, domain conflicts, HTTPS prerequisites, and audit persistence. Browser smoke confirms forbidden/non-admin viewers do not see DNS challenge values, cloud/provider metadata, artifact storage keys, or build-log excerpts."
+      },
+      "accessibility": {
+        "status": "pass",
+        "checks": [
+          "accessible_button_names",
+          "dead_controls",
+          "mobile_overflow"
+        ],
+        "notes": "Focused Playwright asserts visible buttons have accessible names, no inert links are present, and the Pages settings page has no horizontal overflow at 390px mobile viewport. Automated axe was not rerun in this lane."
+      }
+    },
+    "tests_run": [
+      "make doctor",
+      "./hack/cargo_locked.sh test --test repository_pages_settings_contract -- --nocapture",
+      "cd web && npx vitest run tests/repository-pages-settings-page.test.tsx tests/api-docs.test.tsx",
+      "cd web && npx playwright test tests/e2e/repository-settings-pages.spec.ts --project=chromium --reporter=list",
+      "make check"
+    ],
+    "notes": "Accepted for settings-006 with concrete DB/API/UI evidence on the fresh post-infra rerun."
+  },
+  {
+    "feature_id": "org-admin-003",
+    "attempt": 1,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-09T19:20:17Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh rerun from origin/main 4131813c verified the organization people administration shell for owner/admin members, URL-backed tab/search/pagination behavior, disabled-safe bulk action state, final-owner demotion/removal guards, invite dialog/degraded delivery, failed invitation retry/cancel, visibility toggle, role confirmation, member removal confirmation, filtered JSON/CSV export links and response bodies, mobile no-overflow screenshots, and no dead controls via focused Chromium Playwright against the real localhost:55433 test DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/people/admin",
+          "POST /api/orgs/{org}/people/invitations",
+          "POST /api/orgs/{org}/people/invitations/{id}/retry",
+          "DELETE /api/orgs/{org}/people/invitations/{id}",
+          "PATCH /api/orgs/{org}/people/{user_id}/visibility",
+          "PATCH /api/orgs/{org}/people/{user_id}/role",
+          "DELETE /api/orgs/{org}/people/{user_id}",
+          "GET /api/orgs/{org}/people/export?format=json",
+          "GET /api/orgs/{org}/people/export?format=csv",
+          "GET /api/orgs/{org}/people/export via Next same-origin proxy"
+        ],
+        "notes": "DB-backed Rust organization_people_admin_contract passed 4/4 non-skipped using TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test. Coverage includes owner/admin reads, private organization outsider 404, invite/retry/cancel, visibility persistence, role mutation, final-owner demotion/removal blocks, member removal with team-membership cleanup, filtered exports, unauthorized export denial, audit rows, and no token/email-hash leakage. Direct curl probes confirmed both API :3016 and Next proxy :3015 JSON exports returned 200 with application/json bodies."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "owner_admin_authorization",
+          "private_org_outsider_404",
+          "member_forbidden",
+          "final_owner_guard",
+          "export_authz",
+          "token_and_hash_redaction",
+          "audit_redaction"
+        ],
+        "notes": "The non-skipped Rust contract exercises member/outsider denial, private-org not-found behavior, final-owner protections, unauthorized export denial, audit metadata, and no invitation token/email-hash exposure. Playwright also verified final-owner controls remain disabled in the browser."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright exercised the People administration navigation, named controls/dialogs, row selection, role/remove confirmations, screenshots, and mobile viewport without horizontal overflow. Focused Vitest preserved no-dead-anchor/control expectations for the Editorial shell."
+      }
+    },
+    "evidence": {
+      "base": "origin/main 4131813c6aa4566183efe6c9ed360bbd0f91b9a2",
+      "tests": [
+        "make doctor (Podman runtime + opengithub-postgres-test on localhost:55433 healthy)",
+        "cd web && npm test -- organization-people-admin-page.test.tsx (6/6 passed)",
+        "./hack/cargo_locked.sh test -p opengithub-api --test organization_people_admin_contract -- --nocapture (4/4 passed, non-skipped)",
+        "curl API and Next export probes for JSON export returned 200 with application/json bodies",
+        "cd web && npx playwright test tests/e2e/organization-people.spec.ts --project=chromium --reporter=line (2/2 passed on rerun)",
+        "make check (Cargo check, web typecheck, Clippy, Biome passed)"
+      ],
+      "notes": "First Playwright attempt timed out at the JSON export request while the dev/API server was cold/reused from previous traffic; direct API/Next curl probes then succeeded and the focused Playwright spec passed cleanly on rerun."
+    }
+  },
+  {
+    "feature_id": "org-admin-004",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retest after infra recovery passed focused Vitest (8/8) plus Playwright organization teams flows (3/3 including auth setup): populated directory, filters, team detail, collaborator visibility, empty state, mobile overflow, create-team redirect, and nested secret-team validation."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/teams",
+          "POST /api/orgs/{org}/teams",
+          "GET /api/orgs/{org}/teams/{team_slug}"
+        ],
+        "notes": "DB-backed organization_teams_contract passed 3/3 non-skipped against localhost:55433, covering auth, privacy, visibility filters/counts, pagination, create validation, parent nesting, detail, mentions, inherited permissions, audits, and redaction."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "secret_team_privacy",
+          "invalid_filter_redaction",
+          "data_exposure",
+          "parent_nesting_policy"
+        ],
+        "notes": "The non-skipped Rust contract verifies anonymous 401, outsider 403/404 privacy, secret-team hiding, invitation/token redaction, no stack/env leakage on invalid filters, and policy enforcement for final owner/removal and nested secret teams."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright exercises named controls and links, no dead controls, no horizontal overflow, and screenshots for directory/detail/mobile/empty/create/validation states. No runtime a11y blockers were found in covered flows."
+      }
+    },
+    "tested_steps": [
+      "Rebased org-admin-004 fixes onto origin/main f65720db and resolved QA ledger conflicts without large JSON normalization churn.",
+      "Ran make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable on localhost:55433, .env/.env.test present, worktree Cargo target writable.",
+      "Ran make check with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TEST_DATABASE_URL/DATABASE_URL from .env.test ./hack/cargo_locked.sh test -p opengithub-api --test organization_teams_contract -- --nocapture: 3 tests passed, 0 skipped.",
+      "Ran cd web && npx vitest run tests/organization-teams-page.test.tsx: 1 file passed, 8 tests passed.",
+      "Initial focused Playwright org teams run timed out inside the broad directory scenario at the old 60s per-test cap after useful assertions had started; increased the focused spec timeout to 90s like prior stabilized org-admin E2E lanes.",
+      "Reran cd web && TEST_DATABASE_URL/DATABASE_URL set CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target npx playwright test tests/e2e/organization-teams.spec.ts --project=chromium --workers=1 --timeout=90000 --reporter=line: 3/3 passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "The backend My teams visibility filter retained every mentionable team instead of teams where the viewer is actually a member.",
+        "expected": "visibility=member should return only teams with a team_memberships row for the viewer.",
+        "actual": "Owners/admins could receive every visible/secret team because can_mention is true for their view.",
+        "reproduction": "As an organization owner who is not a team member, request /api/orgs/{org}/teams?visibility=member."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The active filter chip for visibility=member was labeled Visible.",
+        "expected": "The active filter chip should read My teams.",
+        "actual": "visibilityLabel only distinguished secret from non-secret values, so member displayed as Visible.",
+        "reproduction": "Open /orgs/{org}/teams?visibility=member and inspect active filters."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The organization teams Playwright spec duplicated inline cargo seeding instead of using the shared auth fixture required by web/tests/e2e/AGENTS.md.",
+        "expected": "Signed-in specs import seed/signIn from ./_fixtures/auth.",
+        "actual": "The spec imported execFileSync and minted cookies inline.",
+        "reproduction": "Open web/tests/e2e/organization-teams.spec.ts before this QA patch."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The focused organization teams Playwright scenario could exceed the inherited 60s per-test cap on cold API/browser runs.",
+        "fix": "Raised the per-test timeout to 90s while keeping the command-level timeout at 90s and workers=1; rerun passed 3/3 in 17.2s once warm."
+      }
+    ],
+    "fix_description": "Changed visibility=member filtering to use is_member, corrected the active filter label, added focused regressions, migrated org teams Playwright to the shared auth fixture, and stabilized the broad focused E2E scenario timeout.",
+    "evidence": {
+      "base": "origin/main f65720db",
+      "tests": [
+        "make doctor",
+        "make check",
+        "./hack/cargo_locked.sh test -p opengithub-api --test organization_teams_contract -- --nocapture (3/3 non-skipped)",
+        "cd web && npx vitest run tests/organization-teams-page.test.tsx (8/8)",
+        "cd web && npx playwright test tests/e2e/organization-teams.spec.ts --project=chromium --workers=1 --timeout=90000 --reporter=line (3/3 including setup)"
+      ],
+      "timestamp": "2026-05-09T19:49:53Z"
+    }
+  },
+  {
+    "feature_id": "org-admin-005",
+    "attempt": 2,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-09T19:49:13Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh post-infra rerun from origin/main f65720db passed focused Vitest (4/4), focused Chromium Playwright member-privileges E2E (2/2 including auth setup), make doctor, and make check. UI fix verified per-card saves only enable for editable changed fields and only PATCH changed unlocked values."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/settings/member-privileges",
+          "PATCH /api/orgs/{org}/settings/member-privileges"
+        ],
+        "notes": "DB-backed Rust organization_member_privileges_contract passed 1/1 against localhost:55433 with TEST_DATABASE_URL/DATABASE_URL set, covering owner-only access, anonymous 401, member/admin forbidden writes, private outsider 404, invalid enum 422, confirmation_required 409, confirmed persistence, and audit redaction."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "owner_only_writes",
+          "input_validation",
+          "private_org_redaction",
+          "audit_redaction",
+          "data_exposure"
+        ],
+        "notes": "DB-backed contract verified no auth bypass, owner-only policy writes, private outsider redaction, invalid enum validation, confirmation gating for risky permission changes, redacted audit metadata, and no stack/session-secret leakage."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright coverage verified accessible names, confirmation dialog behavior, no dead controls, mobile/no-overflow coverage from the org-admin-005 final smoke, and Editorial token expectations. Screenshots were saved under ralph/screenshots/build/org-admin-005-final-*.jpg."
+      }
+    },
+    "tested_steps": [
+      "Rebased the blocked org-admin-005 commit onto origin/main f65720db, preserving prior accepted QA report entries.",
+      "Ran make doctor: Podman container runtime reachable, opengithub-postgres-test up, Postgres reachable on localhost:55433, .env/.env.test present, Cargo target dir writable.",
+      "Inspected the scoped code diff for OrganizationMemberPrivilegesPage and its focused tests.",
+      "Ran cd web && npx vitest run tests/organization-member-privileges-page.test.tsx: 1 file passed, 4 tests passed.",
+      "Ran DATABASE_URL/TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract -- --nocapture: 1 test passed, 0 skipped.",
+      "Initial focused Playwright run failed because the spec assumed host psql; fixed the spec to fall back to the opengithub-postgres-test container through Podman/Docker host when psql is absent.",
+      "Ran focused Playwright organization-member-privileges.spec.ts with DB env, CARGO_TARGET_DIR, and DOCKER_HOST: 2 tests passed, including auth setup and owner member-privileges flow.",
+      "Ran make check with DB env, CARGO_TARGET_DIR, and DOCKER_HOST: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran required Editorial banned-token scan via make check/Biome and existing focused coverage; no new GitHub/Primer/Octicon design violations were introduced."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "Grouped organization member-privileges policy cards could submit unchanged locked fields together with an editable change.",
+        "expected": "Per-card saves should only submit changed editable fields and should not enable save when the card has no editable changes.",
+        "actual": "Repository creation, repository features, Pages, destructive actions, app access, and team creation saves could send unchanged fields, including policy-locked values in injected lock states.",
+        "fix": "Compute editable changed fields per card, disable no-op saves, and build PATCH bodies from changed unlocked fields only."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The focused member-privileges Playwright spec depended on host psql, so it failed in the normal Ubuntu/Podman QA environment even though the test DB container was healthy.",
+        "expected": "Specs should run with the committed Podman-backed test DB even when host psql is unavailable.",
+        "actual": "spawnSync psql ENOENT before browser assertions.",
+        "fix": "Added a psql wrapper fallback that uses docker/podman exec against opengithub-postgres-test for localhost:55433/opengithub_test."
+      }
+    ],
+    "fix_description": "Accepted org-admin-005 after fresh DB/API/browser evidence. Product fix limits per-card member-privileges PATCHes to changed editable fields; test fix makes the focused E2E runnable in the Podman QA environment without host psql.",
+    "known_gaps": [
+      "Real Google OAuth owner/member session was not repeated; deterministic signed-cookie fixtures were used.",
+      "Large organization/concurrent policy-write stress remains future hardening.",
+      "Screen-reader traversal remains manual future QA beyond focused accessibility assertions."
+    ],
+    "timestamp": "2026-05-09T19:49:13Z"
+  },
+  {
+    "feature_id": "insights-001",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fixed Pulse exact date range rendering to format API period boundaries in UTC, preventing May 1, 2026 UTC from displaying as Apr 30 in America/Los_Angeles. Focused RepositoryPulsePage Vitest passed 5/5, and focused Chromium Playwright verified the live Pulse page, period selector, overview metrics, concrete destination links, chart/table fallback, no dead controls, mobile no-overflow, and screenshot capture."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
+        ],
+        "notes": "DB-backed repository_pulse_contract passed 1/1 against the required test Postgres on localhost:55433 with TEST_DATABASE_URL from .env.test; no self-skip."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_repo_redaction",
+          "input_validation",
+          "data_exposure",
+          "cache_metadata"
+        ],
+        "notes": "repository_pulse_contract covers privacy/cache behavior against real Postgres, including private repository access/redaction paths and request validation; focused browser smoke used a signed session and concrete links without leaking internal storage/secrets."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component tests and Chromium Playwright verify named controls, Insights navigation/menu semantics, accessible chart role plus table fallback, no dead anchors, mobile no-overflow, and keyboard-reachable links/buttons. Automated axe was not separately run for this lane."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-09T20:05:00Z",
+      "passed": [
+        "make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable inside container, .env/.env.test present, per-worktree Cargo target writable.",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test repository_pulse_contract -- --nocapture => 1 passed, no self-skip.",
+        "cd web && npx vitest run tests/repository-pulse-page.test.tsx => 5 tests passed.",
+        "Started make dev with .env.test and Playwright env; ports 3015/3016 listened via Next/API.",
+        "set -a; . ./.env.test; cd web && npx playwright test tests/e2e/repository-pulse.spec.ts --project=chromium --timeout=120000 => 2 passed including live repository Pulse smoke.",
+        "Focused Playwright refreshed ralph/screenshots/build/insights-001-final-desktop.jpg and insights-001-final-mobile.jpg."
+      ],
+      "fixed": [
+        "RepositoryPulsePage date formatting now pins the display timezone to UTC so API UTC period bounds render stable calendar dates across local timezones."
+      ],
+      "known_unrelated_baseline_failures": [
+        "First Playwright attempt timed out after the webServer-managed make dev exited before page.goto; manual make dev startup with the same .env.test/Playwright env proved ports 3015/3016 healthy and the focused spec passed."
+      ]
+    },
+    "tested_steps": [
+      "Rebased the local UTC date fix onto current origin/main ed26bb66, preserving newer QA artifact entries.",
+      "Verified local stack with make doctor.",
+      "Ran DB-backed Rust pulse contract against localhost:55433 with .env.test.",
+      "Ran focused Pulse component Vitest.",
+      "Ran focused Chromium Pulse Playwright smoke against live Next/API servers."
+    ],
+    "bugs_found": [
+      {
+        "description": "Pulse exact date range display used the browser local timezone for UTC API period boundaries, shifting dates one day earlier in negative-offset zones.",
+        "fix": "Set Intl.DateTimeFormat timeZone to UTC in RepositoryPulsePage formatDate."
+      }
+    ],
+    "fix_description": "Fixed Pulse UTC boundary date rendering and verified insights-001 with real DB contract, focused component tests, and focused browser E2E."
   }
 ]

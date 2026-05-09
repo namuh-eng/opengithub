@@ -26,9 +26,42 @@ function runSql(sql: string) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-  });
+  const env = { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" };
+  try {
+    execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
+      env,
+    });
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (!databaseUrl.includes("localhost:55433/opengithub_test")) {
+    throw new Error(
+      "psql is not installed and the container fallback only supports the test DB",
+    );
+  }
+
+  execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      "opengithub",
+      "-d",
+      "opengithub_test",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      sql,
+    ],
+    { env },
+  );
 }
 
 function setPagesDisplayState(
