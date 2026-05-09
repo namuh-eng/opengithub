@@ -823,7 +823,7 @@ async fn update_package_settings(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((org, package_type, package_name)): Path<(String, String, String)>,
-    Json(request): Json<PackageSettingsMutation>,
+    RestJson(request): RestJson<PackageSettingsMutation>,
 ) -> Result<Json<PackageSettings>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;

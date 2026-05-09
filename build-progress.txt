@@ -10549,3 +10549,12 @@ Evidence: make setup-local/doctor initially healthy, later docker exec pg_isread
 Browser note: focused repository-releases Playwright was attempted after setup-local; fixture psql/API readiness issues were fixed, but live browser completion remained blocked by concurrent qa-opengithub-releases-002-rerun processes occupying fixed ports 3015/3016.
 
 [2026-05-09T04:54:16Z] QA_BLOCKED packages-002 controller rescue: fixed authenticated owner package list QueryBuilder visibility predicate binding; opengithub-api cargo check passed. Full DB/browser QA blocked because Docker daemon/test Postgres could not start (`make setup-local` timed out after Docker Desktop failed to become ready).
+
+2026-05-08 - packages-002 QA pass
+
+- QA passed packages-002 and marked prd.json qa_pass=true.
+- Fixed package settings PATCH API contract issues: user/org routes now use RestJson, malformed settings JSON returns the standard JSON invalid_json envelope in route tests, and PackageSettingsMutation accepts documented camelCase fields for revokeAccess, unlinkRepository, deleteVersion, and restoreVersion.
+- Hardened focused package_detail_contract for private redaction, malformed settings JSON, package grants, linked repository grants, admin settings summaries, grant/revoke/link/unlink/delete/restore actions, download metadata accounting, and storage-key redaction.
+- Hardened package-detail Playwright smoke for this QA environment: Docker psql fallback, API health wait, local test rate-limit reset, longer timeout, and explicit X-Forwarded-For on the metadata probe.
+- Verification passed: make check; focused Rust package_detail_contract (4 passed); focused package-detail Vitest (8 passed); focused Playwright package-detail.spec.ts (2 passed) with screenshots under ralph/screenshots/build/packages-002-final-*.jpg.
+- Full make test was attempted twice. First stopped in unrelated Actions dashboard tests from shared rate-limit state; after clearing rate_limit_buckets it progressed and stopped in unrelated api_repository_search_contract username/email assertions.

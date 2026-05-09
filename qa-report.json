@@ -3633,5 +3633,60 @@
     ],
     "fix_description": "Fixed owner package list authenticated visibility predicate SQL generation; full QA remains blocked by local Docker/test Postgres startup failure.",
     "created_at": "2026-05-09T04:54:16Z"
+  },
+  {
+    "feature_id": "packages-002",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed Rust package detail contract passed; focused Vitest package detail page passed; focused Playwright package-detail smoke passed against real Postgres/API/Next for user detail, selected digest URL, copy feedback, download metadata increment, settings mutation flow, org package detail, forbidden private package redaction, mobile no-overflow, and screenshot capture."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/users/{username}/packages/{package_type}/{package_name}",
+          "GET /api/orgs/{org}/packages/{package_type}/{package_name}",
+          "GET /api/users/{username}/packages/{package_type}/{package_name}/download",
+          "GET /api/users/{username}/packages/{package_type}/{package_name}/settings",
+          "PATCH /api/users/{username}/packages/{package_type}/{package_name}/settings",
+          "GET /api/orgs/{org}/packages/{package_type}/{package_name}/settings",
+          "PATCH /api/orgs/{org}/packages/{package_type}/{package_name}/settings"
+        ],
+        "notes": "Fixed package settings mutation parsing to accept the documented camelCase action payloads and to return the standard JSON invalid_json envelope for malformed bodies. Contract coverage verifies selected tag/digest resolution, download metadata accounting, settings redaction, grant/revoke/link/unlink/delete/restore mutations, and no storage-key leakage."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_package_redaction",
+          "input_validation",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous private/internal package reads and settings reads redacted package identity; unauthenticated settings mutations returned 401; malformed JSON returned a generic JSON invalid_json envelope; hostile Origin OPTIONS did not echo Access-Control-Allow-Origin; contract and browser checks assert no s3:// storage keys or redacted layer names leak."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "@axe-core/playwright was not installed in this worktree, so axe was unavailable. Manual/browser coverage verified labelled version select, accessible copy/settings/action buttons, semantic headings, no dead anchors, keyboard-addressable details/disclosure controls, and no mobile horizontal overflow in the focused Playwright package smoke."
+      }
+    },
+    "tested_steps": [
+      "Started with git status/diff; restored helper dirt in .clawhip/state/prompt-submit.json and .env.test, preserving package source changes.",
+      "Ran make doctor; Docker and postgres-test were present but doctor reported a Postgres readiness false negative. Confirmed docker exec opengithub-postgres-test pg_isready succeeds and used TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test.",
+      "Ran focused DB-backed Rust package_detail_contract: 4 passed after fixes.",
+      "Ran focused Vitest: cd web && TMPDIR=../.scratch/tmp npm test -- --run package-detail-page.test.tsx: 8 passed.",
+      "Ran focused Playwright: cd web && TEST_DATABASE_URL/DATABASE_URL set npm run test:e2e -- package-detail.spec.ts: 2 passed, screenshots refreshed under ralph/screenshots/build/packages-002-final-*.jpg.",
+      "Ran make check with TEST_DATABASE_URL/DATABASE_URL and TMPDIR=.scratch/tmp: Cargo check, web typecheck, clippy, and Biome passed.",
+      "Attempted full make test twice. First stopped in unrelated Actions dashboard tests due shared rate-limit state; after clearing rate_limit_buckets it progressed and stopped in unrelated api_repository_search_contract username/email assertions. Not counted as packages-002 failure."
+    ],
+    "bugs_found": [
+      "Package settings mutation routes used Axum Json extractor, causing non-standard text/plain JSON rejection responses for malformed settings payloads.",
+      "Package settings mutation enum did not reliably accept documented camelCase struct-variant fields such as userId, repositoryId, and versionId.",
+      "Focused package Playwright test depended on host psql and raced API startup/rate-limit state in this QA environment."
+    ],
+    "fix_description": "Switched user/org package settings PATCH handlers to RestJson, declared camelCase fields for PackageSettingsMutation, hardened package detail contract tests for malformed JSON and settings action variants, isolated contract rate-limit subjects, and made the package-detail Playwright seed/smoke robust to Docker-only psql plus API startup/rate-limit state."
   }
 ]

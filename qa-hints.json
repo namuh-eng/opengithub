@@ -8413,5 +8413,18 @@
       "Specifically re-probe authenticated /api/users/:user/packages and /api/orgs/:org/packages with package_type and visibility filters to prove the `)$2 AND` SQL syntax error is gone against real Postgres.",
       "Complete private/internal redaction probes for anonymous viewers, package grants, linked repository grants, org members, and non-admin viewers."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "QA passed packages-002 with focused DB-backed Rust package_detail_contract, focused package-detail Vitest, focused Playwright browser smoke, and make check.",
+      "Fixed settings PATCH routes to use RestJson and accept documented camelCase mutation fields: userId, repositoryId, and versionId.",
+      "Focused Playwright package-detail smoke now falls back to Docker psql, waits for API health, clears local test rate-limit buckets, and uses explicit X-Forwarded-For for the download metadata probe."
+    ],
+    "needs_deeper_qa": [
+      "Full make test still has unrelated repository search contract failures expecting email where current responses expose fallback usernames; do not treat that as packages-002 evidence.",
+      "Install @axe-core/playwright or run the QA harness that provides it to add automated axe coverage for package detail/settings pages.",
+      "Re-run package settings mutation coverage once packages-003 expands registry write controls beyond the current settings/admin surface."
+    ]
   }
 ]

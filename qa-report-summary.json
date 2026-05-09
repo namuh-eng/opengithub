@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 48,
+    "features_passed": 49,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 39,
+      "pass": 40,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 36,
+      "pass": 37,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 2,
+      "pass": 3,
       "fail": 0,
       "skip": 39
     }
@@ -1543,28 +1543,28 @@
       "feature_id": "packages-002",
       "description": "Render package detail pages with install commands, version/digest metadata, READ",
       "category": "developer-experience",
-      "qa_pass": false,
-      "attempts": 1,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
       "sub_phases": {
         "functional": {
-          "status": "blocked",
-          "notes": "Full browser/API flow not rerun: make doctor reported Docker daemon and postgres-test unavailable; make setup-local could not start Docker within 120s."
+          "status": "pass",
+          "notes": "Focused DB-backed Rust, Vitest, and Playwright package-detail checks passed against real local Postgres/API/Next."
         },
         "api_contract": {
-          "status": "blocked",
-          "notes": "Controller rescue fixed the owner package list SQL builder: visibility/auth predicates now bind actor UUIDs through QueryBuilder instead of pushing raw $2 placeholders, eliminating the observed PostgreSQL syntax `)$2 AND ...` when authenticated package_type/visibility filters are combined. Full DB/browser QA is blocked because Docker Desktop/daemon could not be started in this controller environment. Verified compile with ./hack/cargo_locked.sh check -p opengithub-api and focused owner_packages_contract binary compiled; DB-backed assertions self-skipped without TEST_DATABASE_URL."
+          "status": "pass",
+          "notes": "Package detail/download/settings contracts pass, including camelCase settings mutations and JSON invalid_json errors."
         },
         "security": {
-          "status": "blocked",
-          "notes": "No new security pass claimed; authenticated redaction filter syntax fix is security-relevant but DB-backed private/internal probes require the unavailable test Postgres."
+          "status": "pass",
+          "notes": "Private/internal redaction, unauthenticated mutation denial, no hostile CORS echo, and storage-key redaction verified."
         },
         "accessibility": {
-          "status": "blocked",
-          "notes": "No browser accessibility rerun: local Docker/test stack unavailable."
+          "status": "pass",
+          "notes": "Manual Playwright spot-check passed for labels, semantic controls/headings, no dead anchors, and mobile no-overflow; axe unavailable because @axe-core/playwright is not installed."
         }
       },
-      "overall_status": "blocked"
+      "overall_status": "pass"
     },
     {
       "feature_id": "packages-003",

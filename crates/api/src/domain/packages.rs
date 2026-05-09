@@ -253,17 +253,41 @@ pub struct PackageCapabilitySummary {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", tag = "action")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "action"
+)]
 pub enum PackageSettingsMutation {
-    UpdateVisibility { visibility: String },
-    GrantAccess { username: String, role: String },
-    RevokeAccess { user_id: Uuid },
-    LinkRepository { owner: String, repo: String },
-    UnlinkRepository { repository_id: Uuid },
+    UpdateVisibility {
+        visibility: String,
+    },
+    GrantAccess {
+        username: String,
+        role: String,
+    },
+    RevokeAccess {
+        #[serde(rename = "userId")]
+        user_id: Uuid,
+    },
+    LinkRepository {
+        owner: String,
+        repo: String,
+    },
+    UnlinkRepository {
+        #[serde(rename = "repositoryId")]
+        repository_id: Uuid,
+    },
     DeletePackage,
     RestorePackage,
-    DeleteVersion { version_id: Uuid },
-    RestoreVersion { version_id: Uuid },
+    DeleteVersion {
+        #[serde(rename = "versionId")]
+        version_id: Uuid,
+    },
+    RestoreVersion {
+        #[serde(rename = "versionId")]
+        version_id: Uuid,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
