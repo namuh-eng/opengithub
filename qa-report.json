@@ -3440,5 +3440,64 @@
         "Branch policy aggregation now treats allowsForcePushes/allowsDeletions as most-restrictive across active matching sources instead of allowing any permissive source to override a restrictive rule/ruleset."
       ]
     }
+  },
+  {
+    "feature_id": "settings-004",
+    "attempt": 2,
+    "status": "pass",
+    "timestamp": "2026-05-08T23:30:45Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused DB-backed Rust contracts, focused webhook Vitest, and focused Chromium Playwright passed with the committed .env.test Postgres on :55433. Browser evidence covered create, detail redirect, delivery panels, edit, ping, redelivery, delete confirmation, mobile overflow, and forbidden non-admin state."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET/POST /api/repos/{owner}/{repo}/settings/hooks",
+          "GET/PATCH/DELETE /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/ping",
+          "GET /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
+          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver"
+        ],
+        "notes": "Rust repository_webhook_settings_contract passed 2/2 and live unauthenticated curl probes returned JSON 401 envelopes for list, create, delivery detail, ping, and redeliver endpoints."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "admin_gate",
+          "auth_bypass",
+          "secret_redaction",
+          "delivery_redaction",
+          "audit_redaction",
+          "cors",
+          "input_sanitization",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "Rust contracts cover admin-only access, private repository redaction, write-only secrets, delivery/audit redaction, HMAC signing, retry and payload bounds. Live XSS-like unauthenticated create stayed a generic 401 without reflecting the payload. Hostile-Origin OPTIONS returned 405 without Access-Control-Allow-Origin echo. Editorial banned-value scan was clean."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright asserted no dead controls and no mobile horizontal overflow on the hooks pages; component tests cover no inert anchors/buttons and accessible form controls."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, CLAUDE.md, web/AGENTS.md, BUILD_GUIDE.md, prd.json settings-004, latest commit a0a515d3, qa-report.json, qa-report-summary.json, qa-hints.json, and build-progress.txt before editing.",
+      "Ran make doctor first: initially red because opengithub-postgres-test was owned by another Compose project and not manageable from this worktree; recreated the fixed localhost:55433 test DB via docker rm -f opengithub-postgres-test && make setup-local && make doctor, then doctor was green.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_webhook_settings_contract -- --nocapture: 2 passed, no self-skip.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test webhook_delivery_worker -- --nocapture: 1 passed, no self-skip.",
+      "cd web && npm ci from the committed lockfile because node_modules was absent in this rerun worktree; then npm test -- --run tests/repository-webhook-settings-page.test.tsx passed 9/9.",
+      "cd web && set -a; . ../.env.test; set +a; npm run test:e2e -- repository-settings-hooks.spec.ts --project=chromium passed setup + Chromium 2/2 after the initial cold Next route compile attempt timed out while the form showed Saving; the successful rerun is counted as browser evidence.",
+      "Focused browser smoke covered add webhook, HTTPS payload validation path, secret write-only submit, individual event checkboxes, detail redirect with delivery query, delivery request/response panels, edit active/events, manual ping, redelivery, delete confirmation, mobile no-overflow, no dead controls, and forbidden collaborator state.",
+      "Live Rust API curl probes against http://localhost:3016 returned JSON 401 not_authenticated for unauthenticated GET hooks, POST hooks with an XSS-like URL, GET delivery detail, POST ping, and POST redeliver.",
+      "Live hostile-Origin OPTIONS probe for /api/repos/namuh-eng/opengithub/settings/hooks returned 405 and did not echo Access-Control-Allow-Origin: https://evil.com.",
+      "Mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches for GitHub blue/green/red, Primer, or Octicon strings.",
+      "make check passed: Cargo check, web typecheck, Clippy, and Biome.",
+      "make test was attempted: Cargo tests passed; broad Vitest failed in 12 unrelated non-settings tests with date expectation drift (examples: dashboard expected Updated Apr 30 but rendered Updated Apr 29; profile stars expected Starred May 2/Updated May 1 but rendered Starred May 1/Updated Apr 30). Focused settings-004 Vitest passed.",
+      "make test-e2e was attempted after the focused pass but not counted: db-wait-test failed under concurrent settings QA container churn, and Playwright reused a settings-003 server already bound to :3015, so the broad run was terminated as invalid cross-worktree evidence."
+    ],
+    "bugs_found": [],
+    "fix_description": "No product code change needed in this rerun; resolved the prior blocker by restoring the committed local test DB on :55433 and rerunning real focused QA."
   }
 ]

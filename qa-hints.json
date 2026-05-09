@@ -3495,15 +3495,21 @@
   {
     "feature_id": "settings-003",
     "tests_written": [
-      "Fresh QA rerun resolved the prior bf426621 runtime blocker by recreating the committed localhost:55433 Postgres test container and running non-skipped DB-backed branch settings contracts.",
-      "Added a regression contract proving overlapping active branch rules/rulesets use the most restrictive force-push and deletion setting.",
-      "Fixed branch policy aggregation so allowsForcePushes/allowsDeletions are true only when every active, non-bypassed matching source allows them.",
-      "Focused Playwright verified Branches settings admin create/edit/delete, reload persistence, mobile no-overflow, and non-admin read-only state against the real dev/API/database stack.",
-      "Live curl probes verified authenticated branch settings GET, unauthenticated 401 for GET/POST, and hostile-Origin OPTIONS without CORS echo."
+      "Completed Phase 5 Guardrails, Documentation, Browser Smoke, and Build-Pass Bookkeeping.",
+      "Documented branch settings read/write endpoints in /docs/api, including branch protection rules, rulesets, bypass actors, status-check requirements, audit events, evaluate-only logging, and push/merge enforcement responses.",
+      "Extended API docs tests so branch policy endpoint paths and enforcement notes are asserted as visible documentation.",
+      "Extended branch settings Playwright smoke to save final admin, mobile, and non-admin/read-only screenshots and check for no inert anchors or unnamed visible buttons.",
+      "Final browser screenshots are saved under ralph/screenshots/build/settings-003-final-branches-admin.jpg, settings-003-final-branches-mobile.jpg, and settings-003-final-branches-readonly.jpg.",
+      "settings-003 build_pass was set true only after all structure phases were marked complete."
     ],
     "needs_deeper_qa": [
-      "Broad make test currently has unrelated date-expectation failures in non-settings web tests; keep tracking separately from settings-003.",
-      "Continue stressing concurrent admin edits and permission changes while pushes/mergeability are evaluated, but settings-003 now has durable QA pass evidence for the PRD acceptance path."
+      "Run real Git force-push and branch deletion attempts through smart HTTP against protected branches in a clean database and inspect both API errors and bare-repository side effects.",
+      "Stress concurrent admin edits while PR mergeability and pushes are evaluated.",
+      "Verify CODEOWNERS-specific review semantics if still deferred from branch policy requirements.",
+      "Exercise ruleset evaluate-only reporting volume and retention in repository_rule_evaluations.",
+      "Change bypass actor permissions after policies exist and confirm push/merge enforcement updates immediately.",
+      "Check long branch patterns, long ruleset names, and dense bypass actor lists for wrapping on mobile and desktop.",
+      "Recheck private/internal repository leakage for anonymous users, non-member signed-in users, direct collaborators, and organization members."
     ]
   },
   {
@@ -3566,22 +3572,15 @@
   {
     "feature_id": "settings-004",
     "tests_written": [
-      "Rust repository webhook settings contract covers admin gates, HTTPS/content-type/event validation, write-only secret behavior, ping delivery creation, delivery detail redaction, redelivery linkage, deletion, private repository redaction, and audit redaction.",
-      "Rust webhook delivery worker contract covers event subscription filtering, inactive hook skipping, x-hub-signature-256 signing, bounded request/response recording, retry scheduling, terminal failure, and delivery metadata.",
-      "Vitest covers webhook empty/list/detail/forbidden/unavailable states, add/edit/delete/ping/redeliver interactions, client-side selected-event validation, no local-only updates, and API docs for webhook endpoints.",
-      "Playwright smoke covers admin create, detail redirect, delivery request/response panels, edit, ping, redeliver, delete persistence, mobile overflow, no dead controls, and forbidden non-admin state.",
-      "Final browser screenshots saved under ralph/screenshots/build/settings-004-final-hooks-list-admin.jpg, settings-004-final-hooks-detail-admin.jpg, settings-004-final-hooks-empty-admin.jpg, settings-004-final-hooks-mobile.jpg, and settings-004-final-hooks-forbidden.jpg."
+      "Rerun QA converted the prior blocked browser evidence into a pass: focused repository-settings-hooks Playwright passed against the committed .env.test DB on localhost:55433.",
+      "DB-backed repository_webhook_settings_contract 2/2 and webhook_delivery_worker 1/1 passed without self-skips.",
+      "Focused RepositoryWebhookSettingsPage Vitest passed 9/9, make check passed, live unauthenticated API/security probes returned 401 JSON envelopes, hostile-Origin OPTIONS did not echo CORS, and Editorial banned-value scan was clean.",
+      "settings-004.qa_pass is now true based on focused Rust/API/UI/browser evidence rather than broad-suite-only evidence."
     ],
     "needs_deeper_qa": [
-      "Real external receiver success/failure using a controllable HTTPS endpoint rather than the local seeded receiver URL.",
-      "TLS/SSL verification behavior against valid, self-signed, expired, and hostname-mismatched certificates.",
-      "Receiver-side HMAC verification for secret rotation, blank-secret retention on edit, and old-signature rejection after rotation.",
-      "Retry backoff timing and terminal failure behavior under slow, timed-out, 4xx, 5xx, and connection-refused receivers.",
-      "Payload and response body truncation/storage-key behavior for payloads above inline display limits and S3-backed large bodies.",
-      "Concurrent admin edits, delete while delivery is queued, redelivery after hook deletion, and repeated manual ping/redelivery spam limits.",
-      "Event subscription edge cases across push, issues, pull_request, release, workflow, package, and Pages events as those domains mature.",
-      "Private repository leakage checks for hook URLs, delivery bodies, request headers, response headers, secrets, and audit metadata.",
-      "Retention cleanup and delivery history bounds once scheduled retention jobs are active."
+      "Broad make test currently fails in unrelated date-drift assertions outside settings-004; fix those baseline tests separately before relying on a full green make test.",
+      "Broad make test-e2e remains unsafe under concurrent settings QA lanes because fixed ports :3015/:3016 and the singleton opengithub-postgres-test container can be owned by another worktree; rerun broad E2E only with exclusive local QA resources.",
+      "Still valuable future depth: real external HTTPS receivers, TLS verification edge cases, receiver-side HMAC validation after secret rotation, retry backoff timing under 4xx/5xx/timeout, large body S3 storage, and concurrent admin edits/delete while queued."
     ]
   },
   {
