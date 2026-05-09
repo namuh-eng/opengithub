@@ -28,6 +28,9 @@ function teamInitial(team: OrganizationTeamSummary) {
 }
 
 function visibilityLabel(value: string) {
+  if (value === "member") {
+    return "My teams";
+  }
   return value === "secret" ? "Secret" : "Visible";
 }
 

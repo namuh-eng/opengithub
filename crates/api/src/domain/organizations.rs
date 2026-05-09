@@ -4200,7 +4200,7 @@ fn apply_organization_team_filters(
     match filters.visibility.as_str() {
         "visible" => teams.retain(|team| team.visibility == "visible"),
         "secret" => teams.retain(|team| team.visibility == "secret"),
-        "member" => teams.retain(|team| team.viewer_capabilities.can_mention),
+        "member" => teams.retain(|team| team.viewer_capabilities.is_member),
         _ => {}
     }
 }
