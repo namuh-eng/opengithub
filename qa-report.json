@@ -4311,5 +4311,63 @@
       "make check"
     ],
     "notes": "Accepted for settings-006 with concrete DB/API/UI evidence on the fresh post-infra rerun."
+  },
+  {
+    "feature_id": "org-admin-003",
+    "attempt": 1,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-09T19:20:17Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh rerun from origin/main 4131813c verified the organization people administration shell for owner/admin members, URL-backed tab/search/pagination behavior, disabled-safe bulk action state, final-owner demotion/removal guards, invite dialog/degraded delivery, failed invitation retry/cancel, visibility toggle, role confirmation, member removal confirmation, filtered JSON/CSV export links and response bodies, mobile no-overflow screenshots, and no dead controls via focused Chromium Playwright against the real localhost:55433 test DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/people/admin",
+          "POST /api/orgs/{org}/people/invitations",
+          "POST /api/orgs/{org}/people/invitations/{id}/retry",
+          "DELETE /api/orgs/{org}/people/invitations/{id}",
+          "PATCH /api/orgs/{org}/people/{user_id}/visibility",
+          "PATCH /api/orgs/{org}/people/{user_id}/role",
+          "DELETE /api/orgs/{org}/people/{user_id}",
+          "GET /api/orgs/{org}/people/export?format=json",
+          "GET /api/orgs/{org}/people/export?format=csv",
+          "GET /api/orgs/{org}/people/export via Next same-origin proxy"
+        ],
+        "notes": "DB-backed Rust organization_people_admin_contract passed 4/4 non-skipped using TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test. Coverage includes owner/admin reads, private organization outsider 404, invite/retry/cancel, visibility persistence, role mutation, final-owner demotion/removal blocks, member removal with team-membership cleanup, filtered exports, unauthorized export denial, audit rows, and no token/email-hash leakage. Direct curl probes confirmed both API :3016 and Next proxy :3015 JSON exports returned 200 with application/json bodies."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "owner_admin_authorization",
+          "private_org_outsider_404",
+          "member_forbidden",
+          "final_owner_guard",
+          "export_authz",
+          "token_and_hash_redaction",
+          "audit_redaction"
+        ],
+        "notes": "The non-skipped Rust contract exercises member/outsider denial, private-org not-found behavior, final-owner protections, unauthorized export denial, audit metadata, and no invitation token/email-hash exposure. Playwright also verified final-owner controls remain disabled in the browser."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright exercised the People administration navigation, named controls/dialogs, row selection, role/remove confirmations, screenshots, and mobile viewport without horizontal overflow. Focused Vitest preserved no-dead-anchor/control expectations for the Editorial shell."
+      }
+    },
+    "evidence": {
+      "base": "origin/main 4131813c6aa4566183efe6c9ed360bbd0f91b9a2",
+      "tests": [
+        "make doctor (Podman runtime + opengithub-postgres-test on localhost:55433 healthy)",
+        "cd web && npm test -- organization-people-admin-page.test.tsx (6/6 passed)",
+        "./hack/cargo_locked.sh test -p opengithub-api --test organization_people_admin_contract -- --nocapture (4/4 passed, non-skipped)",
+        "curl API and Next export probes for JSON export returned 200 with application/json bodies",
+        "cd web && npx playwright test tests/e2e/organization-people.spec.ts --project=chromium --reporter=line (2/2 passed on rerun)",
+        "make check (Cargo check, web typecheck, Clippy, Biome passed)"
+      ],
+      "notes": "First Playwright attempt timed out at the JSON export request while the dev/API server was cold/reused from previous traffic; direct API/Next curl probes then succeeded and the focused Playwright spec passed cleanly on rerun."
+    }
   }
 ]
