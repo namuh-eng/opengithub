@@ -80,6 +80,9 @@ describe("PersonalProfileSettingsForm", () => {
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Mona" },
     });
+    fireEvent.change(screen.getByLabelText("Public email"), {
+      target: { value: "" },
+    });
     fireEvent.change(screen.getByLabelText("Bio"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Update profile" }));
 
@@ -91,6 +94,7 @@ describe("PersonalProfileSettingsForm", () => {
     );
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(payload.displayName).toBe("Mona");
+    expect(payload.publicEmailId).toBeNull();
     expect(payload.bio).toBe("");
     expect(screen.getByRole("status")).toHaveTextContent(
       "Public profile updated",

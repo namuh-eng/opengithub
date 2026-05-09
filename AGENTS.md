@@ -49,9 +49,15 @@ If `make test-e2e` reports "no Playwright detail" or DB-backed tests "self-skip"
 2. `make setup-local` — fix it. Boots Docker, starts `opengithub-postgres-test` container on :55433, runs migrations.
 3. Re-run `make all && make test-e2e`. These automatically pick up the committed `.env.test`.
 
-**The test DB URL is fixed:** `postgresql://opengithub:opengithub@localhost:55433/opengithub_test`. Do NOT invent alternative URLs — the watchdog wasted many iterations on `postgresql://postgres@localhost:55432/opengithub_identity_test`, which is wrong on every dimension. The correct values live in `docker-compose.test.yml` and `.env.test`.
+**The test DB URL is fixed:** `postgresql://opengithub:opengithub@localhost:55433/opengithub_test`. Do NOT invent alternative URLs — previous automation wasted many iterations on `postgresql://postgres@localhost:55432/opengithub_identity_test`, which is wrong on every dimension. The correct values live in `docker-compose.test.yml` and `.env.test`.
 
-New worktrees created via `./hack/create_worktree.sh` automatically symlink `.env.test` and run `make doctor`, so you know immediately if the worktree is verification-ready.
+QA/code lanes are orchestrated by Hermes Agent. Do not resurrect retired orchestration-era workarounds; use the committed `hack/` scripts below for worktree setup, Cargo cache isolation, and cleanup.
+
+New worktrees created via `./hack/create_worktree.sh` do full setup automatically: symlink `.env`/`.env.test`/`.mcp.json`, copy `.claude/` + `hack/` helpers, run `hack/setup_repo.sh` (which creates `.scratch/cargo-target` for per-worktree Cargo cache, writes `.envrc`, runs `npm ci` in `web/` if present, touches `.ralph-setup-done`), then run `make doctor`. On partial failure the worktree is removed automatically.
+
+**Per-worktree Cargo cache (REQUIRED — replaces `/tmp/opengithub-cargo-target`):** activate with `export CARGO_TARGET_DIR="$PWD/.scratch/cargo-target"` (or `direnv allow`). The shared `/tmp/opengithub-cargo-target` path is legacy — it has no GC and reliably exhausts `/tmp` quota. Per-worktree paths are auto-cleaned when the worktree is removed and isolate lanes from each other's quota usage.
+
+Tear down a worktree with `./hack/cleanup_worktree.sh [name]`.
 
 ## QA Sub-Phases (Progressive Disclosure)
 

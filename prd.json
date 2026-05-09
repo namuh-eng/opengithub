@@ -1204,7 +1204,7 @@
     ],
     "needs_structure": false,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "personal-settings-002",
@@ -1224,7 +1224,7 @@
     ],
     "needs_structure": false,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "credentials-001",
@@ -1245,7 +1245,7 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "credentials-002",
@@ -1265,7 +1265,7 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "security-001",
