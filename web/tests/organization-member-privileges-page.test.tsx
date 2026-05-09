@@ -92,23 +92,48 @@ describe("OrganizationMemberPrivilegesPage", () => {
 
   it("saves repository creation, team creation, and app access cards with focused feedback", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockResolvedValue({
-      json: async () =>
-        memberPrivilegeSettings({
-          policies: {
-            ...memberPrivilegeSettings().policies,
-            appAccessRequestPolicy: "owners_only",
-            membersCanCreatePublicRepositories: false,
-            membersCanCreateTeams: false,
-          },
-        }),
-      ok: true,
-    } as Response);
+    fetchMock
+      .mockResolvedValueOnce({
+        json: async () =>
+          memberPrivilegeSettings({
+            policies: {
+              ...memberPrivilegeSettings().policies,
+              membersCanCreatePublicRepositories: false,
+            },
+          }),
+        ok: true,
+      } as Response)
+      .mockResolvedValueOnce({
+        json: async () =>
+          memberPrivilegeSettings({
+            policies: {
+              ...memberPrivilegeSettings().policies,
+              membersCanCreatePublicRepositories: false,
+              membersCanCreateTeams: false,
+            },
+          }),
+        ok: true,
+      } as Response)
+      .mockResolvedValueOnce({
+        json: async () =>
+          memberPrivilegeSettings({
+            policies: {
+              ...memberPrivilegeSettings().policies,
+              appAccessRequestPolicy: "owners_only",
+              membersCanCreatePublicRepositories: false,
+              membersCanCreateTeams: false,
+            },
+          }),
+        ok: true,
+      } as Response);
 
     render(
       <OrganizationMemberPrivilegesPage settings={memberPrivilegeSettings()} />,
     );
 
+    expect(
+      screen.getByRole("button", { name: "Save repository creation" }),
+    ).toBeDisabled();
     fireEvent.click(screen.getByLabelText("Public repositories"));
     fireEvent.click(
       screen.getByRole("button", { name: "Save repository creation" }),
@@ -118,8 +143,6 @@ describe("OrganizationMemberPrivilegesPage", () => {
         "/organizations/acme-labs/settings/member_privileges/actions",
         expect.objectContaining({
           body: JSON.stringify({
-            membersCanCreateInternalRepositories: false,
-            membersCanCreatePrivateRepositories: true,
             membersCanCreatePublicRepositories: false,
           }),
           method: "PATCH",
@@ -136,7 +159,7 @@ describe("OrganizationMemberPrivilegesPage", () => {
       expect(fetchMock).toHaveBeenLastCalledWith(
         "/organizations/acme-labs/settings/member_privileges/actions",
         expect.objectContaining({
-          body: JSON.stringify({ membersCanCreateTeams: true }),
+          body: JSON.stringify({ membersCanCreateTeams: false }),
           method: "PATCH",
         }),
       );
@@ -246,6 +269,17 @@ describe("OrganizationMemberPrivilegesPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Save repository creation" }),
     );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/organizations/acme-labs/settings/member_privileges/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            membersCanCreateInternalRepositories: true,
+          }),
+          method: "PATCH",
+        }),
+      );
+    });
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveFocus();
     });
