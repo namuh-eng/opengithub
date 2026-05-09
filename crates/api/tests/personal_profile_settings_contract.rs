@@ -185,6 +185,24 @@ async fn profile_settings_reads_and_saves_identity_privacy_social_and_audit_even
     assert_eq!(body["achievementsEnabled"], false);
     assert_eq!(body["socialAccounts"][0]["handleOrUrl"], "@settings");
 
+    let (status, _headers, body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        "/api/user/settings/profile",
+        Some(&cookie),
+        Some(json!({ "publicEmailId": null })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["publicEmailId"].is_null());
+    let public_email_after_clear: Option<Uuid> =
+        sqlx::query_scalar("SELECT public_email_id FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("public email should read");
+    assert!(public_email_after_clear.is_none());
+
     let visibility: String =
         sqlx::query_scalar("SELECT profile_visibility FROM users WHERE id = $1")
             .bind(user.id)
