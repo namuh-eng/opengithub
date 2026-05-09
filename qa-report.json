@@ -3044,7 +3044,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3069,7 +3069,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3082,7 +3082,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3099,7 +3099,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3973,9 +3973,9 @@
       "Inspected PRD item, web/src/components/NotificationDeliverySettingsPage.tsx, Next delivery route, Rust notification delivery domain/routes/migration, and existing focused unit/API/E2E tests.",
       "Ran npm ci in web/ to restore committed package-lock dependencies after initial npx tsc placeholder failure.",
       "Ran make check: PASS (Cargo check, Web typecheck, Clippy, Biome).",
-      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx — PASS, 3 tests.",
-      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture — PASS, 1 test, no self-skip.",
-      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium — PASS, 2 tests including auth setup.",
+      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx \u2014 PASS, 3 tests.",
+      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture \u2014 PASS, 1 test, no self-skip.",
+      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium \u2014 PASS, 2 tests including auth setup.",
       "Direct API security probes against localhost:3016 with fresh x-forwarded-for: anonymous GET/PATCH returned 401 JSON not_authenticated; evil-origin OPTIONS returned 405 without ACAO.",
       "Editorial compliance scan over web/src found no banned GitHub hex colors, Primer, Octicon, or system font-family usage; component uses existing card/btn/chip/input/list-row/type-ramp classes and CSS variables.",
       "Attempted full make test after make check; personal notification tests passed, but the broader suite later stopped in unrelated organization_profile_settings_contract (billingEmail null/rename semantics). This is recorded as an unrelated suite blocker, not a personal-settings-002 failure."
@@ -4037,7 +4037,7 @@
       }
     },
     "tested_steps": [
-      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with “Postgres container up but not accepting connections.”",
+      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with \u201cPostgres container up but not accepting connections.\u201d",
       "make setup-local attempted: blocked by fixed Docker container name conflict, existing opengithub-postgres-test container f620bdc19e810f77b82ca9148ee7a2bd0e16e78b738cd8638568b5952248f0eb already in use. Did not invent alternate DB URLs.",
       "Installed web dependencies with npm install because web/node_modules was missing typescript and make check could not run meaningful web typecheck before dependency install.",
       "make check passed after fixes: Cargo check, web typecheck, Clippy, and Biome passed.",
@@ -4532,5 +4532,70 @@
       "Screen-reader traversal remains manual future QA beyond focused accessibility assertions."
     ],
     "timestamp": "2026-05-09T19:49:13Z"
+  },
+  {
+    "feature_id": "insights-001",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fixed Pulse exact date range rendering to format API period boundaries in UTC, preventing May 1, 2026 UTC from displaying as Apr 30 in America/Los_Angeles. Focused RepositoryPulsePage Vitest passed 5/5, and focused Chromium Playwright verified the live Pulse page, period selector, overview metrics, concrete destination links, chart/table fallback, no dead controls, mobile no-overflow, and screenshot capture."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
+        ],
+        "notes": "DB-backed repository_pulse_contract passed 1/1 against the required test Postgres on localhost:55433 with TEST_DATABASE_URL from .env.test; no self-skip."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_repo_redaction",
+          "input_validation",
+          "data_exposure",
+          "cache_metadata"
+        ],
+        "notes": "repository_pulse_contract covers privacy/cache behavior against real Postgres, including private repository access/redaction paths and request validation; focused browser smoke used a signed session and concrete links without leaking internal storage/secrets."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component tests and Chromium Playwright verify named controls, Insights navigation/menu semantics, accessible chart role plus table fallback, no dead anchors, mobile no-overflow, and keyboard-reachable links/buttons. Automated axe was not separately run for this lane."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-09T20:05:00Z",
+      "passed": [
+        "make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable inside container, .env/.env.test present, per-worktree Cargo target writable.",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test repository_pulse_contract -- --nocapture => 1 passed, no self-skip.",
+        "cd web && npx vitest run tests/repository-pulse-page.test.tsx => 5 tests passed.",
+        "Started make dev with .env.test and Playwright env; ports 3015/3016 listened via Next/API.",
+        "set -a; . ./.env.test; cd web && npx playwright test tests/e2e/repository-pulse.spec.ts --project=chromium --timeout=120000 => 2 passed including live repository Pulse smoke.",
+        "Focused Playwright refreshed ralph/screenshots/build/insights-001-final-desktop.jpg and insights-001-final-mobile.jpg."
+      ],
+      "fixed": [
+        "RepositoryPulsePage date formatting now pins the display timezone to UTC so API UTC period bounds render stable calendar dates across local timezones."
+      ],
+      "known_unrelated_baseline_failures": [
+        "First Playwright attempt timed out after the webServer-managed make dev exited before page.goto; manual make dev startup with the same .env.test/Playwright env proved ports 3015/3016 healthy and the focused spec passed."
+      ]
+    },
+    "tested_steps": [
+      "Rebased the local UTC date fix onto current origin/main ed26bb66, preserving newer QA artifact entries.",
+      "Verified local stack with make doctor.",
+      "Ran DB-backed Rust pulse contract against localhost:55433 with .env.test.",
+      "Ran focused Pulse component Vitest.",
+      "Ran focused Chromium Pulse Playwright smoke against live Next/API servers."
+    ],
+    "bugs_found": [
+      {
+        "description": "Pulse exact date range display used the browser local timezone for UTC API period boundaries, shifting dates one day earlier in negative-offset zones.",
+        "fix": "Set Intl.DateTimeFormat timeZone to UTC in RepositoryPulsePage formatDate."
+      }
+    ],
+    "fix_description": "Fixed Pulse UTC boundary date rendering and verified insights-001 with real DB contract, focused component tests, and focused browser E2E."
   }
 ]

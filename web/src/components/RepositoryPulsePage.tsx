@@ -31,6 +31,7 @@ function formatDate(value: string) {
     return "recently";
   }
   return new Intl.DateTimeFormat("en", {
+    timeZone: "UTC",
     month: "short",
     day: "numeric",
     year: "numeric",

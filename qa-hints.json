@@ -5263,88 +5263,6 @@
     ]
   },
   {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 1 Pulse API Contract and Snapshot Cache without marking insights-001 build_pass=true.",
-      "Added authenticated GET /api/repos/{owner}/{repo}/pulse with period normalization for 24h, 3d, 1w, and 1m; private repository outsider 404 privacy; repository metadata; summary counts; metric hrefs; top committers; release, merged PR, and issue activity lists; and bounded snapshot/view telemetry.",
-      "Added additive commit_file_changes, repository_insight_snapshots, and recent_insight_views migrations so Pulse can return file/addition/deletion rollups and cache freshness metadata.",
-      "Added focused Rust contract coverage for anonymous denial, private-repo privacy, aggregate counts, metric destinations, top committer ordering, activity hrefs, snapshot persistence, recent-view telemetry, invalid period validation, and no secret leakage."
-    ],
-    "needs_deeper_qa": [
-      "Phase 2 still needs the Editorial Insights shell, real /{owner}/{repo}/pulse UI, browser smoke screenshot, and no-dead-control checks.",
-      "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive Pulse migration to the shared test DB.",
-      "Probe imported repositories with large commit histories, missing/deleted commit authors, commits without file-change rows, bot-heavy activity, draft/prerelease releases, and overlapping issue/PR records.",
-      "Validate period-boundary behavior around exact start/end timestamps, time zones, and high-frequency refreshes that update repository_insight_snapshots.",
-      "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 2 Editorial Insights Shell and Pulse Overview without marking insights-001 build_pass=true.",
-      "Replaced the /{owner}/{repo}/pulse placeholder with a server-fetched Editorial Insights page backed by GET /api/repos/{owner}/{repo}/pulse.",
-      "Added typed Pulse frontend DTOs, signed-cookie server fetch helper, repository Insights sidebar links, Pulse overview metric cards, summary sentence, accessible top-committers chart plus table fallback, activity lists, unavailable state, and concrete recovery links.",
-      "Added focused Vitest coverage and Playwright browser smoke; screenshot saved at ralph/screenshots/build/insights-001-phase2-pulse-overview.jpg."
-    ],
-    "needs_deeper_qa": [
-      "Phase 3 still needs a full URL-backed Period selector menu for 24h, 3d, 1w, and 1m plus metric-link period preservation.",
-      "Phase 4 still needs hardening for committer/activity edge cases, missing authors, bot-heavy activity, very large file-change counts, empty repositories, and public/private permission differences.",
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with many commits, releases, merged pull requests, closed/new issues, commits without file-change rows, deleted users, and long activity titles.",
-      "The make test-e2e wrapper silently stalled and was terminated; direct full Playwright completed 125 tests successfully."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 3 Period Selector and Metric Navigation without marking insights-001 build_pass=true.",
-      "Added RepositoryPulsePeriodSelector with accessible menu button, concrete 24h/3d/1w/1m links, selected state, Escape close behavior, outside-click close behavior, and URL-backed period reloads.",
-      "Corrected the Pulse New issues metric destination so it opens a valid repository issues list state with created-desc ordering instead of the invalid state=created query.",
-      "Extended Rust Pulse contract coverage for 24h, 3d, 1w, 1m, invalid period validation, metric href shape, snapshot persistence, and no secret leakage.",
-      "Extended Vitest and Playwright coverage for period menu URL round trips, metric-card destinations, exact date range reloads, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-001-phase3-period-selector.jpg."
-    ],
-    "needs_deeper_qa": [
-      "Phase 4 still needs hardening for committer chart/table links, activity links, empty repositories, bot-only activity, deleted authors, and very large file-change counts.",
-      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with period-boundary activity exactly at start/end timestamps, long activity titles, mixed open/closed issue creation windows, and high-frequency snapshot refreshes.",
-      "Date range parameters are emitted on Pulse metric links, but issue/PR list date filtering needs deeper QA once final filter semantics are broadened beyond the current list state/sort handling.",
-      "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 4 Committer Chart, Activity Links, and Bounded Edge Cases without marking insights-001 build_pass=true.",
-      "Extended the Pulse API contract with authorStatus/isBot metadata, unavailable-author handling, period-bounded commit history hrefs, author profile hrefs for activity rows, public empty-repository behavior, and private repository privacy checks.",
-      "Hardened RepositoryPulsePage so top committer chart/table entries, bot/unmatched author chips, author labels, release/PR/issue activity rows, empty states, and commit-range links are concrete and not nested dead controls.",
-      "Extended Rust contract, Vitest component tests, and Playwright Pulse smoke for bot/unmatched authors, empty repositories, large file-change counts, long activity titles, unsafe markup guardrails, no dead controls, and screenshot ralph/screenshots/build/insights-001-phase4-activity-links.jpg."
-    ],
-    "needs_deeper_qa": [
-      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with deleted release authors once release author deletion is supported, bot-only repositories, commits without file-change rows, extremely large commit histories, and activity titles near UI limits.",
-      "Run keyboard-only and screen-reader traversal through the top committer chart/table, author profile links, commit-range links, release/PR/issue activity links, empty-state CTAs, and mobile layout.",
-      "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
-    ]
-  },
-  {
-    "feature_id": "insights-001",
-    "tests_written": [
-      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build Pass and marked insights-001 build_pass=true.",
-      "Documented GET /api/repos/{owner}/{repo}/pulse?period=1w in /docs/api, including auth/privacy, 24h/3d/1w/1m periods, date bounds, snapshot cache metadata, response shape, metric hrefs, top committers, activity lists, invalid-period errors, and no-secret guarantees.",
-      "Extended API docs and Pulse component assertions for endpoint coverage, accessible chart/table fallback, keyboard-safe period controls, Editorial token usage, no banned GitHub visual values/imports, no dead anchors, no inert inline handlers, and unsafe-markup guardrails.",
-      "Extended Playwright Pulse smoke to save final desktop and mobile screenshots while exercising Insights sidebar navigation, period menu, metric links, committer profile/commit links, release/PR/issue activity links, no dead controls, and mobile no-overflow."
-    ],
-    "needs_deeper_qa": [
-      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
-      "Stress imported repositories with very large commit histories, bot-only repositories, deleted release authors once deletion is supported, commits without file-change rows, and activity titles near UI limits.",
-      "Probe period-boundary events exactly at the normalized startedAt/endedAt timestamps and concurrent snapshot refreshes for repository_insight_snapshots/recent_insight_views.",
-      "Run keyboard-only and screen-reader traversal through the Insights sidebar, period menu, metric cards, top committer chart/table, author links, commit-range links, activity links, empty-state CTAs, and mobile layout.",
-      "Re-run Rust Pulse contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
-    ]
-  },
-  {
     "feature_id": "insights-002",
     "tests_written": [
       "Completed Phase 1 Contributors API Contract and Weekly Rollup Cache without marking insights-002 build_pass=true.",
@@ -8457,5 +8375,19 @@
       "Run screen-reader traversal and keyboard-only review across the long settings page, confirmation dialog, disabled policy states, and mobile layout.",
       "Probe large organizations with many repositories, teams, inherited base permission rows, and long policy-lock reasons."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "QA pass verified repository_pulse_contract 1/1 against real test Postgres on localhost:55433 with no self-skip.",
+      "Focused RepositoryPulsePage Vitest passed 5/5 after formatting period bounds in UTC.",
+      "Focused Chromium repository-pulse Playwright passed 2/2, covering signed live page, period selector, metrics links, chart/table fallback, activity links, no dead controls, mobile no-overflow, and screenshots."
+    ],
+    "needs_deeper_qa": [
+      "Run automated axe if/when the shared QA harness requires it; this lane covered accessibility via component assertions and Playwright semantic/no-dead-control/mobile checks.",
+      "Stress larger repositories with many commits, releases, merged/closed issue/PR events, and sparse periods to verify chart/table density and query performance.",
+      "Repeat with real OAuth sessions outside deterministic signed-cookie fixtures before production acceptance."
+    ],
+    "created_at": "2026-05-09T20:05:00Z"
   }
 ]
