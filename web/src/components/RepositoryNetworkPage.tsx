@@ -328,11 +328,12 @@ function NetworkReadyPage({
               aria-label="Repository network fork graph"
               className="relative m-0 list-none p-0"
             >
-              <div
-                aria-hidden="true"
-                className="absolute bottom-6 left-8 top-6 hidden w-px md:block"
-                style={{ background: "var(--line)" }}
-              />
+              <li aria-hidden="true">
+                <div
+                  className="absolute bottom-6 left-8 top-6 hidden w-px md:block"
+                  style={{ background: "var(--line)" }}
+                />
+              </li>
               {network.forks.map((fork, index) => (
                 <li key={fork.repositoryId}>
                   <ForkNode fork={fork} index={index} />
