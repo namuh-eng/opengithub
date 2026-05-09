@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { NextRequest } from "next/server";
+import {
+  type NextRequest,
+  NextRequest as RuntimeNextRequest,
+} from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as createOrganizationRoute } from "@/app/organizations/new/create/route";
+import { GET as slugAvailabilityRoute } from "@/app/organizations/new/slug-availability/route";
 import { OrganizationCreatePage } from "@/components/OrganizationCreatePage";
 import {
   type CreatedOrganization,
@@ -425,6 +429,42 @@ describe("organization create API helpers", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "conflict" },
       status: 409,
+    });
+  });
+
+  it("proxies slug availability and preserves unauthenticated API envelopes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "not_authenticated",
+            message: "authentication required",
+          },
+          status: 401,
+        }),
+        { status: 401 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("API_URL", "http://api.local");
+
+    const request = new RuntimeNextRequest(
+      "http://localhost:3015/organizations/new/slug-availability?name=Acme+Labs",
+    ) as NextRequest;
+
+    const response = await slugAvailabilityRoute(request);
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.local/api/organizations/slug-availability?name=Acme+Labs",
+      {
+        headers: undefined,
+        cache: "no-store",
+      },
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "not_authenticated" },
+      status: 401,
     });
   });
 });

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getOrganizationSlugAvailabilityFromCookie } from "@/lib/api";
+import { apiBaseUrl, organizationSlugAvailabilityPath } from "@/lib/api";
 
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
@@ -17,12 +17,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const availability = await getOrganizationSlugAvailabilityFromCookie(
-    request.headers.get("cookie"),
-    name,
-  );
-
-  if (!availability) {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${organizationSlugAvailabilityPath(name)}`,
+      {
+        headers: request.headers.get("cookie")
+          ? { cookie: request.headers.get("cookie") as string }
+          : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
     return NextResponse.json(
       {
         error: {
@@ -35,5 +41,20 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json(availability);
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    return NextResponse.json(
+      body ?? {
+        error: {
+          code: "availability_unavailable",
+          message: "Organization slug availability could not be checked",
+        },
+        status: response.status,
+      },
+      { status: response.status },
+    );
+  }
+
+  return NextResponse.json(body);
 }

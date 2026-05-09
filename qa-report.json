@@ -4117,5 +4117,71 @@
       "make doctor/setup-local cannot own the shared fixed Postgres container because opengithub-postgres-test is already running under another worktree compose project; exact container id f620bdc19e81, project qa-opengithub-packages-001-mainqa-20260508. DB-backed focused tests still ran against the required localhost:55433 opengithub_test database."
     ],
     "overall_status": "pass"
+  },
+  {
+    "feature_id": "org-admin-001",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retest after infra recovery passed the focused org-create Vitest suite (11/11), DB-backed Rust organization_create_contract tests (3/3), and focused Playwright organization-create E2E (5/5), covering plan picker, setup form, slug validation, mobile usability, keyboard-only selection/error recovery, successful free organization creation, redirect/navigation, contact email, ownership type, and terms acceptance."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /organizations/new/slug-availability",
+          "POST /organizations/new/create",
+          "GET /api/organizations/slug-availability",
+          "POST /api/organizations"
+        ],
+        "notes": "Focused Vitest verifies the Next slug-availability proxy forwards to API_URL and preserves non-OK backend JSON/status envelopes. DB-backed Rust organization_create_contract passed 3/3 against localhost:55433, covering anonymous rejection, reserved/duplicate/invalid fields, slug normalization, persistence defaults, audit records, race handling, canonical casing, and personal company redaction. Playwright exercised the signed-in Next create proxy through the live app/API."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_envelope_preservation",
+          "anonymous_rejection",
+          "reserved_and_duplicate_slug_rejection",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated organization creation and slug availability return preserved JSON auth envelopes instead of generic proxy failures. DB-backed contract tests cover reserved slugs, duplicate conflicts, invalid fields, concurrent create races, and no company-name leakage for personal ownership. No stack traces/secrets were exposed in verified error envelopes."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright coverage passed for accessible plan buttons, labels/descriptions, required/invalid field state, no unnamed buttons/dead anchors, keyboard-only plan selection and error recovery, focus movement to the setup heading/first invalid field, and mobile no-overflow usability."
+      }
+    },
+    "tested_steps": [
+      "Identified feature_id org-admin-001 from branch qa-opengithub-org-admin-001-mainqa-20260509 and prd.json.",
+      "Ran make doctor first: Docker daemon not running, opengithub-postgres-test not running, Postgres not reachable on localhost:55433; .env.test and .env were present.",
+      "Ran make setup-local: Docker did not become ready within 120s; required localhost:55433/opengithub_test DB remained unavailable.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check after formatting touched files: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 test file passed, 11 tests passed.",
+      "Ran focused Rust org-create contract with repo .env.test values and worktree CARGO_TARGET_DIR: binary completed but printed skip messages for all three DB-backed contract bodies because the test DB was unreachable; not counted as DB verification.",
+      "Ran focused Playwright org-create spec once with default Cargo target: blocked by read-only /home/jaeyunha/.cache/opengithub/cargo-target.",
+      "Reran focused Playwright org-create spec with exported worktree CARGO_TARGET_DIR: webServer compiled the API but failed with Operation not permitted (os error 1); no E2E assertions ran.",
+      "Fresh controller retest after infra recovery: make doctor reported Podman/Postgres/.env/.env.test/Cargo target all healthy.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 file passed, 11 tests passed.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_create_contract -- --nocapture with .env.test DATABASE_URL/TEST_DATABASE_URL and worktree CARGO_TARGET_DIR: 3 tests passed, 0 skipped.",
+      "Ran focused Playwright organization-create.spec.ts with DATABASE_URL/TEST_DATABASE_URL and worktree CARGO_TARGET_DIR: 5/5 passed, including setup auth state and 4 chromium org-create scenarios.",
+      "Worked around local Playwright ubuntu26 browser installer mismatch by pointing the expected conductor-profile browser cache entry at the already-installed Chrome-for-Testing 147 binary; this is test-runner cache hygiene, not product code.",
+      "Ran make check with worktree CARGO_TARGET_DIR after clearing stale generated web/.next dev types: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "The Next slug-availability proxy collapsed unauthenticated backend responses into a generic availability_unavailable 502, hiding the real not_authenticated API envelope from the organization create form.",
+        "expected": "GET /organizations/new/slug-availability should preserve backend error status and JSON envelopes such as 401 not_authenticated.",
+        "actual": "The prior helper returned null for non-OK backend responses, so the route returned a generic 502 availability_unavailable envelope.",
+        "file": "web/src/app/organizations/new/slug-availability/route.ts"
+      }
+    ],
+    "fix_description": "Changed the slug availability route to fetch the backend endpoint directly, forward cookies, disable caching, preserve non-OK backend JSON/status envelopes, and retain a 502 fallback only for transport/non-JSON failures. Fresh DB/API/E2E retest now passes.",
+    "known_gaps": [],
+    "timestamp": "2026-05-09T18:50:59Z"
   }
 ]
