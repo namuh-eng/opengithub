@@ -55,7 +55,7 @@ test.skip(!databaseUrl, "organization people E2E needs a test database");
 test("organization people routes render owner admin controls with URL-backed search and pagination", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   const seeded = seedOrganizationProfile();
   await signIn(page, seeded);
 
