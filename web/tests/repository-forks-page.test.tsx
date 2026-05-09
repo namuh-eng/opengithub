@@ -274,6 +274,9 @@ describe("RepositoryForksPage", () => {
     await waitFor(() =>
       expect(screen.getByText("Saved for this repository")).toBeVisible(),
     );
+    expect(
+      screen.getByRole("button", { name: "Defaults Saved" }),
+    ).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledWith(
       "/namuh-eng/opengithub/forks/defaults",
       expect.objectContaining({

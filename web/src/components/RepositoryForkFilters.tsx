@@ -167,7 +167,8 @@ export function RepositoryForkFilters({
       sort: next.sort ?? sort,
     });
 
-  const saveDisabled = defaultsMatch || status === "saving";
+  const saveDisabled =
+    defaultsMatch || status === "saving" || status === "saved";
 
   return (
     <div className="grid gap-3">
