@@ -3594,5 +3594,61 @@
       }
     ],
     "fix_description": "Fixed slash-tag release URL encoding, singular viewer reaction replacement semantics, and release E2E fixture portability/readiness; corrected overbroad release storage-key redaction assertions to check actual storage key fields/patterns while preserving URL links."
+  },
+  {
+    "feature_id": "releases-003",
+    "attempt": "fresh-2026-05-09-mainqa",
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Repository tags page was verified through focused React coverage and a real browser Playwright scenario against local Postgres/Next/API. The /tags page rendered seeded tag rows, Verified expansion, Notes link to the matching release detail, zip and tar.gz archive actions, Compare link, no dead controls, desktop screenshots, and mobile no-overflow coverage from the release spec."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "DB-backed repository_releases_contract passed 2/2 without self-skip. It covers GET release tags, signatureSummary/verified state, slash-containing tag links, compare hrefs, zipball/tarball archive metadata, release_download accounting, repository_archives cache rows, and private repository visibility boundaries."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_repo_redaction",
+          "data_exposure",
+          "archive_authorization"
+        ],
+        "notes": "Focused Rust contract verifies unauthenticated reaction writes return 401, anonymous/outside private repository reads return 403 without private release/repo leakage, asset responses do not expose storage keys, and archive metadata is generated only after repository visibility/permission checks. Mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused React tests and Playwright no-dead-control checks cover named links/buttons and absence of inert anchors on the tags page. The focused browser scenario also exercised mobile release coverage with no horizontal overflow; @axe-core/playwright is not installed in this worktree, so no automated axe scan was run."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, prd.json releases-003, qa-report.json, qa-report-summary.json, qa-hints.json, build-progress.txt, RepositoryReleasesPage, tags route, release API/domain code, repository_releases_contract, and repository-releases Playwright/Vitest coverage.",
+      "Ran git config user.name jaeyunha before any commit work.",
+      "make doctor first: Docker and postgres-test container were up, but doctor reported Postgres not accepting connections because local pg_isready is absent and the fixed-name container was owned by another compose project; make setup-local hit the same fixed-name collision. docker exec opengithub-postgres-test pg_isready -U opengithub -d opengithub_test proved the required localhost:55433 test DB was accepting connections.",
+      "Applied the advisory stale-branch fixes: unverified signature metadata now uses a warn chip instead of ok styling, and the tar archive action label is tar.gz.",
+      "cd web && npm ci installed committed dependencies because node_modules was absent; npm reported 2 moderate audit findings unchanged.",
+      "cd web && npm test -- --run tests/repository-releases-page.test.tsx: 18 tests passed, including new tar.gz link and unverified signature styling regressions.",
+      "set -a; . ./.env.test; set +a; DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_releases_contract -- --nocapture: 2 tests passed without self-skip.",
+      "set -a; . ./.env.test; set +a; DB_SSL=false CARGO_BUILD_JOBS=1 make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "TMPDIR=$PWD/.scratch/tmp npx playwright test repository-releases.spec.ts --project=chromium --timeout=180000: setup plus Chromium scenario passed 2/2 against live Next/API and real Postgres. Initial Playwright discovery failed because /tmp is quota-exhausted; rerun used ignored .scratch/tmp.",
+      ".scratch/releases-003-scenario.sh passed end to end with docker pg_isready, repository_releases_contract 2/2, repository-releases-page Vitest 18/18, and focused Playwright 2/2.",
+      "Mandatory Editorial banned-value scan over web/src excluding og*.css and tests returned zero matches.",
+      "Broad make test was attempted with TMPDIR=.scratch/tmp but failed outside releases-003 in api_repository_actions_dashboard_contract: actions_dashboard_filters_supported_status_matrix_and_clamps_pagination expected 200 for timed-out status and got 403.",
+      "Broad cd web && npx vitest run was attempted separately: 96 files / 646 tests passed, 11 unrelated date-sensitive non-release tests failed with expected dates one day ahead of rendered Pacific-local dates. Focused releases-003 tests remained green."
+    ],
+    "bugs_found": [
+      {
+        "description": "Tags with unverified signature metadata were visually styled as ok/verified because all signature metadata details used chip ok.",
+        "fix": "Use chip ok only for verified tags and chip warn for unverified metadata; added focused UI regression."
+      },
+      {
+        "description": "The tag source archive action exposed the tarball link with the vague label Tar instead of the PRD-style tar.gz archive link.",
+        "fix": "Renamed the action label to tar.gz and asserted its API href in the focused tags test."
+      }
+    ],
+    "fix_description": "Fixed releases-003 tags UI badge semantics and tar.gz archive labeling; no backend changes were needed after DB-backed contract verification."
   }
 ]
