@@ -4369,5 +4369,63 @@
       ],
       "notes": "First Playwright attempt timed out at the JSON export request while the dev/API server was cold/reused from previous traffic; direct API/Next curl probes then succeeded and the focused Playwright spec passed cleanly on rerun."
     }
+  },
+  {
+    "feature_id": "org-admin-005",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Fixed a focused member-privileges UI bug: grouped policy cards now disable save until editable fields change and PATCH only changed/unlocked fields. Focused Vitest passed. Focused Rust owner policy contract passed with CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target. make check passed with the same target override. Browser/E2E could not produce non-self-skipped evidence because Docker/test Postgres is unavailable and Playwright webServer could not start in this sandbox."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/settings/member-privileges",
+          "PATCH /api/orgs/{org}/settings/member-privileges"
+        ],
+        "notes": "Focused Rust contract verified owner-only access, anonymous 401, member/admin forbidden writes, private outsider 404, invalid enum 422, confirmation_required 409, successful confirmed patch persistence, and redacted organization.policy.update audit metadata. This was not backed by the required local Docker Postgres stack; it used the cached/offline Cargo build path and the contract's harness."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Focused Rust contract verified no auth bypass for anonymous/member/admin callers, invalid enum validation, private outsider 404, and no stack/session-secret leakage in audit/error evidence. Live curl/API probes against localhost:55433 were blocked by Docker/test DB unavailability."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused component coverage still checks accessible button names, confirmation dialog naming/focus behavior, no dead links, and Editorial token expectations. Full Playwright/axe/manual browser review was blocked by unavailable local DB/server setup."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433, .env.test present, .env present.",
+      "Ran docker info: permission denied while connecting to the Docker API at unix:///run/user/1000/podman/podman.sock.",
+      "Attempted make setup-local: printed Starting Docker Desktop and Could not start Docker. Open it manually and rerun; the setup process did not make Docker available.",
+      "Inspected prd.json org-admin-005 and relevant component, route, API client, Rust domain, Rust contract, API docs, and E2E coverage.",
+      "Ran cd web && npx vitest run tests/organization-member-privileges-page.test.tsx: 4/4 passed after the fix.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract: blocked by restricted network resolving index.crates.io.",
+      "Ran CARGO_NET_OFFLINE=true ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract: blocked by read-only shared target path /home/jaeyunha/.cache/opengithub/cargo-target/debug/.cargo-lock.",
+      "Ran CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract: 1/1 passed.",
+      "Ran CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran required Editorial banned-token scan over web/src excluding og token CSS: no banned GitHub hex, Primer, or Octicon hits.",
+      "Attempted cd web && npx playwright test tests/e2e/organization-member-privileges.spec.ts: blocked because config.webServer exited early on read-only default Cargo target path.",
+      "Retried focused Playwright with CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target: API binary started from /tmp target but exited with Operation not permitted before Playwright could run."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "Grouped organization member-privileges policy cards could submit unchanged locked fields together with an editable change.",
+        "expected": "Per-card saves should only submit changed editable fields and should not enable save when the card has no editable changes.",
+        "actual": "Repository creation, repository features, Pages, destructive actions, app access, and team creation saves could send unchanged fields, including policy-locked values in injected lock states.",
+        "reproduction": "Render member privileges with a locked repository creation field, toggle an unlocked field, then save; the PATCH body included the locked unchanged field."
+      }
+    ],
+    "fix_description": "Changed the member privileges page to compute per-card editable changes, disable no-op saves, and build PATCH bodies from changed unlocked fields only; extended focused Vitest coverage for no-op disabled state and locked-field omission."
   }
 ]

@@ -2114,9 +2114,26 @@
       "description": "Implement organization member privilege and repository policy settings that cont",
       "category": "settings",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "blocked",
+          "notes": "Fixed focused UI bug in grouped member-privileges cards; focused Vitest passed, focused Rust contract passed, and make check passed with offline Cargo and /tmp target. Non-self-skipped browser/E2E evidence blocked by unavailable Docker/test Postgres and sandbox webServer startup."
+        },
+        "api_contract": {
+          "status": "partial",
+          "notes": "Focused Rust contract passed for owner-only GET/PATCH, validation, confirmation_required, persistence, and audit redaction. Live DB/API probing blocked because Docker daemon and localhost:55433 test Postgres are unavailable."
+        },
+        "security": {
+          "status": "partial",
+          "notes": "Contract covers auth bypass, private outsider 404, validation, and no stack/session-secret leakage. Live unauthenticated curl probes blocked by missing test DB/server."
+        },
+        "accessibility": {
+          "status": "partial",
+          "notes": "Component coverage checks accessible names, confirmation dialog focus/name, no dead links, and Editorial token expectations. Full browser/axe/manual pass blocked by test stack."
+        }
+      }
     },
     {
       "feature_id": "commits-001",
