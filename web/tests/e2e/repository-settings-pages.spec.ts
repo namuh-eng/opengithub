@@ -357,6 +357,8 @@ test("admin can mutate Pages settings and forbidden users do not see private met
   ).toBeVisible();
   await expect(page.getByText("og-pages-")).toHaveCount(0);
   await expect(page.getByText("cloudfront", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("pages/e2e/final-live")).toHaveCount(0);
+  await expect(page.getByText(/Published 2 Pages artifact/)).toHaveCount(0);
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,

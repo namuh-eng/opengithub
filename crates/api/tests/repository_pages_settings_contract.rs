@@ -146,6 +146,7 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
 
     let config = app_config();
     let marker = format!("pages{}", Uuid::new_v4().simple());
+    let custom_domain = format!("{marker}.pages.example.com");
     let owner = create_user(&pool, &format!("{marker}-owner")).await;
     let reader = create_user(&pool, &format!("{marker}-reader")).await;
     let outsider = create_user(&pool, &format!("{marker}-outside")).await;
@@ -336,11 +337,11 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
         Method::POST,
         &format!("{uri}/domain"),
         Some(&owner_cookie),
-        Some(json!({ "domain": "Pages.Example.COM." })),
+        Some(json!({ "domain": format!("{marker}.Pages.Example.COM.") })),
     )
     .await;
     assert_eq!(domain_status, StatusCode::OK);
-    assert_eq!(domain_body["site"]["customDomain"], "pages.example.com");
+    assert_eq!(domain_body["site"]["customDomain"], custom_domain);
     assert_eq!(domain_body["site"]["domain"]["status"], "pending");
     assert!(domain_body["site"]["domain"]["challenge"]["value"]
         .as_str()
@@ -351,9 +352,21 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
         send_json(app.clone(), Method::GET, &uri, Some(&reader_cookie), None).await;
     assert_eq!(reader_status, StatusCode::OK);
     assert_eq!(reader_body["canEdit"], false);
-    assert_eq!(reader_body["site"]["customDomain"], "pages.example.com");
+    assert_eq!(reader_body["site"]["customDomain"], custom_domain);
     assert!(reader_body["site"]["domain"]["challenge"].is_null());
+    assert!(
+        reader_body["deployments"][0]["artifactStorageKey"].is_null(),
+        "reader body should redact deployment metadata: {reader_body:?}"
+    );
+    assert!(reader_body["deployments"][0]["workflowArtifactId"].is_null());
+    assert_eq!(reader_body["deployments"][0]["artifactManifest"], json!({}));
+    assert!(reader_body["deployments"][0]["buildLogExcerpt"].is_null());
+    assert!(reader_body["deployments"][0]["failureReason"].is_null());
     assert!(!reader_body.to_string().contains("og-pages-"));
+    assert!(!reader_body.to_string().contains("pages/"));
+    assert!(!reader_body
+        .to_string()
+        .contains("Published 1 Pages artifact"));
 
     let (https_blocked_status, _, https_blocked_body) = send_json(
         app.clone(),
@@ -413,7 +426,7 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
         Method::POST,
         &format!("{second_uri}/domain"),
         Some(&owner_cookie),
-        Some(json!({ "domain": "pages.example.com" })),
+        Some(json!({ "domain": custom_domain })),
     )
     .await;
     assert_eq!(conflict_status, StatusCode::CONFLICT);
@@ -465,7 +478,11 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
         Some(json!({ "workflowRunId": run_id, "workflowArtifactId": artifact_id })),
     )
     .await;
-    assert_eq!(actions_deploy_status, StatusCode::OK);
+    assert_eq!(
+        actions_deploy_status,
+        StatusCode::OK,
+        "actions deployment response body: {actions_deploy_body:?}"
+    );
     let actions_deployment_id = actions_deploy_body["deployment"]["id"]
         .as_str()
         .expect("Actions deployment id should serialize");

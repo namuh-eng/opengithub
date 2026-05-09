@@ -599,7 +599,10 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
             && item["number"] == assigned_issue.number
             && item["state"] == "open"
             && item["href"]
-                == format!("/{owner_login}/{repo_name}/issues/{}", assigned_issue.number)
+                == format!(
+                    "/{owner_login}/{repo_name}/issues/{}",
+                    assigned_issue.number
+                )
             && item["actorLogin"] == owner_login
     }));
     assert!(recent_activity.iter().any(|item| {
@@ -612,10 +615,11 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
                     "/{owner_login}/{repo_name}/pull/{}",
                     review_request.pull_request.number
                 )
-            && item["actorLogin"] == reviewer
-                .username
-                .as_deref()
-                .expect("review author has username")
+            && item["actorLogin"]
+                == reviewer
+                    .username
+                    .as_deref()
+                    .expect("review author has username")
     }));
     assert_eq!(
         body["assignedIssues"][0]["title"],
@@ -624,7 +628,10 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
     assert_eq!(body["assignedIssues"][0]["number"], assigned_issue.number);
     assert_eq!(
         body["assignedIssues"][0]["href"],
-        format!("/{owner_login}/{repo_name}/issues/{}", assigned_issue.number)
+        format!(
+            "/{owner_login}/{repo_name}/issues/{}",
+            assigned_issue.number
+        )
     );
     assert_eq!(
         body["reviewRequests"][0]["title"],
