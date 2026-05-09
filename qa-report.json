@@ -3696,5 +3696,66 @@
       }
     ],
     "fix_description": "Fixed generated-notes PR range inclusion, explicit upload audit metadata, and route-level authentication for release write/manage endpoints; verified release create/edit/upload/publish/delete with real DB, focused UI tests, make check, and Playwright smoke."
+  },
+  {
+    "feature_id": "packages-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused Rust, component, and Chromium E2E package-list checks passed after fixes. E2E covered /{owner}?tab=packages and /orgs/{org}/packages for signed-out public visibility, signed-in owner private package filters, org member internal filters, private org package redaction, linked-artifacts placeholder navigation, no dead controls, and no horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/users/{username}/packages",
+          "GET /api/orgs/{org}/packages"
+        ],
+        "notes": "owner_packages_contract passed against the real test Postgres. Coverage includes package filters/sorting/search, package downloads, linked repositories, public redaction, direct package grants, repository permission grants, and organization member internal visibility without private leakage."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "authorization_redaction",
+          "data_exposure"
+        ],
+        "notes": "Fixed the authenticated visibility SQL binding regression and tightened organization package visibility so org membership reveals internal packages but not private packages unless explicit package or repository grants exist. Public/anonymous checks confirm private package names are not rendered."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser smoke verified labeled Type/Visibility controls, concrete tab and return links, no dead controls, and no document-level horizontal overflow. Axe was not available in this worktree, so this is a targeted accessibility smoke rather than a full WCAG scan."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md guidance, packages-001 PRD entry, qa-report/summary/hints, build-progress.txt, and relevant package API/UI/test files.",
+      "Ran make doctor: Docker/test Postgres/.env.test healthy on localhost:55433; .env only warned as optional live OAuth/AWS.",
+      "Ran TMPDIR=$PWD/.scratch/tmp make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test owner_packages_contract -- --nocapture: 2 tests passed against the real test Postgres.",
+      "Ran TMPDIR=$PWD/.scratch/tmp npm --prefix web test -- owner-packages-page.test.tsx --pool=forks: 4 tests passed.",
+      "Stopped stale packages-002 dev servers occupying fixed E2E ports 3015/3016, cleared rate_limit_buckets in opengithub-postgres-test for browser isolation, and ran cd web && TMPDIR=$PWD/../.scratch/tmp TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false npm exec playwright test tests/e2e/owner-packages.spec.ts --project=chromium: setup plus Chromium scenario passed.",
+      "Prior packages-001 broad make test evidence was not rerun in this controller fix turn; prior broad web Vitest failures were unrelated date/timezone-sensitive suites outside packages-001."
+    ],
+    "bugs_found": [
+      {
+        "description": "OwnerPackagesPage formatted UTC package timestamps in the local timezone, rendering midnight UTC dates one day early in Pacific-time runs.",
+        "fix": "Set Intl.DateTimeFormat timeZone to UTC for package published dates."
+      },
+      {
+        "description": "Authenticated owner package queries could emit malformed SQL by pushing bind values after hardcoded $2 placeholders were inserted as strings.",
+        "fix": "Replaced string-built visibility SQL with push_visibility_predicate so QueryBuilder emits and binds actor IDs in-place for each predicate."
+      },
+      {
+        "description": "Organization membership revealed private organization packages instead of limiting membership-only visibility to internal packages.",
+        "fix": "Changed organization visibility logic and regression tests so members see internal packages, while private packages require explicit package or repository grants."
+      },
+      {
+        "description": "owner_packages_contract depended on the shared anonymous rate-limit subject in the real test database, so prior suite traffic could make public package reads return 403 before the package assertions ran.",
+        "fix": "Made the DB-backed package contract send a unique documentation IPv6 address via X-Forwarded-For for each scenario, keeping the real rate limiter enabled while isolating test traffic."
+      }
+    ],
+    "fix_description": "Fixed package-list UTC date rendering, authenticated package visibility SQL binding, and organization private-package authorization; added DB-backed contract coverage and focused E2E coverage for user/org package listing visibility."
   }
 ]

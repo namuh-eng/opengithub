@@ -91,8 +91,12 @@ async fn get_json(
     app: axum::Router,
     uri: &str,
     cookie: Option<&str>,
+    client_ip: &str,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    let mut builder = Request::builder()
+        .method(Method::GET)
+        .uri(uri)
+        .header("x-forwarded-for", client_ip);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -128,6 +132,17 @@ fn package_names(body: &Value) -> Vec<String> {
                 .to_owned()
         })
         .collect()
+}
+
+fn scenario_client_ip() -> String {
+    let nonce = Uuid::new_v4().simple().to_string();
+    format!(
+        "2001:db8:{}:{}:{}:{}::1",
+        &nonce[0..4],
+        &nonce[4..8],
+        &nonce[8..12],
+        &nonce[12..16]
+    )
 }
 
 struct PackageSeed<'a> {
@@ -185,6 +200,7 @@ async fn user_packages_filter_sort_and_redact_private_rows() {
 
     let config = app_config();
     let marker = format!("pkguser{}", Uuid::new_v4().simple());
+    let client_ip = scenario_client_ip();
     let owner = create_user(&pool, &marker).await;
     let collaborator = create_user(&pool, &format!("{marker}-collab")).await;
     let collaborator_cookie = cookie_header(&pool, &config, &collaborator).await;
@@ -258,9 +274,10 @@ async fn user_packages_filter_sort_and_redact_private_rows() {
         app.clone(),
         &format!("/api/users/{marker}/packages?sort=downloads-desc"),
         None,
+        &client_ip,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{public_body}");
     assert_json(&headers);
     assert_eq!(
         package_names(&public_body),
@@ -279,9 +296,10 @@ async fn user_packages_filter_sort_and_redact_private_rows() {
             "/api/users/{marker}/packages?q=npm&type=npm&visibility=private&sort=downloads-asc"
         ),
         Some(&collaborator_cookie),
+        &client_ip,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{filtered_body}");
     assert_eq!(
         package_names(&filtered_body),
         vec![format!("{marker}-npm-private")]
@@ -300,6 +318,7 @@ async fn organization_packages_show_internal_to_members_only() {
 
     let config = app_config();
     let marker = format!("pkgorg{}", Uuid::new_v4().simple());
+    let client_ip = scenario_client_ip();
     let owner = create_user(&pool, &format!("{marker}-owner")).await;
     let member = create_user(&pool, &format!("{marker}-member")).await;
     let member_cookie = cookie_header(&pool, &config, &member).await;
@@ -336,6 +355,7 @@ async fn organization_packages_show_internal_to_members_only() {
     )
     .await
     .expect("repo should create");
+    let internal_package_name = format!("{marker}-maven");
     insert_package(
         &pool,
         PackageSeed {
@@ -343,26 +363,76 @@ async fn organization_packages_show_internal_to_members_only() {
             owner_user_id: None,
             owner_organization_id: Some(org.id),
             created_by_user_id: owner.id,
-            name: &format!("{marker}-maven"),
+            name: &internal_package_name,
             package_type: "maven",
             visibility: "internal",
             downloads: 12,
         },
     )
     .await;
+    let private_package_name = format!("{marker}-nuget-private");
+    let private_package = insert_package(
+        &pool,
+        PackageSeed {
+            repository_id: repo.id,
+            owner_user_id: None,
+            owner_organization_id: Some(org.id),
+            created_by_user_id: owner.id,
+            name: &private_package_name,
+            package_type: "nuget",
+            visibility: "private",
+            downloads: 99,
+        },
+    )
+    .await;
 
     let (status, _, public_body) =
-        get_json(app.clone(), &format!("/api/orgs/{marker}/packages"), None).await;
-    assert_eq!(status, StatusCode::OK);
+        get_json(app.clone(), &format!("/api/orgs/{marker}/packages"), None, &client_ip).await;
+    assert_eq!(status, StatusCode::OK, "{public_body}");
     assert_eq!(public_body["total"], 0);
 
     let (status, _, member_body) = get_json(
-        app,
+        app.clone(),
         &format!("/api/orgs/{marker}/packages?type=maven&visibility=internal"),
         Some(&member_cookie),
+        &client_ip,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(package_names(&member_body), vec![format!("{marker}-maven")]);
+    assert_eq!(status, StatusCode::OK, "{member_body}");
+    assert_eq!(package_names(&member_body), vec![internal_package_name]);
     assert_eq!(member_body["items"][0]["visibility"], "internal");
+
+    let (status, _, private_body) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/packages?type=nuget&visibility=private"),
+        Some(&member_cookie),
+        &client_ip,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{private_body}");
+    assert_eq!(private_body["total"], 0);
+    assert!(package_names(&private_body).is_empty());
+
+    sqlx::query(
+        "INSERT INTO package_permissions (package_id, user_id, role) VALUES ($1, $2, 'read')",
+    )
+    .bind(private_package)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("private package permission should insert");
+
+    let (status, _, permitted_private_body) = get_json(
+        app,
+        &format!("/api/orgs/{marker}/packages?type=nuget&visibility=private"),
+        Some(&member_cookie),
+        &client_ip,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{permitted_private_body}");
+    assert_eq!(
+        package_names(&permitted_private_body),
+        vec![private_package_name]
+    );
+    assert_eq!(permitted_private_body["items"][0]["visibility"], "private");
 }

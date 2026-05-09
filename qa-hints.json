@@ -3290,12 +3290,18 @@
     "tests_written": [
       "Added owner package list contract coverage in crates/api/tests/owner_packages_contract.rs for user and organization package lists, search/type/visibility/sort filters, package downloads, linked repositories, public redaction, package permissions, and organization-member internal package visibility.",
       "Added OwnerPackagesPage Vitest coverage for GitHub Packages and Linked artifacts tabs, type/visibility/sort/search controls, clear-filter and empty-state links, package metadata rows, linked repository links, download counts, and ownerPackagesHref serialization.",
-      "Verification passed: focused cargo test -p opengithub-api --test owner_packages_contract; focused npm --prefix web test -- owner-packages-page.test.tsx; web typecheck with npx tsc --noEmit --incremental false; mandatory Editorial banned-value scan on touched UI files; make check; CARGO_INCREMENTAL=0 make test with Cargo tests plus 249 web tests."
+      "Verification passed: focused cargo test -p opengithub-api --test owner_packages_contract; focused npm --prefix web test -- owner-packages-page.test.tsx; web typecheck with npx tsc --noEmit --incremental false; mandatory Editorial banned-value scan on touched UI files; make check; CARGO_INCREMENTAL=0 make test with Cargo tests plus 249 web tests.",
+      "Independent QA fixed UTC package-list date rendering, authenticated QueryBuilder visibility binding, and organization private-package redaction for member viewers.",
+      "Independent QA added OWNER_PACKAGES_E2E fixture seeding and focused Chromium coverage for /{owner}?tab=packages and /orgs/{org}/packages across signed-out, owner, and org-member viewers.",
+      "Fresh QA verification passed: make doctor; make check; TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test owner_packages_contract -- --nocapture (2/2); owner-packages-page Vitest 4/4; and owner-packages Chromium E2E setup plus scenario after fixed-port dev server cleanup and rate_limit_buckets browser isolation.",
+      "owner_packages_contract now uses unique X-Forwarded-For scenario subjects so the real rate limiter stays active without depending on stale anonymous traffic in the shared test DB."
     ],
     "needs_deeper_qa": [
       "Linked artifacts is intentionally a placeholder tab until artifact provenance ships; QA should verify the explanatory copy and return link rather than expecting artifact rows.",
       "No browser E2E/manual Ever smoke was added in the build lane; independent QA should exercise /{owner}?tab=packages and /orgs/{org}/packages with signed-out, member, and collaborator viewers.",
-      "Stress long package names, large download counts, mixed package_repository_links, direct package_permissions for non-members, and URL query preservation across all dropdowns."
+      "Stress long package names, large download counts, mixed package_repository_links, direct package_permissions for non-members, and URL query preservation across all dropdowns.",
+      "Run a full axe/WCAG scan when @axe-core/playwright is available; this QA pass covered labels, concrete links, no dead controls, and no horizontal overflow but did not include a full axe scan.",
+      "Broad make test was not rerun in the controller fix turn; prior broad make test had unrelated date/timezone-sensitive Vitest failures outside packages-001, while package-focused Rust, Vitest, and Playwright checks pass."
     ]
   },
   {

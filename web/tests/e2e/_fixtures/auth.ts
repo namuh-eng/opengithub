@@ -42,6 +42,7 @@ const SCENE_ENVS = {
   actionsRunDetail: { ACTIONS_RUN_DETAIL_E2E: "1" },
   issueTemplate: { ISSUE_TEMPLATE_E2E: "1" },
   orgProfile: { ORG_PROFILE_E2E: "1" },
+  ownerPackages: { OWNER_PACKAGES_E2E: "1" },
   accountSecurity: { ACCOUNT_SECURITY_E2E: "1" },
 } as const satisfies Record<string, Record<string, string>>;
 

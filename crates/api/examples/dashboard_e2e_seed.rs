@@ -115,6 +115,13 @@ fn seed_organization_profile() -> bool {
     )
 }
 
+fn seed_owner_packages() -> bool {
+    matches!(
+        std::env::var("OWNER_PACKAGES_E2E").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
 fn seed_account_security_second_identity() -> bool {
     matches!(
         std::env::var("ACCOUNT_SECURITY_E2E").as_deref(),
@@ -355,6 +362,9 @@ async fn main() -> anyhow::Result<()> {
                 },
             )
             .await?;
+            if seed_owner_packages() {
+                seed_user_owner_packages(&pool, first_repository.id, user.id, &suffix).await?;
+            }
 
             sqlx::query(
                 r#"
@@ -921,6 +931,183 @@ async fn seed_repository_wiki(
     Ok(())
 }
 
+struct OwnerPackageSeed<'a> {
+    repository_id: Uuid,
+    owner_user_id: Option<Uuid>,
+    owner_organization_id: Option<Uuid>,
+    created_by_user_id: Uuid,
+    name: &'a str,
+    package_type: &'a str,
+    visibility: &'a str,
+    version: &'a str,
+    downloads: i64,
+}
+
+async fn seed_package_row(pool: &PgPool, seed: OwnerPackageSeed<'_>) -> anyhow::Result<()> {
+    let package_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO packages (
+            repository_id,
+            owner_user_id,
+            owner_organization_id,
+            created_by_user_id,
+            name,
+            package_type,
+            visibility
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+        "#,
+    )
+    .bind(seed.repository_id)
+    .bind(seed.owner_user_id)
+    .bind(seed.owner_organization_id)
+    .bind(seed.created_by_user_id)
+    .bind(seed.name)
+    .bind(seed.package_type)
+    .bind(seed.visibility)
+    .fetch_one(pool)
+    .await?;
+
+    let version_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO package_versions (
+            package_id,
+            version,
+            published_by_user_id,
+            created_at
+        )
+        VALUES ($1, $2, $3, now() - INTERVAL '1 hour')
+        RETURNING id
+        "#,
+    )
+    .bind(package_id)
+    .bind(seed.version)
+    .bind(seed.created_by_user_id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO package_repository_links (package_id, repository_id, link_type)
+        VALUES ($1, $2, 'source')
+        "#,
+    )
+    .bind(package_id)
+    .bind(seed.repository_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO package_downloads (package_id, package_version_id, download_count)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(package_id)
+    .bind(version_id)
+    .bind(seed.downloads)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn seed_user_owner_packages(
+    pool: &PgPool,
+    repository_id: Uuid,
+    owner_user_id: Uuid,
+    suffix: &str,
+) -> anyhow::Result<()> {
+    let marker = &suffix[..12];
+    seed_package_row(
+        pool,
+        OwnerPackageSeed {
+            repository_id,
+            owner_user_id: Some(owner_user_id),
+            owner_organization_id: None,
+            created_by_user_id: owner_user_id,
+            name: &format!("list-container-{marker}"),
+            package_type: "container",
+            visibility: "public",
+            version: "2.0.0",
+            downloads: 210,
+        },
+    )
+    .await?;
+    seed_package_row(
+        pool,
+        OwnerPackageSeed {
+            repository_id,
+            owner_user_id: Some(owner_user_id),
+            owner_organization_id: None,
+            created_by_user_id: owner_user_id,
+            name: &format!("list-private-{marker}"),
+            package_type: "npm",
+            visibility: "private",
+            version: "0.3.0",
+            downloads: 7,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+async fn seed_organization_owner_packages(
+    pool: &PgPool,
+    repository_id: Uuid,
+    organization_id: Uuid,
+    owner_user_id: Uuid,
+    marker: &str,
+) -> anyhow::Result<()> {
+    seed_package_row(
+        pool,
+        OwnerPackageSeed {
+            repository_id,
+            owner_user_id: None,
+            owner_organization_id: Some(organization_id),
+            created_by_user_id: owner_user_id,
+            name: &format!("org-public-{marker}"),
+            package_type: "maven",
+            visibility: "public",
+            version: "1.1.0",
+            downloads: 88,
+        },
+    )
+    .await?;
+    seed_package_row(
+        pool,
+        OwnerPackageSeed {
+            repository_id,
+            owner_user_id: None,
+            owner_organization_id: Some(organization_id),
+            created_by_user_id: owner_user_id,
+            name: &format!("org-internal-{marker}"),
+            package_type: "nuget",
+            visibility: "internal",
+            version: "1.2.0",
+            downloads: 33,
+        },
+    )
+    .await?;
+    seed_package_row(
+        pool,
+        OwnerPackageSeed {
+            repository_id,
+            owner_user_id: None,
+            owner_organization_id: Some(organization_id),
+            created_by_user_id: owner_user_id,
+            name: &format!("org-private-{marker}"),
+            package_type: "npm",
+            visibility: "private",
+            version: "9.9.9",
+            downloads: 5,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 async fn seed_organization_profile_fixture(
     pool: &PgPool,
     owner_user_id: Uuid,
@@ -1007,6 +1194,16 @@ async fn seed_organization_profile_fixture(
         },
     )
     .await?;
+    if seed_owner_packages() {
+        seed_organization_owner_packages(
+            pool,
+            repository.id,
+            organization.id,
+            owner_user_id,
+            &suffix[..12],
+        )
+        .await?;
+    }
     sqlx::query(
         r#"
         UPDATE repositories
