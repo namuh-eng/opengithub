@@ -322,14 +322,12 @@ pub async fn owner_packages(
     let owner = resolve_owner(pool, owner_login, owner_kind).await?;
     let pagination = normalize_pagination(query.page, query.page_size);
     let filters = normalize_filters(query, pagination.page, pagination.page_size)?;
-    let visibility_sql = visibility_predicate(owner_kind, actor_user_id.is_some());
 
     let mut count_builder: QueryBuilder<'_, sqlx::Postgres> =
         QueryBuilder::new("SELECT COUNT(*)::bigint FROM packages p WHERE ");
     push_owner_predicate(&mut count_builder, owner_kind, owner.id);
     count_builder.push(" AND ");
-    count_builder.push(visibility_sql.as_str());
-    bind_auth(&mut count_builder, actor_user_id);
+    push_visibility_predicate(&mut count_builder, owner_kind, actor_user_id);
     push_filter_predicates(&mut count_builder, &filters);
     let total = count_builder
         .build_query_scalar::<i64>()
@@ -381,8 +379,7 @@ pub async fn owner_packages(
     );
     push_owner_predicate(&mut rows_builder, owner_kind, owner.id);
     rows_builder.push(" AND ");
-    rows_builder.push(visibility_sql.as_str());
-    bind_auth(&mut rows_builder, actor_user_id);
+    push_visibility_predicate(&mut rows_builder, owner_kind, actor_user_id);
     push_filter_predicates(&mut rows_builder, &filters);
     push_order(&mut rows_builder, &filters.sort);
     rows_builder.push(" LIMIT ");
@@ -1301,20 +1298,33 @@ fn push_order(builder: &mut QueryBuilder<'_, sqlx::Postgres>, sort: &str) {
     }
 }
 
-fn bind_auth(builder: &mut QueryBuilder<'_, sqlx::Postgres>, actor_user_id: Option<Uuid>) {
-    if let Some(actor_user_id) = actor_user_id {
-        builder.push_bind(actor_user_id);
-    }
-}
+fn push_visibility_predicate(
+    builder: &mut QueryBuilder<'_, sqlx::Postgres>,
+    owner_kind: PackageOwnerKind,
+    actor_user_id: Option<Uuid>,
+) {
+    let Some(actor_user_id) = actor_user_id else {
+        builder.push("p.visibility = 'public'");
+        return;
+    };
 
-fn visibility_predicate(owner_kind: PackageOwnerKind, authenticated: bool) -> String {
-    if !authenticated {
-        return "p.visibility = 'public'".to_owned();
-    }
+    builder.push("(p.visibility = 'public' OR ");
     match owner_kind {
-        PackageOwnerKind::User => "(p.visibility = 'public' OR p.owner_user_id = $2 OR EXISTS (SELECT 1 FROM package_permissions pp WHERE pp.package_id = p.id AND pp.user_id = $2 AND pp.role IN ('read', 'write', 'admin')) OR EXISTS (SELECT 1 FROM repository_permissions rp WHERE rp.repository_id = p.repository_id AND rp.user_id = $2 AND rp.role IN ('read', 'write', 'admin', 'owner')))".to_owned(),
-        PackageOwnerKind::Organization => "(p.visibility = 'public' OR EXISTS (SELECT 1 FROM organization_memberships om WHERE om.organization_id = p.owner_organization_id AND om.user_id = $2) OR EXISTS (SELECT 1 FROM package_permissions pp WHERE pp.package_id = p.id AND pp.user_id = $2 AND pp.role IN ('read', 'write', 'admin')) OR EXISTS (SELECT 1 FROM repository_permissions rp WHERE rp.repository_id = p.repository_id AND rp.user_id = $2 AND rp.role IN ('read', 'write', 'admin', 'owner')))".to_owned(),
+        PackageOwnerKind::User => {
+            builder.push("p.owner_user_id = ");
+            builder.push_bind(actor_user_id);
+        }
+        PackageOwnerKind::Organization => {
+            builder.push("(p.visibility = 'internal' AND EXISTS (SELECT 1 FROM organization_memberships om WHERE om.organization_id = p.owner_organization_id AND om.user_id = ");
+            builder.push_bind(actor_user_id);
+            builder.push("))");
+        }
     }
+    builder.push(" OR EXISTS (SELECT 1 FROM package_permissions pp WHERE pp.package_id = p.id AND pp.user_id = ");
+    builder.push_bind(actor_user_id);
+    builder.push(" AND pp.role IN ('read', 'write', 'admin')) OR EXISTS (SELECT 1 FROM repository_permissions rp WHERE rp.repository_id = p.repository_id AND rp.user_id = ");
+    builder.push_bind(actor_user_id);
+    builder.push(" AND rp.role IN ('read', 'write', 'admin', 'owner')))");
 }
 
 fn package_item_from_row(
