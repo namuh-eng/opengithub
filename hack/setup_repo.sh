@@ -41,6 +41,17 @@ if [ ! -f .envrc ]; then
 # Per-worktree Cargo target — keeps build artifacts inside this worktree
 # (auto-cleaned on `git worktree remove`, isolates from other lanes).
 export CARGO_TARGET_DIR="$PWD/.scratch/cargo-target"
+
+# Ubuntu/Hermes runs with a profile HOME; use the user's real Podman socket and
+# Playwright browser cache instead of relying on interactive shell startup files.
+if [ -S "/run/user/$(id -u)/podman/podman.sock" ]; then
+  export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+fi
+_real_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
+if [ -d "$_real_home/.cache/ms-playwright" ]; then
+  export PLAYWRIGHT_BROWSERS_PATH="$_real_home/.cache/ms-playwright"
+fi
+unset _real_home
 EOF
     echo "  ✓ .envrc written (direnv users: run \`direnv allow\`)"
 else
@@ -52,7 +63,7 @@ fi
 if [ -f web/package.json ]; then
     if [ ! -d web/node_modules ] || [ ! -d web/node_modules/@playwright/test ]; then
         echo "  → installing web deps via npm ci..."
-        ( cd web && npm ci --no-audit --no-fund --silent )
+        ( cd web && npm ci --prefer-offline --no-audit --no-fund --silent )
         echo "  ✓ web/node_modules ready"
     else
         echo "  ✓ web/node_modules already present"
