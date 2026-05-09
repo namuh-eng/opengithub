@@ -1510,7 +1510,7 @@
     "build_pass": true,
     "qa_pass": false,
     "qa_status": "QA_BLOCKED",
-    "qa_notes": "2026-05-09T09:11:43Z independent QA blocked: Docker daemon/API was unavailable in this sandbox (`docker info` permission denied for unix:///run/user/1000/podman/podman.sock; make setup-local printed `Could not start Docker. Open it manually and rerun.`), so localhost:55433/opengithub_test DB-backed Rust and signed browser/E2E evidence could not be counted. Focused RepositoryTrafficPage Vitest passed 5/5, web TypeScript passed, focused Biome passed, offline make check passed, and the Rust traffic contract compiled but self-skipped its DB body with `database connect failed: Operation not permitted (os error 1)`. Full make test had Cargo tests pass but failed in 10 unrelated date-sensitive web Vitest tests outside insights-003."
+    "qa_notes": "2026-05-09T20:47Z controller rerun after infra fix: old Docker/Postgres/GitHub-auth blockers are stale. The branch was refreshed on origin/main 675df7b4, live app answered on http://localhost:3015/login, Postgres is listening on localhost:55433, and prior focused evidence still includes RepositoryTrafficPage Vitest 5/5, web TypeScript/Biome, make check, and a compiled Rust traffic contract. Fresh signed Playwright verification is still blocked on this host because Chromium headless shell exits immediately with SIGTRAP during tests/e2e/auth.setup.ts before repository traffic tests run; retrying with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome did not override the bundled crashing headless shell. QA remains blocked on browser runtime, not DB/app/push infra."
   },
   {
     "id": "insights-004",

@@ -2266,14 +2266,14 @@
       "sub_phases": {
         "functional": {
           "status": "blocked",
-          "notes": "Focused RepositoryTrafficPage Vitest passed 5/5 and covered shell rendering, summary metrics, chart focus/hover values, permission denial without leaked counts, empty states, safe links, long labels, and unsafe-markup guardrails. Signed browser/E2E verification was blocked because Docker/test Postgres was unavailable and Playwright timed out waiting for the configured web server."
+          "notes": "Focused RepositoryTrafficPage Vitest passed 5/5 and covered shell rendering, summary metrics, chart focus/hover values, permission denial without leaked counts, empty states, safe links, long labels, and unsafe-markup guardrails. Controller rerun after infra fix verified the live app answered on http://localhost:3015/login with Postgres reachable on localhost:55433, but signed browser/E2E verification is still blocked because Playwright Chromium headless shell exits with SIGTRAP in tests/e2e/auth.setup.ts before repository traffic tests run. Retrying with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome did not override the bundled crashing headless shell."
         },
         "api_contract": {
           "status": "blocked",
           "endpoints_tested": [
             "GET /api/repos/{owner}/{repo}/graphs/traffic"
           ],
-          "notes": "Route/domain contract was inspected and the focused Rust traffic contract compiled offline, but its DB-backed body self-skipped with `database connect failed: Operation not permitted (os error 1)` against the fixed localhost:55433/opengithub_test URL, so API behavior is not counted as verified in this run."
+          "notes": "Route/domain contract was inspected and the focused Rust traffic contract compiled. The old DB self-skip blocker is stale after the Podman/Postgres infra fix, but this card still lacks a completed fresh signed DB/API/E2E traffic run because Playwright crashes in auth setup with Chromium SIGTRAP before the traffic spec executes. API behavior is therefore not counted as fully verified in this run."
         },
         "security": {
           "status": "blocked",
@@ -2283,12 +2283,12 @@
             "markup_guardrails",
             "editorial_token_scan"
           ],
-          "notes": "Component tests passed for permission-denial redaction, safe referrer rel attributes, no inert anchors, no unsafe HTML rendering, and no banned GitHub/Primer visual tokens in the traffic implementation. DB-backed auth/privacy probes remain blocked by the unavailable test DB."
+          "notes": "Component tests passed for permission-denial redaction, safe referrer rel attributes, no inert anchors, no unsafe HTML rendering, and no banned GitHub/Primer visual tokens in the traffic implementation. DB-backed auth/privacy probes remain blocked by the Playwright Chromium SIGTRAP in signed auth setup, not by Docker/Postgres/GitHub auth."
         },
         "accessibility": {
           "status": "blocked",
           "violations": [],
-          "notes": "Focused component coverage asserts accessible chart/table names and named buttons. Browser-level keyboard/a11y sweep could not run because signed E2E runtime was unavailable."
+          "notes": "Focused component coverage asserts accessible chart/table names and named buttons. Browser-level keyboard/a11y sweep could not run because the local Playwright Chromium runtime exits with SIGTRAP during auth setup."
         }
       },
       "overall_status": "blocked"
