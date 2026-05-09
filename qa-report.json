@@ -1674,84 +1674,6 @@
   },
   {
     "feature_id": "api-002",
-    "attempt": 1,
-    "status": "partial",
-    "sub_phases": {
-      "functional": {
-        "status": "fail",
-        "notes": "make test passed. Full make test-e2e ran 155 Playwright tests with 18 passed, 135 skipped, and 2 unrelated repository-discussions failures caused by missing TEST_DATABASE_URL/DATABASE_URL. Focused repository webhook Playwright smoke ran but skipped for the same missing DB. Browser/manual signed owner create/edit/ping/redeliver/delete could not be completed without a DB-backed authenticated session. Anonymous org hooks page redirected to login and screenshot was saved at ralph/screenshots/qa/api-002-org-hooks-login-redirect.png."
-      },
-      "api_contract": {
-        "status": "partial",
-        "endpoints_tested": [
-          "GET /api/repos/{owner}/{repo}/settings/hooks",
-          "POST /api/repos/{owner}/{repo}/settings/hooks",
-          "GET /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
-          "PATCH /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
-          "DELETE /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
-          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/ping",
-          "GET /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
-          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver",
-          "GET /api/orgs/{org}/settings/hooks",
-          "POST /api/orgs/{org}/settings/hooks",
-          "GET /api/orgs/{org}/settings/hooks/{hook_id}",
-          "PATCH /api/orgs/{org}/settings/hooks/{hook_id}",
-          "DELETE /api/orgs/{org}/settings/hooks/{hook_id}",
-          "POST /api/orgs/{org}/settings/hooks/{hook_id}/ping",
-          "GET /api/orgs/{org}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
-          "POST /api/orgs/{org}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver"
-        ],
-        "notes": "Route discovery confirmed repository and organization webhook REST surfaces. Live unauthenticated curl probes for repo/org list/create returned JSON 401 not_authenticated. DB-backed happy-path contract tests compiled but self-skipped because TEST_DATABASE_URL is unset, so create/update/delete/ping/redeliver response shapes were not proven against a real database this attempt."
-      },
-      "security": {
-        "status": "partial",
-        "checks": [
-          "auth_bypass",
-          "input_sanitization",
-          "cors",
-          "data_exposure"
-        ],
-        "notes": "Unauthenticated GET and POST probes against repo/org webhook endpoints returned 401 JSON envelopes and did not leak stack traces or env values. XSS-shaped event payload was blocked by auth before reflection. CORS OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin. Authenticated input sanitization, HMAC delivery to real HTTPS receivers, retry timing, timeout handling, and body/header redaction remain unverified without DB/session/receiver infrastructure."
-      },
-      "accessibility": {
-        "status": "skip",
-        "violations": [],
-        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
-      }
-    },
-    "tested_steps": [
-      "Read qa-report.json and confirmed no previous api-002 attempts.",
-      "Read qa-hints.json for api-002 and focused on organization hooks, event coverage, signed delivery, E2E/auth, and production receiver behavior gaps.",
-      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
-      "Ran make test-e2e: 18 passed, 135 skipped, 2 unrelated repository-discussions specs failed immediately because TEST_DATABASE_URL or DATABASE_URL is required.",
-      "Ran focused Playwright repository-settings-hooks.spec.ts: anonymous setup passed and webhook mutation test skipped because TEST_DATABASE_URL/DATABASE_URL is unavailable.",
-      "Ran cargo test -p opengithub-api --test repository_webhook_settings_contract -- --nocapture: both repo and org webhook contract tests compiled and self-skipped DB assertions because TEST_DATABASE_URL is unset.",
-      "Ran cargo test -p opengithub-api --test webhook_delivery_worker -- --nocapture: worker scenario compiled and self-skipped because TEST_DATABASE_URL is unset.",
-      "Ran cargo test -p opengithub-api jobs::webhooks::tests -- --nocapture: HMAC secret decoding/signature unit test passed.",
-      "Reviewed webhook event catalog: push, issues, pull_request, pull_request_review, release, issue_comment, workflow_run, check_run, package, and page_build are listed; ping/redelivery are delivery-only accepted events.",
-      "Reviewed worker request headers: X-GitHub-Event, X-GitHub-Delivery, X-Hub-Signature-256, content type, user agent, and x-opengithub-hook-id are generated before POST.",
-      "Ran mandatory Editorial banned-value scan against web/src excluding og CSS: zero GitHub hex/Primer/Octicon hits.",
-      "Started from existing local servers on 3015/3016; API health reports database degraded because DATABASE_URL is not configured.",
-      "Curl unauthenticated repo/org webhook endpoints returned JSON 401 not_authenticated.",
-      "Curl CORS OPTIONS with Origin https://evil.com returned 405 without Access-Control-Allow-Origin.",
-      "Curl signed-out organization hooks UI redirected to /login?next=%2Forganizations%2Fnamuh%2Fsettings%2Fhooks.",
-      "Saved signed-out redirect visual evidence to ralph/screenshots/qa/api-002-org-hooks-login-redirect.png.",
-      "Ever CLI was attempted with ever start/snapshot, but snapshot failed with Session expired; Playwright screenshot was used as browser evidence instead."
-    ],
-    "bugs_found": [
-      {
-        "severity": "major",
-        "phase": "functional",
-        "description": "api-002 could not be verified end-to-end in this QA environment because no TEST_DATABASE_URL/DATABASE_URL is configured for DB-backed webhook owner flows.",
-        "expected": "QA can create repository and organization webhooks, inspect deliveries, redeliver, delete, and verify event fanout with a migrated credentialed Postgres plus authenticated session.",
-        "actual": "API health reports database degraded; DB-backed Rust contracts self-skip; focused webhook Playwright mutation test skips; full E2E has unrelated DB-required failures.",
-        "reproduction": "awk -F= '/^(DATABASE_URL|TEST_DATABASE_URL)=/{print $1 \" length=\" length($2)}' .env; cargo test -p opengithub-api --test repository_webhook_settings_contract -- --nocapture; cd web && npx playwright test tests/e2e/repository-settings-hooks.spec.ts"
-      }
-    ],
-    "fix_description": "no product fix attempted; QA is blocked on missing DB/session/receiver infrastructure, so qa_pass remains false for retry"
-  },
-  {
-    "feature_id": "api-002",
     "attempt": 2,
     "status": "pass",
     "sub_phases": {
@@ -1824,75 +1746,6 @@
       }
     ],
     "fix_description": "Qualified webhook enqueue SQL columns with the webhooks table so repository/organization fanout and worker delivery queries execute correctly."
-  },
-  {
-    "feature_id": "actions-005",
-    "attempt": 1,
-    "status": "fail",
-    "sub_phases": {
-      "functional": {
-        "status": "fail",
-        "notes": "make test passed (Cargo tests plus 654 web tests). make test-e2e ran 18 passing public/auth/docs smoke tests, skipped 135 DB-gated tests, then failed in unrelated repository-discussions specs because TEST_DATABASE_URL/DATABASE_URL is not configured. Focused api_repository_actions_push_trigger_contract compiled and ran, but both real Postgres assertions self-skipped without TEST_DATABASE_URL. Code inspection and live smoke show push scanning/manual dispatch metadata exists, but PRD-required pull_request and schedule dispatch paths are not implemented."
-      },
-      "api_contract": {
-        "status": "partial",
-        "endpoints_tested": [
-          "GET /api/repos/:owner/:repo/actions/workflows",
-          "POST /api/repos/:owner/:repo/actions/workflows/:workflow_path/dispatches",
-          "GET /api/repos/:owner/:repo/actions/dashboard",
-          "GET /api/repos/:owner/:repo/actions/runs/:run_id"
-        ],
-        "notes": "Unauthenticated workflow list, dispatch, and run detail endpoints returned JSON 401 envelopes; dispatch input XSS probe was not reflected. Dashboard endpoint returned JSON 503 database_unavailable because the API is running without DATABASE_URL, so authenticated happy-path workflow/run contract checks could not be completed in this environment."
-      },
-      "security": {
-        "status": "partial",
-        "checks": [
-          "auth_bypass",
-          "input_sanitization",
-          "cors",
-          "data_exposure"
-        ],
-        "notes": "Missing and malformed credentials did not authorize workflow list, dispatch, or run detail routes. Injected dispatch input was not reflected in the unauthenticated response. OPTIONS with Origin https://evil.com returned 405 and no Access-Control-Allow-Origin. Full data exposure checks on queued workflow/run payloads could not run without a database-backed authenticated scenario."
-      },
-      "accessibility": {
-        "status": "skip",
-        "violations": [],
-        "notes": "not applicable for this backend service feature; QA_MODULES included base, api, security, footer only"
-      }
-    },
-    "tested_steps": [
-      "Read qa-report.json, qa-hints.json actions-005 entry, BUILD_GUIDE.md, ralph-config.json, Makefile, prd.json, and the actions push trigger contract tests.",
-      "Ran Editorial banned-value scan with ripgrep -e form against web/src excluding og CSS: no banned GitHub hex, Primer, or Octicon hits.",
-      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
-      "Ran make test-e2e: 18 passed, 135 skipped, then 2 unrelated repository-discussions specs failed because TEST_DATABASE_URL or DATABASE_URL is required.",
-      "Ran cargo test --test api_repository_actions_push_trigger_contract -- --nocapture: test binary passed but both database-backed actions push trigger scenarios self-skipped because TEST_DATABASE_URL is not set.",
-      "Inspected crates/api/src/domain/actions.rs and confirmed trigger_workflows_for_push discovers .github/workflows YAML, validates parse errors, evaluates push branch/tag/path filters, persists workflow_dispatch metadata, expands simple matrices, creates queued runs/jobs/steps, and stores concurrency metadata.",
-      "Inspected the same implementation and repository search results for pull_request/schedule dispatch paths; no PRD-required dispatcher for pull_request or schedule events is wired.",
-      "Started the Rust API without DATABASE_URL and verified /health reports degraded database status.",
-      "Curl-smoked unauthenticated GET /api/repos/test-owner/test-repo/actions/workflows: JSON 401 not_authenticated.",
-      "Curl-smoked unauthenticated POST /api/repos/test-owner/test-repo/actions/workflows/ci.yml/dispatches with XSS-like input: JSON 401 not_authenticated, payload not reflected.",
-      "Curl-smoked unauthenticated GET /api/repos/test-owner/test-repo/actions/runs/00000000-0000-0000-0000-000000000000: JSON 401 not_authenticated.",
-      "Curl-smoked OPTIONS /api/repos/test-owner/test-repo/actions/workflows with Origin https://evil.com: 405 with no Access-Control-Allow-Origin."
-    ],
-    "bugs_found": [
-      {
-        "severity": "major",
-        "phase": "functional",
-        "description": "actions-005 does not implement PRD-required pull_request or schedule event dispatch. The YAML parser records trigger_events, but only push-triggered scanning and workflow_dispatch manual runs are wired to enqueue workflow_runs.",
-        "expected": "Workflows declaring on: pull_request or on: schedule are evaluated by an event dispatcher and enqueue queued workflow_runs with appropriate event payloads when those events occur.",
-        "actual": "Repo search and implementation inspection found trigger_workflows_for_push and dispatch_workflow_run only; no pull_request/schedule trigger dispatcher exists.",
-        "reproduction": "Inspect crates/api/src/domain/actions.rs for trigger_workflows_for_push/dispatch_workflow_run and search for schedule or pull_request trigger dispatcher wiring; only list/detail UI support and manual create helpers exist."
-      },
-      {
-        "severity": "major",
-        "phase": "functional",
-        "description": "Real Postgres QA for the workflow parser/dispatcher could not run in this environment because TEST_DATABASE_URL/DATABASE_URL is unset, so the focused actions push trigger contract self-skips all assertions.",
-        "expected": "QA can run database-backed contract tests that insert workflow YAML, trigger events, and verify actions_workflows/workflow_runs/workflow_jobs/workflow_steps/job_leases rows.",
-        "actual": "cargo test --test api_repository_actions_push_trigger_contract -- --nocapture reported both scenarios skipped with set TEST_DATABASE_URL.",
-        "reproduction": "Run cargo test --test api_repository_actions_push_trigger_contract -- --nocapture with no TEST_DATABASE_URL or DATABASE_URL exported."
-      }
-    ],
-    "fix_description": "no product fix attempted; QA recorded unresolved major PRD coverage gaps and kept qa_pass false for retry after implementing pull_request/schedule dispatch and provisioning a test database"
   },
   {
     "feature_id": "actions-005",
@@ -2386,138 +2239,6 @@
       }
     ],
     "fix_description": "Added the fork options dialog and propagated destination owner/name/mainBranchOnly through the Next action route and Rust fork API; fork names now default to -fork and destination owners are authorization-checked."
-  },
-  {
-    "feature_id": "ai-001",
-    "attempt": 1,
-    "status": "partial",
-    "sub_phases": {
-      "functional": {
-        "status": "partial",
-        "notes": "Repository, PR, and release AI UI unit coverage passed; focused AI Rust contract compiled and ran but DB-backed assertions self-skipped because TEST_DATABASE_URL localhost:55433 was unavailable. make test passed after the fix; make test-e2e timed out in db-wait-test before Playwright started. Live OpenAI/provider and signed-session E2E remain unverified in this environment."
-      },
-      "api_contract": {
-        "status": "partial",
-        "endpoints_tested": [
-          "GET /api/ai/repos/:owner/:repo/summary",
-          "POST /api/ai/repos/:owner/:repo/summary",
-          "GET /api/ai/repos/:owner/:repo/pulls/:number/summary",
-          "POST /api/ai/repos/:owner/:repo/pulls/:number/summary",
-          "POST /api/ai/repos/:owner/:repo/releases/changelog"
-        ],
-        "notes": "Route and domain inspection verified JSON shapes, provider error mapping, cache contract, and global rate-limit middleware coverage. Added a focused Rust contract for repository/user opt-in behavior. DB-backed happy-path/provider calls could not run because the test Postgres service was unavailable."
-      },
-      "security": {
-        "status": "partial",
-        "checks": [
-          "auth_bypass",
-          "input_sanitization",
-          "cors",
-          "data_exposure",
-          "private_repo_opt_in"
-        ],
-        "notes": "Code inspection verified private repositories require read permission before AI context is built, provider failures return generic errors, and rate limiting is applied by the global middleware. Fixed the per-repository opt-in gap so disabled public repositories also avoid provider calls. Anonymous/signed curl probes could not run without a healthy DB-backed app session."
-      },
-      "accessibility": {
-        "status": "skip",
-        "violations": [],
-        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
-      }
-    },
-    "tested_steps": [
-      "Read qa-report.json and confirmed no previous ai-001 QA attempts existed.",
-      "Read BUILD_GUIDE.md, ralph-config.json, qa-hints.json, and web/AGENTS.md; ai-001 uses Rust Axum /api/ai/* endpoints, OpenAI chat completions, repository/user AI opt-in settings, ai_outputs cache rows, and API rate-limit middleware.",
-      "Inspected crates/api/src/routes/ai.rs and crates/api/src/domain/ai.rs for repository summary, PR summary, changelog, provider failure mapping, readable repository checks, opt-in gates, cache keys, and OpenAI model selection.",
-      "Ran mandatory Editorial banned-token scan with ripgrep-native syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
-      "Found ai_gate only blocked disabled private repositories; disabled public repositories still proceeded to call OpenAI despite the per-repo opt-in feature contract.",
-      "Fixed ai_gate so any repository with ai_features_enabled=false returns enabled:false without building provider requests, with separate public/private reason text.",
-      "Added crates/api/tests/api_ai_surfaces_contract.rs covering disabled public repository, disabled private repository, and disabled user AI settings without requiring OPENAI_API_KEY calls.",
-      "Ran cargo test -p opengithub-api --test api_ai_surfaces_contract -- --nocapture without DB env: 1 passed with DB self-skip.",
-      "Sourced .env and .env.test, confirmed TEST_DATABASE_URL and DATABASE_URL variables exist, then pg_isready reported localhost:55433 - no response.",
-      "Attempted make db-up-test with a 180s timeout; it exited Error 130 and localhost:55433 still reported no response.",
-      "Ran cd web && npx vitest run tests/repository-code-overview.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-releases-page.test.tsx: 3 files passed, 59 tests passed.",
-      "Ran cargo fmt --all --check: passed.",
-      "Ran make check as part of timeout-bounded make check && make test: Cargo check, web typecheck, Clippy, and Biome passed.",
-      "Ran make test separately with a 900s timeout: Cargo tests passed and web tests passed (655 passed).",
-      "Attempted make test-e2e with a 180s timeout; it timed out in db-wait-test before Playwright started."
-    ],
-    "bugs_found": [
-      {
-        "severity": "major",
-        "phase": "security",
-        "description": "Repository AI opt-in was enforced only for private repositories, so public repositories with ai_features_enabled=false still built repository context and attempted an OpenAI provider call.",
-        "expected": "The per-repository AI opt-in setting prevents provider calls for any repository when ai_features_enabled=false; private repository content never leaves the cluster unless the repository is explicitly enabled.",
-        "actual": "ai_gate returned disabled only when repository.visibility was not public and repo_enabled was false; disabled public repositories continued into cached_or_generate.",
-        "reproduction": "Before this fix, create a public repository with repositories.ai_features_enabled=false and request GET /api/ai/repos/:owner/:repo/summary; the route proceeds toward cached_or_generate/OpenAI instead of returning enabled:false."
-      }
-    ],
-    "fix_description": "Enforced repository AI opt-in for public and private repositories and added a focused AI contract test. Full DB-backed provider/session verification remains blocked by an unhealthy local test Postgres service, so prd.json keeps ai-001.qa_pass=false."
-  },
-  {
-    "feature_id": "ai-001",
-    "attempt": 2,
-    "status": "partial",
-    "sub_phases": {
-      "functional": {
-        "status": "partial",
-        "notes": "Repository, PR, and release AI UI unit coverage passed; PR inline-comment seed author-only unit coverage passed; focused AI Rust contract compiled and ran but DB-backed assertions self-skipped because no TEST_DATABASE_URL/DATABASE_URL was available. Live no-DB API probes returned safe JSON 503 envelopes with rate-limit headers. make test-e2e timed out in db-wait-test before Playwright started; Ever CLI returned a non-JSON HTML parse error, so signed-session browser QA and live OpenAI provider behavior remain unverified. Final make check && make test passed after the fix."
-      },
-      "api_contract": {
-        "status": "partial",
-        "endpoints_tested": [
-          "GET /api/ai/repos/:owner/:repo/summary",
-          "POST /api/ai/repos/:owner/:repo/summary",
-          "GET /api/ai/repos/:owner/:repo/pulls/:number/summary",
-          "POST /api/ai/repos/:owner/:repo/releases/changelog"
-        ],
-        "notes": "Degraded live curl probes verified application/json database_unavailable envelopes and X-RateLimit/X-GitHub-Api-Version headers for AI endpoints without a DB pool. Focused contract test still self-skips DB-backed repository/user opt-in assertions without TEST_DATABASE_URL/DATABASE_URL, so provider-backed happy paths, private repo opt-in against real rows, and repeated signed rate-limit bucket behavior remain unverified."
-      },
-      "security": {
-        "status": "partial",
-        "checks": [
-          "auth_bypass",
-          "input_sanitization",
-          "cors",
-          "data_exposure",
-          "private_repo_opt_in",
-          "author_only_inline_seed"
-        ],
-        "notes": "Fixed a major PR privacy issue: inline-comment seed is now returned only when the authenticated actor is the PR author. Anonymous SQL/XSS-shaped live probes returned generic 503 database_unavailable envelopes without reflecting payloads or leaking stack traces. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin. DB-backed private repository and signed-session curl probes remain blocked by unavailable local test Postgres."
-      },
-      "accessibility": {
-        "status": "skip",
-        "violations": [],
-        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
-      }
-    },
-    "tested_steps": [
-      "Read qa-report.json, qa-hints.json, BUILD_GUIDE.md, ralph-config.json, routes/domain AI code, and previous ai-001 attempt history.",
-      "Confirmed .env has OPENAI_API_KEY but DATABASE_URL is empty; no TEST_DATABASE_URL is exported in this shell. .env.test points at localhost:55433, but docker compose ps hung and make test-e2e timed out in db-wait-test.",
-      "Ran mandatory Editorial banned-token scan with rg -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
-      "Found PR AI inlineCommentSeed was returned for every enabled PR summary caller despite the PRD requiring it to be visible only to the PR author.",
-      "Fixed pull_request_ai_summary to load pull_requests.author_user_id and return inlineCommentSeed only when actor_user_id matches the PR author.",
-      "Added focused unit coverage for author, non-author, and anonymous inline-comment seed behavior.",
-      "Ran cargo test -p opengithub-api domain::ai::tests::pr_inline_comment_seed_is_author_only -- --nocapture: passed.",
-      "Ran cargo test -p opengithub-api --test api_ai_surfaces_contract -- --nocapture: passed with DB-backed scenario self-skip because TEST_DATABASE_URL/DATABASE_URL is not set.",
-      "Ran cd web && npx vitest run tests/repository-code-overview.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-releases-page.test.tsx: 3 files passed, 59 tests passed.",
-      "Started the Rust API without a DB pool and live-probed AI summary, PR summary, and changelog endpoints; each returned JSON 503 database_unavailable with rate-limit/version headers.",
-      "Probed SQL-like and XSS-like AI paths; responses stayed generic JSON 503 without reflecting payloads, SQL errors, stack traces, or environment values.",
-      "Probed OPTIONS /api/ai/repos/mona/octo-app/summary with Origin https://evil.com; response was 405 and did not emit Access-Control-Allow-Origin.",
-      "Attempted Ever CLI against localhost:3015; ever start and snapshot returned Unexpected token HTML/non-JSON errors, so no manual browser snapshot was available.",
-      "Attempted timeout 180 make test-e2e; it timed out in db-wait-test before Playwright started.",
-      "Ran make check && make test after the fix: Cargo check, web typecheck, Clippy, Biome, Cargo tests, and web tests passed (655 web tests)."
-    ],
-    "bugs_found": [
-      {
-        "severity": "major",
-        "phase": "security",
-        "description": "PR AI inline-comment seed was returned to every caller who could read an enabled PR AI summary, not only to the PR author.",
-        "expected": "inlineCommentSeed is present only when the authenticated actor is the pull request author; non-authors and anonymous callers receive null/omitted seed data.",
-        "actual": "pull_request_ai_summary always returned a seed string after a successful enabled AI generation, regardless of actor_user_id.",
-        "reproduction": "Before this fix, request GET /api/ai/repos/:owner/:repo/pulls/:number/summary as any readable non-author after AI generation; the JSON response includes inlineCommentSeed."
-      }
-    ],
-    "fix_description": "Restricted PR AI inline-comment seed to the PR author and added focused unit coverage. Full DB-backed signed-session, private repository opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
   },
   {
     "feature_id": "ai-001",
@@ -3323,7 +3044,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3348,7 +3069,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3361,7 +3082,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3378,7 +3099,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3760,45 +3481,6 @@
   },
   {
     "feature_id": "packages-002",
-    "attempt": 1,
-    "status": "blocked",
-    "sub_phases": {
-      "functional": {
-        "status": "blocked",
-        "notes": "Docker daemon/test Postgres unavailable; make setup-local failed to start Docker within 120s, so full package detail browser smoke was not rerun."
-      },
-      "api_contract": {
-        "status": "blocked",
-        "notes": "Controller rescue fixed the owner package list SQL builder: visibility/auth predicates now bind actor UUIDs through QueryBuilder instead of pushing raw $2 placeholders, eliminating the observed PostgreSQL syntax `)$2 AND ...` when authenticated package_type/visibility filters are combined. Full DB/browser QA is blocked because Docker Desktop/daemon could not be started in this controller environment."
-      },
-      "security": {
-        "status": "blocked",
-        "notes": "Security/redaction DB probes not completed because test Postgres was unavailable."
-      },
-      "accessibility": {
-        "status": "blocked",
-        "notes": "Browser/a11y checks not rerun because the local verification stack could not start."
-      }
-    },
-    "tested_steps": [
-      "Captured and killed stalled qa-og-pkg002-mainqa-20260508 tmux lane after it sat in Postgres log output with no product diff; preserved /tmp/qa-og-pkg002-mainqa-20260508.pre-rescue-pane.txt.",
-      "make doctor => failed: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433.",
-      "make setup-local => failed: could not start Docker; Docker did not become ready within 120s.",
-      "./hack/cargo_locked.sh check -p opengithub-api => passed.",
-      "./hack/cargo_locked.sh test -p opengithub-api --test owner_packages_contract -- --nocapture => compiled and 2 tests reported ok, but both DB-backed scenarios self-skipped because TEST_DATABASE_URL was unavailable.",
-      "cargo fmt --all --check => failed only on pre-existing repository_releases_contract.rs formatting drift, not this packages.rs change."
-    ],
-    "bugs_found": [
-      {
-        "description": "Authenticated owner package list filters generated invalid SQL by pushing a visibility predicate string containing raw $2 placeholders and then appending QueryBuilder bind placeholders after the predicate, producing `...)$2 AND p.package_type = $3`.",
-        "fix": "Replaced the raw visibility_predicate/bind_auth pair with push_visibility_predicate, which emits every actor UUID through QueryBuilder at the exact SQL locations for user, organization, package permission, and repository permission checks."
-      }
-    ],
-    "fix_description": "Fixed owner package list authenticated visibility predicate SQL generation; full QA remains blocked by local Docker/test Postgres startup failure.",
-    "created_at": "2026-05-09T04:54:16Z"
-  },
-  {
-    "feature_id": "packages-002",
     "attempt": 2,
     "status": "pass",
     "sub_phases": {
@@ -3930,5 +3612,70 @@
       "make doctor remains a compose-owner false negative because the fixed opengithub-postgres-test container belongs to another QA compose project, although docker health/logs and DB-backed tests prove localhost:55433 is usable.",
       "No real Docker CLI binary push/pull/delete smoke was run; the DB-backed Rust contract exercises Docker-compatible HTTP flows through the Axum app."
     ]
+  },
+  {
+    "feature_id": "notifications-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Signed-in /notifications inbox verified with real seeded browser data: folders, default filters, repository buckets, All/Unread tabs, query/sort/group controls, row open links, save/read/done/inbox/subscribe state changes, bulk toolbar, partial-failure rollback, and mobile no-overflow all passed focused Playwright and component coverage."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/notifications",
+          "PATCH /api/notifications/{id}/read",
+          "PATCH /api/notifications/{id}/unread",
+          "PATCH /api/notifications/{id}/save",
+          "PATCH /api/notifications/{id}/unsave",
+          "PATCH /api/notifications/{id}/done",
+          "PATCH /api/notifications/{id}/inbox",
+          "PATCH /api/notifications/{id}/subscribe",
+          "PATCH /api/notifications/{id}/unsubscribe",
+          "POST /api/notifications/bulk"
+        ],
+        "notes": "DB-backed Rust notification contract passed 4/4 serially against localhost:55433, covering authenticated list shape, reason/repo filters, repository grouping, unread tab, repository buckets, row subscribed state, single triage endpoints, bulk validation, partial failures, and cross-user not-found privacy."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "cross_user_privacy",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated API access returns not_authenticated when not rate-limited; cross-user notification mutation returns notification_not_found; bulk empty/duplicate/stale IDs are rejected or isolated; responses did not expose stack traces or secrets. A parallel full-contract run can be polluted by the shared anonymous rate-limit bucket and return 403 rate_limited, so serial focused contract evidence is the counted source."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Axe-core WCAG 2.1 A/AA scan on signed-in /notifications passed with 0 violations after fixing the app-shell search aria-controls reference; keyboard Tab landed on named Global menu control and horizontal overflow was 0px."
+      }
+    },
+    "tested_steps": [
+      "Started with make doctor. Docker and opengithub-postgres-test were present, but doctor reported a false-negative because the fixed-name container is owned by another Compose project and host pg_isready is unavailable; docker exec pg_isready and DB-backed tests proved localhost:55433 connectivity.",
+      "Ran make setup-local as prescribed; it could not recreate opengithub-postgres-test because the shared fixed-name container already existed. Used committed .env.test and the fixed TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test only.",
+      "Installed web dependencies with npm ci from the committed package-lock.json.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test api_notifications_inbox_contract -- --test-threads=1 --nocapture: 4/4 passed.",
+      "Ran cd web && npm test -- notifications-inbox.test.tsx: 7/7 passed.",
+      "Ran focused Playwright /notifications scenarios with TMPDIR redirected to .scratch: setup plus row-state, bulk triage, and failed-bulk rollback tests passed 4/4.",
+      "Ran .scratch/notifications-a11y.cjs against live signed-in /notifications: axe serious/critical violations 0, total violations 0, first focused control Global menu, horizontal overflow 0."
+    ],
+    "bugs_found": [
+      {
+        "severity": "critical",
+        "description": "The signed-in app shell search input rendered aria-controls=\"app-shell-search-suggestions\" even though that element is not present on /notifications, causing a critical axe aria-valid-attr-value violation.",
+        "fix": "Changed AppHeader to emit aria-controls only while the global search modal is open and to reference the existing global-search-suggestions element."
+      },
+      {
+        "severity": "minor",
+        "description": "The legacy notifications Playwright spec could time out during cold seeder startup before reaching the inbox assertions.",
+        "fix": "Configured the notifications E2E spec with a 120s timeout while keeping the same real DB/browser scenario."
+      }
+    ],
+    "fix_description": "Fixed the invalid app-shell search ARIA reference exposed on /notifications and made the legacy focused notifications browser spec tolerant of cold Rust seeder startup; no notification data-model behavior changes were needed."
   }
 ]
