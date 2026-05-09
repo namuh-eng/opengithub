@@ -3733,5 +3733,61 @@
     ],
     "bugs_found": [],
     "fix_description": "No notifications-002 source bugs found. QA bookkeeping updated; unrelated full-suite web test failures were recorded but not fixed under this one-feature scope."
+  },
+  {
+    "feature_id": "notifications-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified custom filter settings with focused component, DB-backed Rust contract, and signed-in Playwright. Create/delete persisted through the real settings UI, custom rail link appeared immediately on /notifications, default filters remained read-only rows, invalid NOT/exclusion/full-text validation and the 15-filter limit are covered by the DB contract."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/notifications/custom-filters",
+          "POST /api/notifications/custom-filters",
+          "PATCH /api/notifications/custom-filters/{id}",
+          "DELETE /api/notifications/custom-filters/{id}",
+          "GET /api/notifications"
+        ],
+        "notes": "Focused Rust contract passed non-skipped against localhost:55433. It verified JSON settings shape, default/custom filters, allowed qualifiers, validation_failed envelopes for NOT/exclusion, inaccessible private repo validation without leaking names, create/update/delete, position compaction, 15-filter limit, and custom filter facets feeding the inbox response."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "private_repo_redaction",
+          "data_exposure",
+          "cors"
+        ],
+        "notes": "Unauthenticated GET /api/notifications/custom-filters returned 401 application/json with not_authenticated and no stack trace. OPTIONS with Origin https://evil.com returned 405 and did not emit Access-Control-Allow-Origin. Focused DB contract covered cross-user private repo redaction and validation envelopes without stack traces or hidden repository names."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Temporary @axe-core/playwright WCAG 2.1 A/AA scan on signed-in /settings/notifications passed with 0 violations; form fields have visible labels, inline validation is visible, and delete confirmation uses a named modal dialog."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker and opengithub-postgres-test were present, but doctor failed because host pg_isready is missing and this worktree cannot docker compose exec the fixed-name container owned by qa-opengithub-packages-001-mainqa-20260508.",
+      "Ran make setup-local as prescribed: blocked by Docker name collision for opengithub-postgres-test. Direct docker exec pg_isready and psql select 1 proved the existing container accepts connections to opengithub_test on the fixed localhost:55433 DB.",
+      "Ran visual regression grep for banned GitHub/Primer/Octicon tokens in web/src excluding og CSS: no matches.",
+      "Ran TMPDIR=$PWD/.tmp TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test api_notifications_inbox_contract notification_custom_filters_validate_persist_and_feed_inbox_facets -- --exact --nocapture: 1/1 passed.",
+      "Ran npm --prefix web test -- notification-filter-settings.test.tsx --run: 4/4 passed.",
+      "Ran signed-in Playwright notifications-003 scenario against the real DB: setup plus custom filter create/delete passed 2/2.",
+      "Ran temporary axe Playwright scan on signed-in /settings/notifications: setup plus WCAG A/AA scan passed 2/2 with zero violations.",
+      "Ran live curl security probes: unauthenticated GET /api/notifications/custom-filters returned 401 JSON not_authenticated; OPTIONS with Origin https://evil.com returned 405 with no Access-Control-Allow-Origin echo.",
+      "Ran TMPDIR=$PWD/.tmp make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TMPDIR=$PWD/.tmp make test: Cargo tests passed, but full web Vitest failed in 10 tests outside notifications-003 with date-sensitive expectations across dashboard/profile/wiki/actions areas; focused notifications-003 tests passed and this was not fixed under the one-feature scope."
+    ],
+    "bugs_found": [],
+    "fix_description": "No notifications-003 product bugs found. QA artifacts updated only; no source fix was needed.",
+    "known_gaps": [
+      "make doctor and make setup-local remain blocked by the shared fixed Docker container name owned by another worktree, although direct DB checks and DB-backed tests verified localhost:55433/opengithub_test.",
+      "Full make test is not green in this worktree because unrelated web date expectation tests fail; notifications-003 focused component, API contract, E2E, a11y, and make check passed."
+    ]
   }
 ]
