@@ -3864,5 +3864,58 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "commits-002",
+    "attempt": 1,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Source inspection and focused component regression verified commit summary metadata, copy full SHA, browse/history links, parent/PR/status/verified chips, file filtering, visible diff search highlighting, file-tree focus, context expansion UI feedback, and binary/large placeholders. Required signed-in browser verification could not run because Docker/test Postgres was unavailable."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/commits/{sha}",
+          "GET /api/repos/{owner}/{repo}/commits/{sha}/context",
+          "GET /api/repos/{owner}/{repo}/commits/{sha}/context via Next.js same-origin proxy"
+        ],
+        "notes": "Route and contract inspection confirmed authenticated access, repository visibility checks, SHA validation, parent/branch/PR/status/verification payloads, diffSummary/fileTree/files payloads, Raw/View links, and validation_failed context errors. The focused Rust contract could not complete meaningful DB assertions because the local Docker/Postgres verification stack was unavailable."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_gate_inspection",
+          "private_repo_redaction_inspection",
+          "unsafe_html_guard",
+          "dead_control_guard"
+        ],
+        "notes": "Inspected Rust routes using AuthenticatedUser and repository read checks; component test verifies safe mark-based search rendering with no dangerouslySetInnerHTML, no placeholder anchors, and no inert handlers. Live unauthenticated/private curl probes were blocked by unavailable DB/API infrastructure."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused component coverage verifies named filter/search inputs, accessible file-tree buttons, named diff articles, status roles for search/copy feedback, and keyboard-focusable diff targets. Browser keyboard/axe verification was not run because the DB-backed signed-in browser lane was blocked."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker daemon not running, opengithub-postgres-test container not running, and Postgres not reachable on localhost:55433; .env and .env.test were present.",
+      "Ran make setup-local as required; it printed 'Starting Docker Desktop...' followed by 'Could not start Docker. Open it manually and rerun.' and did not bring up the fixed test DB.",
+      "Inspected prd.json for commits-002: build_pass=true and qa_pass=false before this QA attempt.",
+      "Inspected web/src/app/[owner]/[repo]/commit/[sha]/page.tsx, web/src/components/RepositoryCommitDetailPage.tsx, the Next context proxy route, web/src/lib/api.ts DTOs, crates/api/src/routes/repositories.rs, crates/api/src/domain/repositories.rs, and focused Rust/Vitest/Playwright tests.",
+      "Ran cd web && npm test -- repository-commit-detail-page.test.tsx: 9 passed.",
+      "Attempted ./hack/cargo_locked.sh test -p opengithub-api repository_commit_detail_contract -- --nocapture; first attempt failed before compiling because the default shared Cargo target lock path was read-only in this sandbox.",
+      "Reran the focused Rust contract with CARGO_TARGET_DIR=/tmp/opengithub-cargo-target; it compiled but cannot be counted as DB verification unless TEST_DATABASE_URL/DATABASE_URL points to a reachable localhost:55433 opengithub_test database.",
+      "Did not run make test-e2e because make doctor/setup-local proved the required DB-backed browser infrastructure was down; self-skipped DB/E2E tests are not counted as verified."
+    ],
+    "bugs_found": [],
+    "fix_description": "No source fix was made. QA artifacts record a blocked partial verification because required DB-backed/API/browser checks could not run.",
+    "known_gaps": [
+      "Required DB-backed Rust contract assertions and Playwright E2E are blocked until Docker starts and the fixed test DB is reachable at postgresql://opengithub:opengithub@localhost:55433/opengithub_test.",
+      "Live API auth/privacy/security probes and signed-in browser keyboard/a11y checks remain unverified.",
+      "commits-002.qa_pass remains false."
+    ],
+    "timestamp": "2026-05-09T08:36:35Z"
   }
 ]

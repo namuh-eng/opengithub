@@ -1936,9 +1936,22 @@
       "description": "Render commit detail with verification, parent links, checks, file tree, searcha",
       "category": "crud",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "partial"
+        },
+        "api_contract": {
+          "status": "partial"
+        },
+        "security": {
+          "status": "partial"
+        },
+        "accessibility": {
+          "status": "partial"
+        }
+      }
     },
     {
       "feature_id": "branches-001",
