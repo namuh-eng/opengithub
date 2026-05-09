@@ -4185,6 +4185,79 @@
     "timestamp": "2026-05-09T18:50:59Z"
   },
   {
+    "feature_id": "org-admin-002",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retest after infra recovery passed make doctor, make check, focused Vitest (2 files/8 tests), DB-backed Rust organization profile/settings contracts (2 files/4 tests), and focused Playwright organization profile/settings E2E (6/6 chromium). Browser coverage verified public organization overview/header controls, mobile secondary panels, owner settings shell, saving profile/contact/social fields, rename validation, and typed danger guardrails."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "PATCH /organizations/{org}/settings/profile/actions",
+          "POST /organizations/{org}/settings/profile/actions",
+          "PATCH /api/orgs/{org}/settings/profile",
+          "GET /api/orgs/{org}/settings/profile",
+          "POST /api/orgs/{org}/settings/profile/rename"
+        ],
+        "notes": "Focused Rust organization_profile_contract and organization_profile_settings_contract passed 4/4 against localhost:55433. Focused Vitest route tests passed and verify the Next action route preserves upstream 403/409 status and error codes. Rust deserialization distinguishes omitted profile patch fields from explicit null values."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "owner_only_settings",
+          "anonymous_redaction",
+          "private_org_redaction",
+          "conflict_error_redaction",
+          "reserved_slug_error_redaction",
+          "data_exposure"
+        ],
+        "notes": "DB-backed contracts verify owner-only settings writes, member/outsider rejection, anonymous/private organization redaction, conflict/reserved rename errors without leaking user/reserved-slug internals, and audit metadata redaction for emails/social handles."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright exercised the settings form labels/buttons and mobile organization panels; no dead controls were found in the covered org profile/settings flows. Banned Editorial design token scan found no GitHub/Primer/Octicon tokens in web/src outside og CSS."
+      }
+    },
+    "tested_steps": [
+      "Rebased org-admin-002 onto origin/main 4d8893ec and resolved qa-report merge conflicts preserving org-admin-001/settings-006 evidence.",
+      "Ran make doctor: container runtime reachable via Podman, postgres-test up, Postgres reachable on localhost:55433, .env/.env.test present, Cargo target dir writable.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npx vitest run tests/organization-profile-settings-page.test.tsx tests/organization-profile-actions-route.test.ts: 2 files passed, 8 tests passed.",
+      "Ran TEST_DATABASE_URL/DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test --test organization_profile_settings_contract --test organization_profile_contract: 2 contract files passed, 4 tests passed.",
+      "Initial focused Playwright run saw localhost:3015 connection refused after the setup project; reran with webserver debug, confirmed the app server was available, and then reran the combined focused specs successfully.",
+      "Ran cd web && TEST_DATABASE_URL/DATABASE_URL set CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target npx playwright test tests/e2e/organization-settings-profile.spec.ts tests/e2e/organization-profile.spec.ts --project=chromium --workers=1 --timeout=90000: 6 tests passed.",
+      "Ran banned Editorial design token scan over web/src excluding og.css/og-themes.css: 0 hits for GitHub hex colors, Primer, or Octicon."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Organization profile settings PATCH could not clear optional text fields because serde deserialized explicit JSON null the same as an omitted field for Option<Value> patch members.",
+        "fix": "Added a custom deserialize_with helper plus serde(default) for profile patch value fields so explicit null is preserved as Some(Value::Null) while omitted fields remain None."
+      },
+      {
+        "severity": "major",
+        "description": "The Next profile actions route flattened upstream owner-access and rename conflict errors into 422 validation_failed responses.",
+        "fix": "Shared apiErrorResponse now preserves upstream cause.status and cause.error.code for PATCH and POST action failures."
+      },
+      {
+        "severity": "minor",
+        "description": "Browser-native form validation could prevent the custom inline save/error path from running for intentionally invalid org profile values.",
+        "fix": "Added noValidate to the profile, contact, and social settings forms and covered the profile form behavior in Vitest."
+      },
+      {
+        "severity": "minor",
+        "description": "The DB-backed profile settings contract generated a marker slug longer than the product slug limit, so rename conflict probes could be truncated before the '-taken' suffix and miss the intended user-slug conflict.",
+        "fix": "Shortened the generated contract-test marker suffix so conflict/reserved/rename probes exercise distinct valid slugs."
+      }
+    ],
+    "fix_description": "Preserved explicit null profile patch semantics, propagated upstream action-route error statuses/codes, disabled native validation so app-level validation handles saves consistently, fixed the profile settings contract slug fixture, and verified fresh DB/API/browser coverage after infra recovery.",
+    "recorded_at": "2026-05-09"
+  },
+  {
     "feature_id": "settings-006",
     "attempt": 1,
     "status": "pass",
