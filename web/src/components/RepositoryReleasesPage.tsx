@@ -480,7 +480,9 @@ export function RepositoryTagsPage({
                       </Link>
                       {tag.verified || tag.signatureSummary ? (
                         <details className="group">
-                          <summary className="chip ok cursor-pointer">
+                          <summary
+                            className={`chip ${tag.verified ? "ok" : "warn"} cursor-pointer`}
+                          >
                             {tag.verified ? "Verified" : "Unverified"}
                           </summary>
                           <p
@@ -514,7 +516,7 @@ export function RepositoryTagsPage({
                     Zip
                   </Link>
                   <Link className="btn sm" href={tag.tarballHref}>
-                    Tar
+                    tar.gz
                   </Link>
                   <Link className="btn sm" href={tag.compareHref}>
                     Compare

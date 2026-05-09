@@ -854,11 +854,42 @@ describe("RepositoryTagsPage", () => {
       "href",
       "/api/repos/mona/octo-app/releases/zipball/v2.0.0",
     );
+    expect(scoped.getByRole("link", { name: "tar.gz" })).toHaveAttribute(
+      "href",
+      "/api/repos/mona/octo-app/releases/tarball/v2.0.0",
+    );
     expect(scoped.getByRole("link", { name: "Compare" })).toHaveAttribute(
       "href",
       "/mona/octo-app/compare/v2.0.0...main",
     );
     expectNoDeadControls(container);
+  });
+
+  it("does not style unverified signature metadata as verified", () => {
+    render(
+      <RepositoryTagsPage
+        repository={repositoryOverview()}
+        tags={tagEnvelope([
+          tag({
+            id: "tag-unverified",
+            name: "v1.9.0",
+            signatureSummary: "Unsigned or untrusted tag metadata.",
+            verified: false,
+          }),
+        ])}
+      />,
+    );
+
+    const row = screen.getByText("v1.9.0").closest(".list-row");
+    expect(row).not.toBeNull();
+    const scoped = within(row as HTMLElement);
+    const summary = scoped.getByText("Unverified");
+    expect(summary).toHaveClass("chip", "warn");
+    expect(summary).not.toHaveClass("ok");
+    fireEvent.click(summary);
+    expect(
+      scoped.getByText("Unsigned or untrusted tag metadata."),
+    ).toBeVisible();
   });
 
   it("renders tag pagination links from the current envelope", () => {
