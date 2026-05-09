@@ -1508,7 +1508,9 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": false,
+    "qa_status": "QA_BLOCKED",
+    "qa_notes": "2026-05-09T09:11:43Z independent QA blocked: Docker daemon/API was unavailable in this sandbox (`docker info` permission denied for unix:///run/user/1000/podman/podman.sock; make setup-local printed `Could not start Docker. Open it manually and rerun.`), so localhost:55433/opengithub_test DB-backed Rust and signed browser/E2E evidence could not be counted. Focused RepositoryTrafficPage Vitest passed 5/5, web TypeScript passed, focused Biome passed, offline make check passed, and the Rust traffic contract compiled but self-skipped its DB body with `database connect failed: Operation not permitted (os error 1)`. Full make test had Cargo tests pass but failed in 10 unrelated date-sensitive web Vitest tests outside insights-003."
   },
   {
     "id": "insights-004",

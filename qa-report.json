@@ -3864,5 +3864,60 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "insights-003",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused RepositoryTrafficPage Vitest passed 5/5 for the rendered Traffic page, charts, summary cards, empty state, permission-denied state, safe links, long dimensions, and markup guardrails. Signed browser/E2E verification could not be completed because Docker/test Postgres was unavailable and the focused Playwright run timed out waiting for the configured web server."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/graphs/traffic"
+        ],
+        "notes": "Inspected the Rust route and domain implementation for the traffic endpoint. The focused Rust contract compiled offline, but its DB-backed assertions self-skipped with `database connect failed: Operation not permitted (os error 1)` against the fixed localhost:55433/opengithub_test URL, so API contract behavior is not counted as verified."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "permission_redaction",
+          "safe_external_links",
+          "unsafe_markup_guard",
+          "editorial_banned_token_scan"
+        ],
+        "notes": "Component tests passed for no leaked counts in the 403 state, safe `rel=\"noopener noreferrer\"` external referrer links, no `href=\"#\"`, no `dangerouslySetInnerHTML`, and no rendered script markup. Source scan found no banned GitHub/Primer tokens in traffic implementation files; the only match was the test's own banned-token regex. DB-backed auth bypass/privacy probes remain blocked."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Component tests assert named chart regions, named data tables, and accessible chart point buttons. Browser keyboard and axe verification could not run because signed E2E runtime was unavailable."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: failed because Docker daemon was not running, opengithub-postgres-test was not running, and Postgres was not reachable on :55433; .env and .env.test were present.",
+      "Ran docker info: blocked with `permission denied while trying to connect to the docker API at unix:///run/user/1000/podman/podman.sock`.",
+      "Ran make setup-local as prescribed; it printed `Starting Docker Desktop...` then `Could not start Docker. Open it manually and rerun.` and did not make the fixed test DB available.",
+      "Read AGENTS.md, BUILD_GUIDE.md, the insights-003 prd.json entry, existing qa-report.json, qa-report-summary.json, and build-progress.txt history.",
+      "Inspected insights-003 implementation and tests: Rust traffic route/domain, Next server route, RepositoryTrafficPage, RepositoryTrafficChart, Vitest, and Playwright smoke.",
+      "Ran cd web && npm test -- --run repository-traffic-page.test.tsx: 5/5 passed.",
+      "Ran cd web && npx tsc --noEmit --pretty false: passed.",
+      "Ran cd web && npx biome check src/components/RepositoryTrafficPage.tsx src/components/RepositoryTrafficChart.tsx 'src/app/[owner]/[repo]/graphs/traffic/page.tsx' tests/repository-traffic-page.test.tsx tests/e2e/repository-traffic.spec.ts: passed.",
+      "Ran banned GitHub/Primer token scan over web/src and the traffic E2E spec excluding og CSS: no implementation matches; the separate component-test scan only matched its own guard regex.",
+      "Ran CARGO_NET_OFFLINE=true TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_traffic_contract -- --nocapture: compiled and reported 1 passed, but the DB scenario self-skipped with `database connect failed: Operation not permitted (os error 1)`, so it is not counted as DB verification.",
+      "Ran cd web && npm run test:e2e -- repository-traffic.spec.ts --reporter=list: failed with `Timed out waiting 120000ms from config.webServer`; no browser feature assertions ran.",
+      "Ran CARGO_NET_OFFLINE=true timeout 300 make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran CARGO_NET_OFFLINE=true timeout 300 make test: Cargo tests passed; web Vitest failed in 10 unrelated date-sensitive tests outside insights-003 while 647 tests passed. The focused insights-003 web test passed separately."
+    ],
+    "bugs_found": [],
+    "fix_description": "No scoped insights-003 product bug was confirmed in this run; QA artifacts were updated to record the verification blocker honestly.",
+    "known_gaps": [
+      "Docker/test Postgres could not be started or reached from this sandbox, so required non-self-skipped DB-backed API/security evidence on localhost:55433/opengithub_test is missing.",
+      "Signed browser/E2E and browser-level accessibility verification remain unavailable because the Playwright webServer did not become ready.",
+      "Full make test is not green in this worktree because unrelated date-sensitive web Vitest expectations fail outside insights-003."
+    ]
   }
 ]
