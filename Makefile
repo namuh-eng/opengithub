@@ -11,6 +11,7 @@
 .PHONY: check-header test-header check-verbose test-verbose
 .PHONY: db-generate db-migrate db-push api-dev web-dev
 .PHONY: db-up-test db-down-test db-wait-test
+.PHONY: db-up-dev db-down-dev db-wait-dev db-migrate-dev
 .PHONY: doctor setup-local
 
 # --- Guard: ensure onboarding has run ---
@@ -24,6 +25,20 @@ endif
 HAS_WEB := $(wildcard web/package.json)
 HAS_CARGO := $(wildcard Cargo.toml)
 CARGO_LOCKED := ./hack/cargo_locked.sh
+REAL_HOME ?= $(shell getent passwd $$(id -u) | cut -d: -f6)
+PLAYWRIGHT_BROWSERS_PATH ?= $(REAL_HOME)/.cache/ms-playwright
+
+# Container runtime plumbing. This repo is commonly verified on Ubuntu with
+# rootless Podman exposed through the Docker-compatible API socket; do not rely
+# on interactive shell aliases such as `alias docker=podman` being loaded.
+CONTAINER_RUNTIME ?= $(shell if [ -S /run/user/$$(id -u)/podman/podman.sock ]; then echo podman; else echo docker; fi)
+ifeq ($(CONTAINER_RUNTIME),podman)
+DOCKER_HOST ?= unix:///run/user/$(shell id -u)/podman/podman.sock
+DOCKER := env DOCKER_HOST=$(DOCKER_HOST) docker
+else
+DOCKER := docker
+endif
+COMPOSE_PROJECT_NAME ?= opengithub
 
 # Full validation: check + test
 all: check test
@@ -76,7 +91,7 @@ test-e2e:
 	  set -a; [ -f .env.test ] && . ./.env.test; set +a; \
 	  if [ -f .env.test ]; then $(MAKE) -s db-wait-test || true; fi; \
 	  . ./hack/run_silent.sh && \
-	  run_silent_with_test_count "E2E tests passed" "cd web && npx playwright test" "playwright"; \
+	  run_silent_with_test_count "E2E tests passed" "cd web && PLAYWRIGHT_BROWSERS_PATH='$(PLAYWRIGHT_BROWSERS_PATH)' npx playwright test" "playwright"; \
 	else \
 	  echo "(skipping e2e — web/ not yet scaffolded)"; \
 	fi
@@ -100,7 +115,7 @@ test-verbose:
 # Dev: run API (with hot reload via cargo-watch) and Next.js together
 dev:
 	@if command -v cargo-watch >/dev/null 2>&1; then \
-	  API_DEV_CMD='CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$HOME/.cache/opengithub/cargo-target}" CARGO_BUILD_JOBS="$${CARGO_BUILD_JOBS:-2}" CARGO_INCREMENTAL="$${CARGO_INCREMENTAL:-0}" cargo watch -q -x "run --bin api"'; \
+	  API_DEV_CMD='CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$PWD/.scratch/cargo-target}" CARGO_BUILD_JOBS="$${CARGO_BUILD_JOBS:-2}" CARGO_INCREMENTAL="$${CARGO_INCREMENTAL:-0}" cargo watch -q -x "run --bin api"'; \
 	else \
 	  API_DEV_CMD='$(CARGO_LOCKED) run --bin api'; \
 	fi; \
@@ -112,7 +127,7 @@ dev:
 
 api-dev:
 	@if command -v cargo-watch >/dev/null 2>&1; then \
-	  CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$HOME/.cache/opengithub/cargo-target}" CARGO_BUILD_JOBS="$${CARGO_BUILD_JOBS:-2}" CARGO_INCREMENTAL="$${CARGO_INCREMENTAL:-0}" cargo watch -q -x 'run --bin api'; \
+	  CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$PWD/.scratch/cargo-target}" CARGO_BUILD_JOBS="$${CARGO_BUILD_JOBS:-2}" CARGO_INCREMENTAL="$${CARGO_INCREMENTAL:-0}" cargo watch -q -x 'run --bin api'; \
 	else \
 	  $(CARGO_LOCKED) run --bin api; \
 	fi
@@ -144,13 +159,20 @@ db-push: db-migrate
 # Bring up the isolated Postgres for E2E / integration tests on :55433.
 # Idempotent — safe to run repeatedly.
 db-up-test:
-	@docker compose -f docker-compose.test.yml up -d
+	@if $(DOCKER) ps --filter "name=opengithub-postgres-test" --format '{{.Status}}' 2>/dev/null | grep -q "Up"; then \
+	  echo "postgres-test container already running"; \
+	else \
+	  COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.test.yml up -d; \
+	fi
 	@$(MAKE) -s db-wait-test
 
 # Wait for the test DB to accept connections (used by db-up-test and test-e2e).
 db-wait-test:
 	@for i in $$(seq 1 60); do \
-	  if docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	  if $(DOCKER) exec opengithub-postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	    exit 0; \
+	  fi; \
+	  if COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
 	    exit 0; \
 	  fi; \
 	  sleep 1; \
@@ -160,33 +182,60 @@ db-wait-test:
 
 # Tear down the test DB and drop the volume so the next run starts fresh.
 db-down-test:
-	@docker compose -f docker-compose.test.yml down -v
+	@COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.test.yml down -v
+
+# --- Dev DB (persistent, port 55434) ---
+# Separate from the test DB so `make db-down-test` never wipes your dev data.
+
+db-up-dev:
+	@COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.dev.yml up -d
+	@$(MAKE) -s db-wait-dev
+
+db-wait-dev:
+	@for i in $$(seq 1 60); do \
+	  if COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.dev.yml exec -T postgres-dev pg_isready -U opengithub -d opengithub_dev >/dev/null 2>&1; then \
+	    exit 0; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "dev postgres did not become ready on :55434 within 60s" >&2; \
+	exit 1
+
+# Stop the dev DB but preserve the volume — data survives across restarts.
+db-down-dev:
+	@COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.dev.yml down
+
+# Apply migrations to the dev DB. Requires sqlx-cli.
+db-migrate-dev:
+	@if ! command -v sqlx >/dev/null 2>&1; then \
+	  echo "Install sqlx-cli first: cargo install sqlx-cli --no-default-features --features rustls,postgres"; \
+	  exit 1; \
+	fi
+	@DATABASE_URL=postgresql://opengithub:opengithub@localhost:55434/opengithub_dev sqlx migrate run --source crates/api/migrations
 
 # Diagnose local dev/test setup. Run this in any worktree to know what's
 # missing. Exits 0 if healthy, non-zero with actionable guidance if not.
 # Agents: run `make doctor` before claiming verification is complete.
 doctor:
 	@ok=1; \
-	if docker info >/dev/null 2>&1; then \
-	  printf "  \033[32m✓\033[0m Docker daemon running\n"; \
+	if $(DOCKER) info >/dev/null 2>&1; then \
+	  printf "  \033[32m✓\033[0m Container runtime reachable ($(CONTAINER_RUNTIME))\n"; \
 	else \
-	  printf "  \033[31m✗\033[0m Docker daemon not running — run: make setup-local (or start Docker Desktop)\n"; ok=0; \
+	  printf "  \033[31m✗\033[0m Container runtime not reachable — run: make setup-local\n"; ok=0; \
 	fi; \
-	if docker ps --filter "name=opengithub-postgres-test" --format '{{.Status}}' 2>/dev/null | grep -q "Up"; then \
+	if $(DOCKER) ps --filter "name=opengithub-postgres-test" --format '{{.Status}}' 2>/dev/null | grep -q "Up"; then \
 	  printf "  \033[32m✓\033[0m postgres-test container up\n"; \
 	else \
 	  printf "  \033[31m✗\033[0m postgres-test container not running — run: make setup-local\n"; ok=0; \
 	fi; \
 	if command -v pg_isready >/dev/null 2>&1 && pg_isready -h localhost -p 55433 -U opengithub -d opengithub_test >/dev/null 2>&1; then \
 	  printf "  \033[32m✓\033[0m Postgres reachable on :55433\n"; \
-	elif docker ps --filter "name=opengithub-postgres-test" --format '{{.Status}}' 2>/dev/null | grep -q "Up"; then \
-	  if docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
-	    printf "  \033[32m✓\033[0m Postgres reachable inside container\n"; \
-	  else \
-	    printf "  \033[31m✗\033[0m Postgres container up but not accepting connections\n"; ok=0; \
-	  fi; \
+	elif $(DOCKER) exec opengithub-postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	  printf "  \033[32m✓\033[0m Postgres reachable inside opengithub-postgres-test\n"; \
+	elif COMPOSE_PROJECT_NAME=$(COMPOSE_PROJECT_NAME) $(DOCKER) compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	  printf "  \033[32m✓\033[0m Postgres reachable inside compose postgres-test\n"; \
 	else \
-	  printf "  \033[33m!\033[0m Postgres not reachable on :55433 (start it with: make setup-local)\n"; \
+	  printf "  \033[31m✗\033[0m Postgres not accepting connections on :55433 — run: make setup-local\n"; ok=0; \
 	fi; \
 	if [ -f .env.test ]; then \
 	  printf "  \033[32m✓\033[0m .env.test present\n"; \
@@ -198,6 +247,14 @@ doctor:
 	else \
 	  printf "  \033[33m!\033[0m .env missing (only needed for live OAuth/AWS dev, not for tests)\n"; \
 	fi; \
+	if [ -n "$(HAS_CARGO)" ]; then \
+	  effective_target="$${CARGO_TARGET_DIR:-$$PWD/.scratch/cargo-target}"; \
+	  if mkdir -p "$$effective_target" 2>/dev/null && [ -w "$$effective_target" ]; then \
+	    printf "  \033[32m✓\033[0m Cargo target dir writable ($$effective_target)\n"; \
+	  else \
+	    printf "  \033[31m✗\033[0m Cargo target dir not writable ($$effective_target) — set CARGO_TARGET_DIR to a writable path (e.g. \$$PWD/.scratch/cargo-target)\n"; ok=0; \
+	  fi; \
+	fi; \
 	if [ "$$ok" = "1" ]; then \
 	  printf "\n\033[32mLocal verification stack is healthy.\033[0m Run: make all && make test-e2e\n"; \
 	else \
@@ -205,18 +262,21 @@ doctor:
 	fi
 
 # One-shot bring-up of the local test DB. Idempotent — safe to rerun.
-# Boots Docker Desktop if needed, starts postgres-test, runs migrations,
-# then runs `make doctor` to confirm.
+# Starts the configured container runtime, brings up postgres-test, runs
+# migrations, then runs `make doctor` to confirm.
 setup-local:
-	@if ! docker info >/dev/null 2>&1; then \
-	  echo "Starting Docker Desktop..."; \
-	  open -a Docker 2>/dev/null || (echo "Could not start Docker. Open it manually and rerun." && exit 1); \
+	@if ! $(DOCKER) info >/dev/null 2>&1; then \
+	  case "$$(uname -s)" in \
+	    Darwin) echo "Starting Docker Desktop..."; open -a Docker 2>/dev/null || true ;; \
+	    Linux) echo "Starting Podman/Docker socket if available..."; systemctl --user start podman.socket 2>/dev/null || sudo systemctl start docker 2>/dev/null || true ;; \
+	    *) echo "Unknown OS; please start $(CONTAINER_RUNTIME) manually" ;; \
+	  esac; \
 	  for i in $$(seq 1 60); do \
-	    if docker info >/dev/null 2>&1; then break; fi; \
+	    if $(DOCKER) info >/dev/null 2>&1; then break; fi; \
 	    sleep 2; \
 	  done; \
-	  if ! docker info >/dev/null 2>&1; then \
-	    echo "Docker did not become ready within 120s. Start it manually and rerun." && exit 1; \
+	  if ! $(DOCKER) info >/dev/null 2>&1; then \
+	    echo "Container runtime did not become ready within 120s. Start $(CONTAINER_RUNTIME) manually and rerun." && exit 1; \
 	  fi; \
 	fi
 	@echo "Bringing up postgres-test container..."
@@ -231,7 +291,7 @@ setup-local:
 
 # Clean build artifacts
 clean:
-	@if [ -n "$(HAS_CARGO)" ]; then CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$HOME/.cache/opengithub/cargo-target}" cargo clean; fi
+	@if [ -n "$(HAS_CARGO)" ]; then CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$PWD/.scratch/cargo-target}" cargo clean; fi
 	@if [ -n "$(HAS_WEB)" ]; then cd web && rm -rf .next node_modules/.cache; fi
 
 # Validate state files against JSON schemas
