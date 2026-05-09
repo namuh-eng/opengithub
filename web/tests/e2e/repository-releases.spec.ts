@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -21,137 +22,128 @@ function repositoryParts(firstRepositoryHref: string) {
   return { owner, repo };
 }
 
-function runSql(sql: string) {
+function psql(args: string[], input?: string | Buffer) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-  });
+  const env = { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" };
+  try {
+    execFileSync("psql", [databaseUrl, ...args], { env, input });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      execFileSync(
+        "docker",
+        [
+          "exec",
+          "-i",
+          "opengithub-postgres-test",
+          "psql",
+          "-U",
+          "opengithub",
+          "-d",
+          "opengithub_test",
+          ...args,
+        ],
+        { env, input },
+      );
+      return;
+    }
+    throw error;
+  }
+}
+
+function psqlOutput(args: string[]) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  const env = { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" };
+  try {
+    return execFileSync("psql", [databaseUrl, ...args], { env });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return execFileSync(
+        "docker",
+        [
+          "exec",
+          "-i",
+          "opengithub-postgres-test",
+          "psql",
+          "-U",
+          "opengithub",
+          "-d",
+          "opengithub_test",
+          ...args,
+        ],
+        { env },
+      );
+    }
+    throw error;
+  }
+}
+
+function psqlFile(path: string) {
+  psql(["-v", "ON_ERROR_STOP=1"], readFileSync(path));
+}
+
+function runSql(sql: string) {
+  psql(["-v", "ON_ERROR_STOP=1", "-c", sql]);
 }
 
 function ensureReleaseReadSchema() {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  const hasBodyHtml = execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-tAc",
-      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'releases' AND column_name = 'body_html')",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
-  )
+  const hasBodyHtml = psqlOutput([
+    "-tAc",
+    "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'releases' AND column_name = 'body_html')",
+  ])
     .toString()
     .trim();
   if (hasBodyHtml === "t") {
     ensureTagSignatureSchema();
-    const hasManagementIndex = execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-tAc",
-        "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'releases_repository_tag_active_unique')",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
-    )
+    const hasManagementIndex = psqlOutput([
+      "-tAc",
+      "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'releases_repository_tag_active_unique')",
+    ])
       .toString()
       .trim();
     if (hasManagementIndex === "t") {
-      const hasUploadLifecycle = execFileSync(
-        "psql",
-        [
-          databaseUrl,
-          "-tAc",
-          "SELECT to_regclass('public.release_asset_upload_intents') IS NOT NULL",
-        ],
-        {
-          env: {
-            ...process.env,
-            PGSSLMODE: process.env.PGSSLMODE ?? "disable",
-          },
-        },
-      )
+      const hasUploadLifecycle = psqlOutput([
+        "-tAc",
+        "SELECT to_regclass('public.release_asset_upload_intents') IS NOT NULL",
+      ])
         .toString()
         .trim();
       if (hasUploadLifecycle !== "t") {
-        execFileSync(
-          "psql",
-          [
-            databaseUrl,
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-f",
-            "../crates/api/migrations/202605031705_repository_release_asset_upload_lifecycle.up.sql",
-          ],
-          {
-            env: {
-              ...process.env,
-              PGSSLMODE: process.env.PGSSLMODE ?? "disable",
-            },
-          },
+        psqlFile(
+          "../crates/api/migrations/202605031705_repository_release_asset_upload_lifecycle.up.sql",
         );
       }
       return;
     }
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
+    psqlFile(
+      "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
     );
     return;
   }
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-f",
-      "../crates/api/migrations/202605030047_repository_releases_read.up.sql",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
+  psqlFile(
+    "../crates/api/migrations/202605030047_repository_releases_read.up.sql",
   );
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-f",
-      "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
+  psqlFile(
+    "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
   );
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-f",
-      "../crates/api/migrations/202605031705_repository_release_asset_upload_lifecycle.up.sql",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
+  psqlFile(
+    "../crates/api/migrations/202605031705_repository_release_asset_upload_lifecycle.up.sql",
   );
   ensureTagSignatureSchema();
 }
@@ -160,32 +152,15 @@ function ensureTagSignatureSchema() {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  const hasTagSignatureMetadata = execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-tAc",
-      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'repository_git_refs' AND column_name = 'signature_summary')",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
-  )
+  const hasTagSignatureMetadata = psqlOutput([
+    "-tAc",
+    "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'repository_git_refs' AND column_name = 'signature_summary')",
+  ])
     .toString()
     .trim();
   if (hasTagSignatureMetadata !== "t") {
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605031836_repository_tag_signature_metadata.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
+    psqlFile(
+      "../crates/api/migrations/202605031836_repository_tag_signature_metadata.up.sql",
     );
   }
 }
@@ -216,6 +191,23 @@ function seedDashboard(): SeededDashboard {
     },
   ).toString();
   return JSON.parse(output) as SeededDashboard;
+}
+
+async function waitForApi() {
+  const deadline = Date.now() + 60_000;
+  let lastError: unknown = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch("http://localhost:3016/api/auth/me");
+      if (response.status > 0) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`API on :3016 did not become ready: ${String(lastError)}`);
 }
 
 async function signIn(page: Page, seeded: SeededDashboard) {
@@ -330,6 +322,7 @@ test("repository releases, dedicated management forms, and tags render seeded da
 }) => {
   const seeded = seedDashboard();
   seedRelease(seeded.firstRepositoryHref);
+  await waitForApi();
   await signIn(page, seeded);
 
   await page.goto(`${seeded.firstRepositoryHref}/releases`);

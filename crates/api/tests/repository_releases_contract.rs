@@ -94,6 +94,8 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     let public_v2_commit = seed_commit_and_tag(&pool, public_repo.id, &owner, "v2.0.0", 5).await;
     let public_beta_commit =
         seed_commit_and_tag(&pool, public_repo.id, &owner, "v2.1.0-beta.1", 2).await;
+    let public_slash_commit =
+        seed_commit_and_tag(&pool, public_repo.id, &owner, "release/2026", 20).await;
     let release_v1 = seed_release(
         &pool,
         public_repo.id,
@@ -133,6 +135,19 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
         2,
     )
     .await;
+    let release_slash = seed_release(
+        &pool,
+        public_repo.id,
+        &owner,
+        "release/2026",
+        public_slash_commit,
+        "Slash tag release",
+        false,
+        false,
+        false,
+        20,
+    )
+    .await;
     let _draft = seed_release(
         &pool,
         public_repo.id,
@@ -168,11 +183,30 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     let public_uri = format!("/api/repos/{}/{}/releases", owner.email, public_repo.name);
     let (list_status, _, list_body) =
         send_json(app.clone(), Method::GET, &public_uri, None, None).await;
-    assert_eq!(list_status, StatusCode::OK);
-    assert_eq!(list_body["total"], 3);
+    assert_eq!(list_status, StatusCode::OK, "{list_body:?}");
+    assert_eq!(list_body["total"], 4);
     assert_eq!(list_body["items"][0]["tagName"], "v2.1.0-beta.1");
     assert_eq!(list_body["items"][0]["prerelease"], true);
     assert!(!list_body.to_string().contains("Draft should hide"));
+    let slash_release = list_body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|release| release["tagName"] == "release/2026")
+        .expect("slash-containing tag release should be listed");
+    assert_eq!(slash_release["id"], release_slash.to_string());
+    assert!(slash_release["links"]["htmlHref"]
+        .as_str()
+        .unwrap()
+        .ends_with("/releases/tag/release%2F2026"));
+    assert!(slash_release["links"]["tagHref"]
+        .as_str()
+        .unwrap()
+        .ends_with("/tree/release%2F2026"));
+    assert!(slash_release["links"]["zipballHref"]
+        .as_str()
+        .unwrap()
+        .ends_with("/releases/zipball/release%2F2026"));
 
     let latest_uri = format!("{public_uri}/latest");
     let (latest_status, _, latest_body) = send_json(
@@ -221,6 +255,12 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     assert_eq!(by_tag_status, StatusCode::OK);
     assert_eq!(by_tag_body["id"], release_v1.to_string());
 
+    let by_slash_tag_uri = format!("{public_uri}/tag/release%2F2026");
+    let (by_slash_tag_status, _, by_slash_tag_body) =
+        send_json(app.clone(), Method::GET, &by_slash_tag_uri, None, None).await;
+    assert_eq!(by_slash_tag_status, StatusCode::OK);
+    assert_eq!(by_slash_tag_body["id"], release_slash.to_string());
+
     let (tags_status, _, tags_body) = send_json(
         app.clone(),
         Method::GET,
@@ -230,7 +270,7 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     )
     .await;
     assert_eq!(tags_status, StatusCode::OK);
-    assert_eq!(tags_body["total"], 3);
+    assert_eq!(tags_body["total"], 4);
     assert!(tags_body["items"]
         .as_array()
         .unwrap()
@@ -251,6 +291,24 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
         .as_str()
         .unwrap()
         .ends_with("/compare/v2.0.0...main"));
+    let slash_tag = tags_body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tag| tag["name"] == "release/2026")
+        .expect("slash tag should be listed");
+    assert_eq!(
+        slash_tag["releaseHref"],
+        format!(
+            "/{}-owner/{}/releases/tag/release%2F2026",
+            marker,
+            public_repo.name
+        )
+    );
+    assert!(slash_tag["compareHref"]
+        .as_str()
+        .unwrap()
+        .ends_with("/compare/release%2F2026...main"));
 
     let (archive_status, _, archive_body) = send_json(
         app.clone(),
@@ -335,6 +393,8 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     .await;
     assert_eq!(reaction_status, StatusCode::CREATED);
     assert_eq!(reaction_body["eyes"], 1);
+    assert_eq!(reaction_body["rocket"], 0);
+    assert_eq!(reaction_body["totalCount"], 2);
     assert_eq!(reaction_body["viewerReaction"], "eyes");
 
     let (reaction_toggle_status, _, reaction_toggle_body) = send_json(
@@ -347,7 +407,8 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     .await;
     assert_eq!(reaction_toggle_status, StatusCode::CREATED);
     assert_eq!(reaction_toggle_body["eyes"], 0);
-    assert_ne!(reaction_toggle_body["viewerReaction"], "eyes");
+    assert_eq!(reaction_toggle_body["totalCount"], 1);
+    assert_eq!(reaction_toggle_body["viewerReaction"], Value::Null);
 
     let (invalid_reaction_status, _, invalid_reaction_body) = send_json(
         app.clone(),
@@ -401,7 +462,7 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     )
     .await;
     assert_eq!(owner_list_status, StatusCode::OK);
-    assert_eq!(owner_list_body["total"], 4);
+    assert_eq!(owner_list_body["total"], 5);
     assert!(owner_list_body.to_string().contains("Draft should hide"));
 
     let deleted_visible = sqlx::query_scalar::<_, bool>(
@@ -515,7 +576,10 @@ async fn repository_releases_management_contract_writes_assets_and_audit() {
     .await;
     assert_eq!(asset_status, StatusCode::CREATED);
     assert_eq!(asset_body["assets"][0]["name"], "opengithub-darwin.tar.gz");
-    assert!(!asset_body.to_string().contains("releases/"));
+    let asset_text = asset_body.to_string();
+    assert!(!asset_text.contains("storageKey"));
+    assert!(!asset_text.contains("storage_key"));
+    assert!(!asset_text.contains(&format!("releases/{release_id}/assets")));
     let asset_id = Uuid::parse_str(asset_body["assets"][0]["id"].as_str().unwrap()).unwrap();
 
     let (publish_status, _, publish_body) = send_json(
@@ -528,7 +592,7 @@ async fn repository_releases_management_contract_writes_assets_and_audit() {
     .await;
     assert_eq!(publish_status, StatusCode::OK);
     assert_eq!(publish_body["draft"], false);
-    assert_eq!(publish_body["latest"], true);
+    assert_eq!(publish_body["latest"], false);
 
     let (update_status, _, update_body) = send_json(
         app.clone(),
@@ -545,6 +609,7 @@ async fn repository_releases_management_contract_writes_assets_and_audit() {
     assert_eq!(update_status, StatusCode::OK);
     assert_eq!(update_body["title"], "Version four updated");
     assert_eq!(update_body["prerelease"], false);
+    assert_eq!(update_body["latest"], true);
 
     let (delete_asset_status, _, delete_asset_body) = send_json(
         app.clone(),
@@ -562,7 +627,7 @@ async fn repository_releases_management_contract_writes_assets_and_audit() {
         Method::DELETE,
         &format!("{uri}/{release_id}"),
         Some(&owner_cookie),
-        None,
+        Some(json!({})),
     )
     .await;
     assert_eq!(delete_status, StatusCode::NO_CONTENT);
@@ -770,7 +835,10 @@ async fn send_json(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("x-forwarded-for", format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1));
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }

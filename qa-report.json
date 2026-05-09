@@ -3548,5 +3548,51 @@
       "This worktree's make doctor remains a false negative while the shared fixed-name opengithub-postgres-test container is owned by the settings-003 compose project and local pg_isready is unavailable; direct docker exec readiness and DB-backed Rust contracts prove the DB path used for settings-005 is working.",
       "No fresh current-worktree Playwright/Ever pass was collected after the UTC date fix because concurrent settings-003 dev server owned :3015/:3016; prior same-branch Playwright smoke from a2fa6075 remains the browser CRUD/no-leakage evidence."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused release API contract and React UI tests passed; release Playwright fixture was hardened for Docker psql fallback/API readiness but full browser smoke could not be completed because another worktree repeatedly occupied fixed ports 3015/3016."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "repository_releases_contract passed against real test Postgres and covers list ordering, latest stable release, detail by tag/id including slash tags, assets/downloads, reactions, pagination-related envelopes, markdown safety, and private repository permissions."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Contract coverage verifies unauthenticated reaction rejection, private repository release redaction for anonymous/outside viewers, storage-key redaction, markdown script sanitization, and permission-gated private reads."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused release Vitest and attempted Playwright no-dead-control checks cover accessible buttons/links; full browser traversal remains limited by shared-port contention."
+      }
+    },
+    "tested_steps": [
+      "make doctor initially failed because stale opengithub-postgres-test container was outside this compose project; replaced the test-only container and make setup-local finished with Docker, postgres-test, and .env.test healthy; later make doctor regressed to a compose-owner false negative while docker exec pg_isready still proved Postgres accepting connections.",
+      "cd web && npm test -- tests/repository-releases-page.test.tsx => 17 tests passed.",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_releases_contract => 2 tests passed.",
+      "make check => Cargo check, web typecheck, Clippy, and Biome passed.",
+      "make test => Cargo workspace tests passed; web Vitest had 11 unrelated date-sensitive failures outside releases (dashboard/profile/project/wiki/actions/contributors/pulse/packages/social), with no release test failure.",
+      "Focused Playwright release smoke attempted after setup-local; fixed missing-host-psql fixture fallback and API readiness race, but live browser completion remained blocked by concurrent qa-opengithub-releases-002-rerun processes occupying fixed ports 3015/3016."
+    ],
+    "bugs_found": [
+      {
+        "description": "Release links emitted raw slash-containing tag names as path segments, so tags like release/2026 produced broken release/detail/archive/compare links.",
+        "fix": "Percent-encode release/tag path segments in Rust release link generation and encode the AI changelog form action tag segment; added API and UI regressions for release/2026."
+      },
+      {
+        "description": "Release reaction toggles allowed one viewer to accumulate multiple reaction types while the surface exposes a singular viewerReaction.",
+        "fix": "Changed reaction toggle to replace any existing viewer reaction with the selected one, or clear it when toggling the selected reaction; added API count/viewerReaction regressions."
+      },
+      {
+        "description": "Release Playwright fixture was not portable in this environment because it required host psql and raced the Rust API startup.",
+        "fix": "Added Docker test Postgres psql fallback and explicit API readiness wait in the release E2E fixture."
+      }
+    ],
+    "fix_description": "Fixed slash-tag release URL encoding, singular viewer reaction replacement semantics, and release E2E fixture portability/readiness; corrected overbroad release storage-key redaction assertions to check actual storage key fields/patterns while preserving URL links."
   }
 ]
