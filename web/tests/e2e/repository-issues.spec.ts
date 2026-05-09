@@ -188,6 +188,7 @@ test("signed-in repository Issues tab renders real issues and row navigation", a
   await expect(
     page.getByRole("heading", { name: "Customize updates" }),
   ).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Merged/ })).toHaveCount(0);
   await page.getByRole("checkbox", { name: /Closed/ }).check();
   await page.getByRole("checkbox", { name: /Reopened/ }).check();
   await page.getByRole("button", { name: "Save" }).click();

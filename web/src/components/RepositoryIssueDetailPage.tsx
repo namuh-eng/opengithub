@@ -766,6 +766,7 @@ export function RepositoryIssueDetailPage({
               <ThreadNotificationCard
                 activePath={issueHref}
                 disabled={false}
+                events={["closed", "reopened"]}
                 isMutating={isMutating}
                 onSave={saveSubscription}
                 subscription={subscription}

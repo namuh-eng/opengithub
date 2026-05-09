@@ -14,6 +14,7 @@ export type ThreadSubscriptionState = {
 type ThreadNotificationCardProps = {
   activePath: string;
   disabled: boolean;
+  events?: ThreadSubscriptionEvent[];
   isMutating: boolean;
   subscription: ThreadSubscriptionState;
   viewerAuthenticated: boolean;
@@ -52,6 +53,7 @@ function reasonLabel(reason: string) {
 export function ThreadNotificationCard({
   activePath,
   disabled,
+  events = ["closed", "reopened", "merged"],
   isMutating,
   subscription,
   viewerAuthenticated,
@@ -194,7 +196,9 @@ export function ThreadNotificationCard({
               </span>
             </label>
             <div className="mt-4 space-y-2">
-              {THREAD_EVENTS.map((event) => (
+              {THREAD_EVENTS.filter((event) =>
+                events.includes(event.value),
+              ).map((event) => (
                 <label
                   className="card flex items-start gap-3 p-3"
                   key={event.value}
