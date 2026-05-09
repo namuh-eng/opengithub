@@ -336,6 +336,7 @@ async fn organization_packages_show_internal_to_members_only() {
     )
     .await
     .expect("repo should create");
+    let internal_package_name = format!("{marker}-maven");
     insert_package(
         &pool,
         PackageSeed {
@@ -343,10 +344,25 @@ async fn organization_packages_show_internal_to_members_only() {
             owner_user_id: None,
             owner_organization_id: Some(org.id),
             created_by_user_id: owner.id,
-            name: &format!("{marker}-maven"),
+            name: &internal_package_name,
             package_type: "maven",
             visibility: "internal",
             downloads: 12,
+        },
+    )
+    .await;
+    let private_package_name = format!("{marker}-nuget-private");
+    let private_package = insert_package(
+        &pool,
+        PackageSeed {
+            repository_id: repo.id,
+            owner_user_id: None,
+            owner_organization_id: Some(org.id),
+            created_by_user_id: owner.id,
+            name: &private_package_name,
+            package_type: "nuget",
+            visibility: "private",
+            downloads: 99,
         },
     )
     .await;
@@ -357,12 +373,41 @@ async fn organization_packages_show_internal_to_members_only() {
     assert_eq!(public_body["total"], 0);
 
     let (status, _, member_body) = get_json(
-        app,
+        app.clone(),
         &format!("/api/orgs/{marker}/packages?type=maven&visibility=internal"),
         Some(&member_cookie),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(package_names(&member_body), vec![format!("{marker}-maven")]);
+    assert_eq!(package_names(&member_body), vec![internal_package_name]);
     assert_eq!(member_body["items"][0]["visibility"], "internal");
+
+    let (status, _, private_body) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/packages?type=nuget&visibility=private"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(private_body["total"], 0);
+    assert!(package_names(&private_body).is_empty());
+
+    sqlx::query(
+        "INSERT INTO package_permissions (package_id, user_id, role) VALUES ($1, $2, 'read')",
+    )
+    .bind(private_package)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("private package permission should insert");
+
+    let (status, _, permitted_private_body) = get_json(
+        app,
+        &format!("/api/orgs/{marker}/packages?type=nuget&visibility=private"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(package_names(&permitted_private_body), vec![private_package_name]);
+    assert_eq!(permitted_private_body["items"][0]["visibility"], "private");
 }

@@ -8400,5 +8400,17 @@
       "Full web Vitest currently has unrelated date-sensitive failures in non-release suites; retest once shared fixture dates are stabilized.",
       "Provider-backed asset streaming/S3 signed URL behavior, large files, content disposition, and concurrent reaction/asset races still need infrastructure-level QA."
     ]
+  },
+  {
+    "feature_id": "packages-001",
+    "tests_written": [
+      "QA rerun fixed organization package privacy so org membership grants internal package visibility but not private package visibility without explicit package or linked-repository permission.",
+      "QA rerun fixed package published-date rendering to use UTC and avoid timezone-dependent one-day drift.",
+      "Focused evidence collected before sandbox quota failure: make check passed and OwnerPackagesPage Vitest passed 4 tests."
+    ],
+    "needs_deeper_qa": [
+      "Rerun owner_packages_contract against healthy Docker/Postgres :55433 to prove private package redaction and explicit permission access with real DB assertions.",
+      "Rerun full make test and package Playwright/E2E after linker/resource and test DB issues are fixed."
+    ]
   }
 ]

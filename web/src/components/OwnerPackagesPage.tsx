@@ -46,6 +46,7 @@ function formatDate(value: string) {
   return `Published ${new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
     year: "numeric",
   }).format(date)}`;
 }

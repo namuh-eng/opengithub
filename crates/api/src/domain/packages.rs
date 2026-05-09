@@ -1313,7 +1313,7 @@ fn visibility_predicate(owner_kind: PackageOwnerKind, authenticated: bool) -> St
     }
     match owner_kind {
         PackageOwnerKind::User => "(p.visibility = 'public' OR p.owner_user_id = $2 OR EXISTS (SELECT 1 FROM package_permissions pp WHERE pp.package_id = p.id AND pp.user_id = $2 AND pp.role IN ('read', 'write', 'admin')) OR EXISTS (SELECT 1 FROM repository_permissions rp WHERE rp.repository_id = p.repository_id AND rp.user_id = $2 AND rp.role IN ('read', 'write', 'admin', 'owner')))".to_owned(),
-        PackageOwnerKind::Organization => "(p.visibility = 'public' OR EXISTS (SELECT 1 FROM organization_memberships om WHERE om.organization_id = p.owner_organization_id AND om.user_id = $2) OR EXISTS (SELECT 1 FROM package_permissions pp WHERE pp.package_id = p.id AND pp.user_id = $2 AND pp.role IN ('read', 'write', 'admin')) OR EXISTS (SELECT 1 FROM repository_permissions rp WHERE rp.repository_id = p.repository_id AND rp.user_id = $2 AND rp.role IN ('read', 'write', 'admin', 'owner')))".to_owned(),
+        PackageOwnerKind::Organization => "(p.visibility = 'public' OR (p.visibility = 'internal' AND EXISTS (SELECT 1 FROM organization_memberships om WHERE om.organization_id = p.owner_organization_id AND om.user_id = $2)) OR EXISTS (SELECT 1 FROM package_permissions pp WHERE pp.package_id = p.id AND pp.user_id = $2 AND pp.role IN ('read', 'write', 'admin')) OR EXISTS (SELECT 1 FROM repository_permissions rp WHERE rp.repository_id = p.repository_id AND rp.user_id = $2 AND rp.role IN ('read', 'write', 'admin', 'owner')))".to_owned(),
     }
 }
 
