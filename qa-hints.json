@@ -4990,6 +4990,20 @@
     ]
   },
   {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Independent QA attempt on 2026-05-09 found and fixed a focused UI bug: grouped member-privileges saves now only submit changed editable fields and no-op saves are disabled.",
+      "Focused Vitest now covers disabled no-op repository creation save state and omits locked unchanged fields from grouped PATCH payloads.",
+      "Verification evidence collected: cd web && npx vitest run tests/organization-member-privileges-page.test.tsx passed 4/4; CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract passed 1/1; CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target make check passed; Editorial banned-token scan over web/src had no hits."
+    ],
+    "needs_deeper_qa": [
+      "qa_pass remains false because make doctor reported Docker daemon not running, postgres-test not running, and Postgres not reachable on localhost:55433; docker info returned permission denied for unix:///run/user/1000/podman/podman.sock.",
+      "make setup-local could not start Docker in this environment, so DB-backed Playwright/E2E and live API probes must be rerun with the committed .env.test test DB at postgresql://opengithub:opengithub@localhost:55433/opengithub_test.",
+      "Default Cargo commands hit read-only shared target path /home/jaeyunha/.cache/opengithub/cargo-target/debug/.cargo-lock in this sandbox; use CARGO_TARGET_DIR=/tmp/opengithub-cargo-target here or fix write access before full make check/test-e2e.",
+      "Repeat focused organization-member-privileges Playwright and axe/manual keyboard review once Docker/test DB and the dev server can start; retry with /tmp target got past Cargo but the API process exited with Operation not permitted."
+    ]
+  },
+  {
     "feature_id": "commits-001",
     "tests_written": [
       "Completed Phase 1 Commit List Contract without marking commits-001 build_pass=true.",
@@ -8416,5 +8430,20 @@
       "Continue stress testing concurrent admin edits, large static file sets, binary assets, CNAME/takeover-prevention behavior, and custom-domain conflicts across repositories."
     ],
     "created_at": "2026-05-09T18:58:00Z"
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Accepted independent QA rerun on 2026-05-09: grouped member-privileges saves only submit changed editable fields and no-op saves are disabled.",
+      "Focused Vitest covers disabled no-op repository creation save state and omits locked unchanged fields from grouped PATCH payloads.",
+      "Focused member-privileges Playwright spec now falls back to docker/podman exec for opengithub-postgres-test when host psql is unavailable.",
+      "Fresh verification passed: make doctor; cd web && npx vitest run tests/organization-member-privileges-page.test.tsx (4/4); DB-backed ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract (1/1); focused Chromium Playwright organization-member-privileges.spec.ts (2/2); make check."
+    ],
+    "needs_deeper_qa": [
+      "Repeat the complete member-privileges flow with a real Google OAuth owner/member session using TEST_ACCOUNT_EMAIL rather than deterministic signed-cookie fixtures.",
+      "Stress concurrent policy writes from two owner sessions and stale browser forms during repository creation, Pages source changes, and team creation.",
+      "Run screen-reader traversal and keyboard-only review across the long settings page, confirmation dialog, disabled policy states, and mobile layout.",
+      "Probe large organizations with many repositories, teams, inherited base permission rows, and long policy-lock reasons."
+    ]
   }
 ]

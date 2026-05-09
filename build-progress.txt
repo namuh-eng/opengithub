@@ -1,3 +1,9 @@
+2026-05-09T19:49:13Z - org-admin-005 QA accepted after infra recovery
+
+- Rebased onto origin/main f65720db and accepted the member-privileges fix: grouped cards now enable Save only for changed editable fields and PATCH changed unlocked fields only.
+- Fixed the focused Playwright spec to fall back to the opengithub-postgres-test container when host psql is absent under Podman QA.
+- Verification passed: make doctor; focused Vitest 4/4; DB-backed organization_member_privileges_contract 1/1; focused Chromium Playwright 2/2; make check. prd.json and QA artifacts mark org-admin-005 qa_pass=true.
+
 2026-05-07 - api-003 REST rate limits and API version headers
 
 - Completed `api-003` as the first `build_pass:false` PRD feature: REST responses now carry GitHub-compatible `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Used`, `X-RateLimit-Resource`, and `X-GitHub-Api-Version-Selected` headers, with `/rate_limit` and `/api/rate_limit` exposing current bucket state.
@@ -343,6 +349,15 @@
 - Saved final screenshots `ralph/screenshots/build/commits-001-final-default-history.jpg` and `ralph/screenshots/build/commits-001-final-mobile.jpg`.
 - Verification passed: focused `repository-commit-history-page` and `api-docs` Vitest, focused Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 403 web tests, focused Playwright `repository-commits.spec.ts` with 4 tests, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 122 tests, and mandatory Editorial banned-value scan.
 - `qa_pass` remains false for the QA agent. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched for this feature commit.
+
+2026-05-09 - QA org-admin-005 member privileges blocked with focused fix
+
+- Independent QA for `org-admin-005` rechecked `prd.json`, the member privileges settings page/action route, API client/server-session wiring, Rust organization policy domain, focused Rust contract, focused Vitest, focused Playwright spec, API docs, and prior QA hints.
+- Fixed a focused UI bug in `OrganizationMemberPrivilegesPage`: grouped policy cards now disable save until changed editable fields exist and submit only changed/unlocked fields, avoiding unchanged locked policy values in PATCH bodies.
+- Added/updated focused component coverage for disabled no-op saves and locked-field omission from grouped repository creation payloads.
+- Verification evidence: `cd web && npx vitest run tests/organization-member-privileges-page.test.tsx` passed 4/4; `CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract` passed 1/1; `CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target make check` passed Cargo check, web typecheck, Clippy, and Biome; Editorial banned-token scan over `web/src` excluding token CSS had no hits.
+- Blockers: `make doctor` reported Docker daemon not running, `opengithub-postgres-test` not running, and Postgres not reachable on `localhost:55433`; `docker info` returned permission denied connecting to `unix:///run/user/1000/podman/podman.sock`; `make setup-local` could not start Docker. Default Cargo target path was read-only in this sandbox, so Cargo verification required `CARGO_TARGET_DIR=/tmp/opengithub-cargo-target`; focused Playwright retried with that target but the API process exited with `Operation not permitted`.
+- `org-admin-005.qa_pass` remains false because DB-backed API/E2E/manual browser evidence could not run against the required `.env.test` database `postgresql://opengithub:opengithub@localhost:55433/opengithub_test`.
 
 2026-05-04 - org-admin-005 phase 3 repository creation policy and base permissions
 
