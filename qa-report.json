@@ -3864,5 +3864,64 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "org-admin-003",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused component-level people administration behavior passed, but DB-backed browser verification could not run because the required local Postgres on localhost:55433 is unavailable."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/people/admin",
+          "POST /api/orgs/{org}/people/invitations",
+          "POST /api/orgs/{org}/people/invitations/{invitation_id}/retry",
+          "DELETE /api/orgs/{org}/people/invitations/{invitation_id}",
+          "PATCH /api/orgs/{org}/people/members/{user_id}/visibility",
+          "PATCH /api/orgs/{org}/people/members/{user_id}/role",
+          "DELETE /api/orgs/{org}/people/members/{user_id}",
+          "GET /api/orgs/{org}/people/export"
+        ],
+        "notes": "Source review confirmed these routes and auth boundaries exist, but focused Rust contract bodies self-skipped because no TEST_DATABASE_URL/DATABASE_URL-backed database was reachable. No live API pass is claimed."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "auth_boundary_source_review",
+          "token_redaction_component_test",
+          "design_token_source_review"
+        ],
+        "notes": "Static/source review found signed-session owner/admin checks on admin people routes and component tests assert token material is not rendered. Live unauthenticated/API/CORS probes were blocked by the missing DB/API runtime."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "notes": "Component markup uses named controls/dialogs and Editorial primitives; live axe/manual browser traversal could not run without the DB-backed dev server."
+      }
+    },
+    "tested_steps": [
+      "make doctor -> failed: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433; .env.test and .env present.",
+      "make setup-local -> attempted prescribed setup, but Docker Desktop could not be started in this environment; no test DB came up.",
+      "cd web && npm ci --prefer-offline --no-audit --no-fund -> installed 473 packages from lock/cache so web checks could run.",
+      "cd web && npm test -- organization-people-admin-page.test.tsx -> 1 file passed, 6 tests passed. Covered admin tabs/search/export links, disabled-safe bulk action, final-owner row menu state, visibility/role/remove payloads, invitation token redaction, invite submit, retry, and cancel UI actions.",
+      "CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target TEST_DATABASE_URL= DATABASE_URL= ./hack/cargo_locked.sh test -p opengithub-api --test organization_people_admin_contract -- --nocapture -> compiled and reported 4 passed, but every DB-backed scenario printed a self-skip message because TEST_DATABASE_URL/DATABASE_URL was unset; not counted as DB verification.",
+      "cd web && CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target TEST_DATABASE_URL= DATABASE_URL= npx playwright test tests/e2e/organization-people.spec.ts --reporter=list -> timed out waiting 120000ms for the configured webServer; not counted as browser verification.",
+      "CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target make check -> passed Cargo check, web typecheck, Clippy, and Biome.",
+      "CARGO_TARGET_DIR=/tmp/opengithub-cargo-target CARGO_NET_OFFLINE=true make test -> attempted; failed during broad Rust test linking with Disk quota exceeded after compiling many targets. Not counted as a feature failure, but full-suite verification is incomplete."
+    ],
+    "bugs_found": [],
+    "fixes_made": [
+      "No product code fixes were made; QA bookkeeping records the blocked verdict and current partial evidence."
+    ],
+    "qa_pass": false,
+    "blocker": "Docker daemon not running; make setup-local could not start Docker (\"Could not start Docker. Open it manually and rerun.\"), postgres-test container is not running, and Postgres is not reachable on localhost:55433/opengithub_test. DB-backed Rust assertions self-skipped without TEST_DATABASE_URL, and focused Playwright timed out waiting for the DB-backed dev server.",
+    "known_gaps": [
+      "Rerun focused DB-backed Rust organization_people_admin_contract against TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test after Docker/test Postgres is available; self-skipped DB bodies must not be counted.",
+      "Rerun focused Playwright organization-people.spec.ts with the committed .env.test DB and capture browser evidence for invite/retry/cancel, visibility, role confirmation, removal confirmation, exports, no dead controls, and mobile no-overflow.",
+      "Run live API security probes for unauthenticated access, forbidden member/outsider access, invalid mutation payloads, malformed export format, and hostile-Origin OPTIONS once the API can run."
+    ]
   }
 ]

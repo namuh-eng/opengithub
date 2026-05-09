@@ -1900,9 +1900,28 @@
       "description": "Manage organization people, invitations, membership visibility, owner/member rol",
       "category": "settings",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "blocked",
+          "notes": "Focused Vitest passed 6/6, but DB-backed Playwright/browser runtime was unavailable."
+        },
+        "api_contract": {
+          "status": "blocked",
+          "notes": "Focused Rust contract compiled but DB-backed bodies self-skipped without TEST_DATABASE_URL/DATABASE_URL."
+        },
+        "security": {
+          "status": "blocked",
+          "notes": "Source review and token-redaction component coverage only; live API probes blocked by missing DB/API runtime."
+        },
+        "accessibility": {
+          "status": "blocked",
+          "notes": "No live axe/manual browser pass possible without the DB-backed dev server."
+        }
+      },
+      "last_status": "blocked",
+      "blocker": "Docker daemon not running; make setup-local could not start Docker (\"Could not start Docker. Open it manually and rerun.\"), postgres-test container is not running, and Postgres is not reachable on localhost:55433/opengithub_test. DB-backed Rust assertions self-skipped without TEST_DATABASE_URL, and focused Playwright timed out waiting for the DB-backed dev server."
     },
     {
       "feature_id": "org-admin-004",
