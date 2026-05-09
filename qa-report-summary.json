@@ -2100,14 +2100,31 @@
         }
       }
     },
-    {
+        {
       "feature_id": "org-admin-004",
       "description": "Build organization teams list, empty state, team creation form, nested-team rule",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh retest after infra recovery passed focused Vitest and Playwright org teams flows for directory, filters, team detail, collaborator visibility, empty state, mobile overflow, creation redirect, and nested secret-team validation."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "DB-backed organization_teams_contract passed 3/3 non-skipped against localhost:55433, covering teams directory filters/counts, creation/nesting policy, detail, private org privacy, auth, and redaction."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Focused Rust contract verifies anonymous rejection, outsider/private-org hiding, secret-team privacy, invalid-filter validation without stack/env leakage, final-owner/nesting protections, audit rows, and invitation/token redaction."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused Playwright covers named controls, no dead controls, no horizontal overflow on directory/detail/create/empty/mobile states, and screenshots for review."
+        }
+      }
     },
     {
       "feature_id": "org-admin-005",

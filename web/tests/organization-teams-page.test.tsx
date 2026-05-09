@@ -407,6 +407,27 @@ describe("OrganizationTeamsPage", () => {
     );
   });
 
+  it("labels the member visibility filter as my teams", () => {
+    render(
+      <OrganizationTeamsPage
+        directory={teamsDirectory({
+          filters: {
+            query: null,
+            visibility: "member",
+            page: 1,
+            pageSize: 30,
+          },
+        })}
+        org="namuh"
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "My teams" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams",
+    );
+  });
+
   it("renders the team create form with parent options and submits concrete payloads", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

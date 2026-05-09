@@ -4369,5 +4369,94 @@
       ],
       "notes": "First Playwright attempt timed out at the JSON export request while the dev/API server was cold/reused from previous traffic; direct API/Next curl probes then succeeded and the focused Playwright spec passed cleanly on rerun."
     }
+  },
+{
+  "feature_id": "org-admin-004",
+  "attempt": 2,
+  "status": "pass",
+  "sub_phases": {
+    "functional": {
+      "status": "pass",
+      "notes": "Fresh retest after infra recovery passed focused Vitest (8/8) plus Playwright organization teams flows (3/3 including auth setup): populated directory, filters, team detail, collaborator visibility, empty state, mobile overflow, create-team redirect, and nested secret-team validation."
+    },
+    "api_contract": {
+      "status": "pass",
+      "endpoints_tested": [
+        "GET /api/orgs/{org}/teams",
+        "POST /api/orgs/{org}/teams",
+        "GET /api/orgs/{org}/teams/{team_slug}"
+      ],
+      "notes": "DB-backed organization_teams_contract passed 3/3 non-skipped against localhost:55433, covering auth, privacy, visibility filters/counts, pagination, create validation, parent nesting, detail, mentions, inherited permissions, audits, and redaction."
+    },
+    "security": {
+      "status": "pass",
+      "checks": [
+        "auth_bypass",
+        "secret_team_privacy",
+        "invalid_filter_redaction",
+        "data_exposure",
+        "parent_nesting_policy"
+      ],
+      "notes": "The non-skipped Rust contract verifies anonymous 401, outsider 403/404 privacy, secret-team hiding, invitation/token redaction, no stack/env leakage on invalid filters, and policy enforcement for final owner/removal and nested secret teams."
+    },
+    "accessibility": {
+      "status": "pass",
+      "violations": [],
+      "notes": "Focused Playwright exercises named controls and links, no dead controls, no horizontal overflow, and screenshots for directory/detail/mobile/empty/create/validation states. No runtime a11y blockers were found in covered flows."
+    }
+  },
+  "tested_steps": [
+    "Rebased org-admin-004 fixes onto origin/main f65720db and resolved QA ledger conflicts without large JSON normalization churn.",
+    "Ran make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable on localhost:55433, .env/.env.test present, worktree Cargo target writable.",
+    "Ran make check with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: Cargo check, web typecheck, Clippy, and Biome passed.",
+    "Ran TEST_DATABASE_URL/DATABASE_URL from .env.test ./hack/cargo_locked.sh test -p opengithub-api --test organization_teams_contract -- --nocapture: 3 tests passed, 0 skipped.",
+    "Ran cd web && npx vitest run tests/organization-teams-page.test.tsx: 1 file passed, 8 tests passed.",
+    "Initial focused Playwright org teams run timed out inside the broad directory scenario at the old 60s per-test cap after useful assertions had started; increased the focused spec timeout to 90s like prior stabilized org-admin E2E lanes.",
+    "Reran cd web && TEST_DATABASE_URL/DATABASE_URL set CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target npx playwright test tests/e2e/organization-teams.spec.ts --project=chromium --workers=1 --timeout=90000 --reporter=line: 3/3 passed."
+  ],
+  "bugs_found": [
+    {
+      "severity": "major",
+      "phase": "functional",
+      "description": "The backend My teams visibility filter retained every mentionable team instead of teams where the viewer is actually a member.",
+      "expected": "visibility=member should return only teams with a team_memberships row for the viewer.",
+      "actual": "Owners/admins could receive every visible/secret team because can_mention is true for their view.",
+      "reproduction": "As an organization owner who is not a team member, request /api/orgs/{org}/teams?visibility=member."
+    },
+    {
+      "severity": "minor",
+      "phase": "functional",
+      "description": "The active filter chip for visibility=member was labeled Visible.",
+      "expected": "The active filter chip should read My teams.",
+      "actual": "visibilityLabel only distinguished secret from non-secret values, so member displayed as Visible.",
+      "reproduction": "Open /orgs/{org}/teams?visibility=member and inspect active filters."
+    },
+    {
+      "severity": "minor",
+      "phase": "functional",
+      "description": "The organization teams Playwright spec duplicated inline cargo seeding instead of using the shared auth fixture required by web/tests/e2e/AGENTS.md.",
+      "expected": "Signed-in specs import seed/signIn from ./_fixtures/auth.",
+      "actual": "The spec imported execFileSync and minted cookies inline.",
+      "reproduction": "Open web/tests/e2e/organization-teams.spec.ts before this QA patch."
+    },
+    {
+      "severity": "minor",
+      "phase": "functional",
+      "description": "The focused organization teams Playwright scenario could exceed the inherited 60s per-test cap on cold API/browser runs.",
+      "fix": "Raised the per-test timeout to 90s while keeping the command-level timeout at 90s and workers=1; rerun passed 3/3 in 17.2s once warm."
+    }
+  ],
+  "fix_description": "Changed visibility=member filtering to use is_member, corrected the active filter label, added focused regressions, migrated org teams Playwright to the shared auth fixture, and stabilized the broad focused E2E scenario timeout.",
+  "evidence": {
+    "base": "origin/main f65720db",
+    "tests": [
+      "make doctor",
+      "make check",
+      "./hack/cargo_locked.sh test -p opengithub-api --test organization_teams_contract -- --nocapture (3/3 non-skipped)",
+      "cd web && npx vitest run tests/organization-teams-page.test.tsx (8/8)",
+      "cd web && npx playwright test tests/e2e/organization-teams.spec.ts --project=chromium --workers=1 --timeout=90000 --reporter=line (3/3 including setup)"
+    ],
+    "timestamp": "2026-05-09T19:49:53Z"
   }
+}
 ]
