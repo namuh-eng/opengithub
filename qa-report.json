@@ -3864,5 +3864,67 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "insights-001",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Fixed Pulse exact date range rendering to use UTC so API period boundaries such as 2026-05-01T00:00:00Z display as May 1, 2026 in America/Los_Angeles instead of shifting to Apr 30. Focused RepositoryPulsePage Vitest passed 5/5 after the fix. Focused Playwright could not start because the configured webServer exited with Operation not permitted after Docker/Postgres setup failed."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
+        ],
+        "notes": "Focused Rust repository_pulse_contract compiled and ran, but self-skipped DB-backed assertions because TEST_DATABASE_URL/DATABASE_URL was unavailable to the command after Docker setup failed. This is not counted as API verification."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "auth_bypass",
+          "private_repo_redaction",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Security behavior remains covered only by existing contract code inspection/compilation in this lane; DB-backed auth/privacy probes could not run without the local test Postgres."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Component assertions still cover named controls, accessible chart role, table fallback, no dead anchors, and Editorial guardrails. Browser keyboard/axe traversal was blocked by local runtime startup failure."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: failed because Docker daemon was not running, opengithub-postgres-test was not running, and Postgres was not reachable on localhost:55433; .env and .env.test were present.",
+      "Ran make setup-local as prescribed: Docker Desktop startup failed and Docker did not become ready within 120s, so DB-backed verification was blocked.",
+      "Inspected prd.json, qa-report-summary.json, qa-report.json, qa-hints.json, build-progress.txt, the Pulse page/component/period selector, navigation helpers, Rust Pulse route/domain code, focused Vitest, focused Playwright, and Rust contract tests.",
+      "Ran cd web && npm test -- --run repository-pulse-page.test.tsx before the fix: failed because the Pulse exact date range rendered one day early in America/Los_Angeles for UTC midnight period bounds.",
+      "Fixed web/src/components/RepositoryPulsePage.tsx formatDate to format Pulse period bounds with timeZone: UTC.",
+      "Ran cd web && npm test -- --run repository-pulse-page.test.tsx after the fix: 5/5 passed.",
+      "Ran CARGO_NET_OFFLINE=true make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran CARGO_NET_OFFLINE=true ./hack/cargo_locked.sh test -p opengithub-api --test repository_pulse_contract -- --nocapture: compiled and reported 1 passed, but DB-backed scenario self-skipped with \"set TEST_DATABASE_URL\" and is not counted as DB evidence.",
+      "Ran cd web && npx playwright test tests/e2e/repository-pulse.spec.ts --reporter=line: blocked because the configured webServer exited early with Operation not permitted after starting the Rust API.",
+      "Ran make test: Cargo tests passed; full web Vitest failed in 9 tests outside insights-001 with date-sensitive expectations across dashboard, projects, contributors, wiki, actions, and profile/social pages."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Pulse displayed exact UTC period boundaries through the local timezone, shifting UTC-midnight start/end dates one day earlier for west-of-UTC users.",
+        "expected": "The exact Pulse date range should match the API period dates regardless of the QA/browser local timezone.",
+        "actual": "In America/Los_Angeles, 2026-05-01T00:00:00Z rendered as Apr 30, causing the Pulse date range assertion to fail.",
+        "reproduction": "Render RepositoryPulsePage with startedAt=2026-05-01T00:00:00Z and endedAt=2026-05-07T00:00:00Z in America/Los_Angeles; the date range does not show May 1, 2026 - May 7, 2026 before the fix."
+      }
+    ],
+    "fix_description": "Formatted Pulse period date bounds in UTC to preserve exact API period dates across local timezones.",
+    "known_gaps": [
+      "Docker/test Postgres on localhost:55433 could not be started in this sandbox; make setup-local ended with Docker did not become ready within 120s.",
+      "Focused Rust Pulse DB contract self-skipped and is not counted as verified DB/API evidence.",
+      "Focused Pulse Playwright browser smoke could not run because the webServer exited with Operation not permitted.",
+      "Full make test is not green due unrelated non-Pulse web date expectation failures; focused Pulse Vitest and make check passed."
+    ]
   }
 ]

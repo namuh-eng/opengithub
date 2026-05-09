@@ -8402,5 +8402,20 @@
       "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
       "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "QA fix pass found and fixed timezone drift in the Pulse exact date range display.",
+      "Focused RepositoryPulsePage Vitest passed 5/5 after formatting period bounds in UTC.",
+      "CARGO_NET_OFFLINE=true make check passed Cargo check, web typecheck, Clippy, and Biome."
+    ],
+    "needs_deeper_qa": [
+      "Run make setup-local with a working Docker daemon and rerun DB-backed repository_pulse_contract against postgresql://opengithub:opengithub@localhost:55433/opengithub_test without self-skip.",
+      "Run focused repository-pulse Playwright browser QA with a signed test session, including period selector, metric links, chart/table fallback, activity links, mobile no-overflow, and screenshots.",
+      "Run keyboard-only/axe traversal for the Insights sidebar, period menu, metrics, top committers chart/table, and activity links.",
+      "Investigate unrelated full web Vitest date-sensitive failures before using make test as all-suite pass evidence."
+    ],
+    "recorded_at": "2026-05-09T08:56:54.472Z"
   }
 ]

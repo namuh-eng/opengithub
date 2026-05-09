@@ -1954,9 +1954,37 @@
       "description": "Render repository Pulse activity summary with period selector, overview metrics,",
       "category": "data",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "partial",
+          "notes": "Fixed Pulse exact date range rendering to use UTC so API period boundaries such as 2026-05-01T00:00:00Z display as May 1, 2026 in America/Los_Angeles instead of shifting to Apr 30. Focused RepositoryPulsePage Vitest passed 5/5 after the fix. Focused Playwright could not start because the configured webServer exited with Operation not permitted after Docker/Postgres setup failed."
+        },
+        "api_contract": {
+          "status": "blocked",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
+          ],
+          "notes": "Focused Rust repository_pulse_contract compiled and ran, but self-skipped DB-backed assertions because TEST_DATABASE_URL/DATABASE_URL was unavailable to the command after Docker setup failed. This is not counted as API verification."
+        },
+        "security": {
+          "status": "blocked",
+          "checks": [
+            "auth_bypass",
+            "private_repo_redaction",
+            "input_validation",
+            "data_exposure"
+          ],
+          "notes": "Security behavior remains covered only by existing contract code inspection/compilation in this lane; DB-backed auth/privacy probes could not run without the local test Postgres."
+        },
+        "accessibility": {
+          "status": "blocked",
+          "violations": [],
+          "notes": "Component assertions still cover named controls, accessible chart role, table fallback, no dead anchors, and Editorial guardrails. Browser keyboard/axe traversal was blocked by local runtime startup failure."
+        }
+      },
+      "overall_status": "blocked"
     },
     {
       "feature_id": "insights-002",
