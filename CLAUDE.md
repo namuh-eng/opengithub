@@ -34,10 +34,12 @@ All commands go through `make`. The Makefile is a contract — onboarding wires 
 
 1. **In a fresh worktree, run `make doctor` first.** It prints a green/red checklist (Docker, postgres-test container, .env.test, .env).
 2. **If anything is red, run `make setup-local`.** It's idempotent — boots Docker if needed, starts the postgres-test container, runs migrations.
-3. **Then run `make all && make test-e2e`.** Use the committed `.env.test` (`TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test`). Do NOT invent a `TEST_DATABASE_URL` — the watchdog wasted many cycles doing that.
+3. **Then run `make all && make test-e2e`.** Use the committed `.env.test` (`TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test`). Do NOT invent a `TEST_DATABASE_URL` — previous automation wasted many cycles doing that.
 4. **`make test-e2e` exiting with "no Playwright detail" means the DB was unreachable** — go back to step 2. Do not log this as "verified".
 
 The test DB definition is in `docker-compose.test.yml` (port 55433, user/pass `opengithub`/`opengithub`, db `opengithub_test`). `.env.test` is committed and matches it.
+
+QA/code lanes are orchestrated by Hermes Agent. Use the committed `hack/` scripts below for worktree setup, per-worktree Cargo cache isolation, dependency install, doctor checks, and cleanup.
 
 ## Worktrees
 Use `./hack/create_worktree.sh [name] [base]`. It:
