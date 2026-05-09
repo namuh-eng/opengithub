@@ -77,6 +77,11 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     seed_release_webhook(&pool, repo.id, &owner).await;
 
     let manage_uri = format!("/api/repos/{}/{}/releases/manage", owner.email, repo.name);
+    let (anonymous_context_status, _, anonymous_context_body) =
+        send_json(app.clone(), Method::GET, &manage_uri, None, None).await;
+    assert_eq!(anonymous_context_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_context_body["error"]["code"], "not_authenticated");
+
     let (reader_context_status, _, reader_context_body) = send_json(
         app.clone(),
         Method::GET,
@@ -140,6 +145,21 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
         .unwrap()
         .contains("#1 Release polish"));
 
+    let (anonymous_notes_status, _, anonymous_notes_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{manage_uri}/generated-notes"),
+        None,
+        Some(json!({
+            "target": "main",
+            "previousTag": "v0.9.0",
+            "title": "anonymous attempt"
+        })),
+    )
+    .await;
+    assert_eq!(anonymous_notes_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_notes_body["error"]["code"], "not_authenticated");
+
     let (intent_status, _, intent_body) = send_json(
         app.clone(),
         Method::POST,
@@ -164,6 +184,21 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     assert!(!intent_body.to_string().contains("releases/pending"));
     let upload_intent_id = Uuid::parse_str(intent_body["id"].as_str().unwrap()).unwrap();
 
+    let (anonymous_intent_status, _, anonymous_intent_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{manage_uri}/upload-intents"),
+        None,
+        Some(json!({
+            "name": "anonymous.zip",
+            "contentType": "application/zip",
+            "byteSize": 32
+        })),
+    )
+    .await;
+    assert_eq!(anonymous_intent_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_intent_body["error"]["code"], "not_authenticated");
+
     let (invalid_intent_status, _, invalid_intent_body) = send_json(
         app.clone(),
         Method::POST,
@@ -180,6 +215,24 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     assert_eq!(invalid_intent_body["error"]["code"], "validation_failed");
 
     let release_uri = format!("/api/repos/{}/{}/releases", owner.email, repo.name);
+    let (anonymous_create_status, _, anonymous_create_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &release_uri,
+        None,
+        Some(json!({
+            "tagName": "v1.0.0",
+            "target": "main",
+            "title": "Anonymous release",
+            "body": "No token",
+            "draft": false,
+            "prerelease": false
+        })),
+    )
+    .await;
+    assert_eq!(anonymous_create_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_create_body["error"]["code"], "not_authenticated");
+
     let (create_status, _, create_body) = send_json(
         app.clone(),
         Method::POST,

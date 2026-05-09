@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 48,
+    "features_passed": 49,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 39,
+      "pass": 40,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 36,
+      "pass": 37,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 2,
+      "pass": 3,
       "fail": 0,
       "skip": 39
     }
@@ -1516,10 +1516,16 @@
       "feature_id": "releases-002",
       "description": "Create, edit, publish, draft, prerelease, delete, and upload assets for reposito",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": "pass",
+        "api_contract": "pass",
+        "security": "pass",
+        "accessibility": "pass"
+      },
+      "notes": "QA fixed generated-notes PR range inclusion, upload audit payload metadata, and route-level auth for release write/manage endpoints. Focused Rust scenario, focused Vitest, make check, and focused Playwright release smoke passed; full Cargo tests passed, while full web Vitest retains unrelated date-sensitive failures outside releases."
     },
     {
       "feature_id": "releases-003",
