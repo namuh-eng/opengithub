@@ -89,7 +89,7 @@ test("branches overview renders live rows and concrete actions", async ({
   ).toHaveAttribute("href", /\/commits\/main/);
 
   await page.getByLabel("Search branches").fill("main");
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByLabel("Search branches").press("Enter");
   await expect(page).toHaveURL(/\/branches\?q=main/);
   await expect(page.getByRole("link", { name: "Clear" })).toBeVisible();
 
@@ -98,7 +98,7 @@ test("branches overview renders live rows and concrete actions", async ({
   await expect(page.getByText(/branches$/).first()).toBeVisible();
 
   await page.getByLabel("Search branches").fill("feature");
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByLabel("Search branches").press("Enter");
   await expect(page).toHaveURL(/\/branches\?tab=all&q=feature/);
   await expect(
     page.getByRole("link", { name: "Search: feature" }),
