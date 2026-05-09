@@ -1811,10 +1811,15 @@
       "feature_id": "personal-settings-002",
       "description": "Render and save personal notification delivery preferences for web/email channel",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": "pass",
+        "api_contract": "pass",
+        "security": "pass",
+        "accessibility": "pass"
+      }
     },
     {
       "feature_id": "credentials-001",

@@ -33,7 +33,24 @@ async fn database_pool() -> Option<PgPool> {
         .await
         .ok()?;
     MIGRATOR.run(&pool).await.ok()?;
+    reset_rate_limit_subject(&pool, "ip", "unknown").await;
+    reset_rate_limit_subject(&pool, "ip", "203.0.113.44").await;
     Some(pool)
+}
+
+async fn reset_rate_limit_subject(pool: &PgPool, subject_type: &str, subject_key: &str) {
+    sqlx::query(
+        r#"
+        DELETE FROM rate_limit_buckets
+        WHERE subject_type = $1
+          AND subject_key = $2
+        "#,
+    )
+    .bind(subject_type)
+    .bind(subject_key)
+    .execute(pool)
+    .await
+    .expect("test rate limit bucket should reset");
 }
 
 fn app_config() -> AppConfig {
@@ -103,7 +120,8 @@ async fn send_raw(
         .method(method)
         .uri(uri)
         .header(header::USER_AGENT, "api-contract-hardening-test/1.0")
-        .header(header::ACCEPT, "application/json");
+        .header(header::ACCEPT, "application/json")
+        .header("x-forwarded-for", "203.0.113.44");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
