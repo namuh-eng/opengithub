@@ -10628,3 +10628,72 @@ Browser note: focused repository-releases Playwright was attempted after setup-l
 - Hardened package-detail Playwright smoke for this QA environment: Docker psql fallback, API health wait, local test rate-limit reset, longer timeout, and explicit X-Forwarded-For on the metadata probe.
 - Verification passed: make check; focused Rust package_detail_contract (4 passed); focused package-detail Vitest (8 passed); focused Playwright package-detail.spec.ts (2 passed) with screenshots under ralph/screenshots/build/packages-002-final-*.jpg.
 - Full make test was attempted twice. First stopped in unrelated Actions dashboard tests from shared rate-limit state; after clearing rate_limit_buckets it progressed and stopped in unrelated api_repository_search_contract username/email assertions.
+
+
+--- merged QA packages-003 evidence branch qa-opengithub-packages-003-mainqa-20260508 ---
+ scan with zero matches.
+- Broad make test is still blocked by unrelated api_pull_request_create_contract fork-head 403 outside profiles-001; broad make test-e2e wrapper hung/buffered after a transient db-wait message, but direct DB readiness and focused profile Playwright passed.
+- Marked profiles-001.qa_pass=true.
+
+2026-05-08 - settings-001 fresh QA pass (clawhip)
+
+- Ran `make doctor` first in `qa/opengithub-settings-001-clawhip`: Docker/test Postgres/.env.test healthy; `.env` only warned as live OAuth/AWS optional.
+- Verified settings-001 only: focused Vitest `repository-general-settings-page.test.tsx` passed 8/8; DB-backed Rust `repository_settings_contract` passed 2/2 through `hack/cargo_locked.sh` with `.env.test`; focused Playwright `repository-settings-general.spec.ts` passed setup + Chromium 2/2 and generated final desktop/mobile/forbidden screenshots.
+- Broad gates passed: `CARGO_BUILD_JOBS=1 make check` (Cargo check, web typecheck, Clippy, Biome) and `CARGO_BUILD_JOBS=1 make test` (Cargo tests plus web tests 655 passed).
+- Security/API probes: local Rust API anonymous GET/PATCH `/api/repos/namuh-eng/opengithub/settings` returned JSON 401 `not_authenticated`; hostile-Origin OPTIONS returned 405 without origin reflection.
+- Editorial source scan over settings-001 files found zero banned GitHub color, Primer, or Octicon matches.
+- Attempted broad `make test-e2e`; `db-wait-test` reported :55433 not ready and all-suite Playwright later hung in `dashboard_e2e_seed` under local contention, so it was terminated and not counted as a pass. Immediate `make doctor` rerun was green; focused settings-001 E2E remains the accepted browser evidence.
+- Set `settings-001.qa_pass=true` based on current non-self-skipped focused evidence; no product/test-fixture code changes were needed.
+
+2026-05-08 - settings-002 QA fresh pass
+
+- QA verified `settings-002` in the clawhip lane against the committed local test DB on `localhost:55433` after restoring Docker/test Postgres health; no product code changes were required.
+- Evidence: `repository_access_settings_contract` passed 1/1 without self-skip, focused `repository-access-settings-page` Vitest passed 7/7, focused `repository-settings-access` Playwright passed setup + Chromium, mandatory Editorial banned-value scan returned zero matches, `make check` passed, and `make test` passed with Cargo tests plus 655 web tests.
+- Caveat: broad `make test-e2e` was attempted but not counted because `db-wait-test` warned Postgres was not ready under concurrent suite contention and the wrapper was terminated by signal 15 after silence; focused settings-002 runtime E2E passed after a green doctor.
+- Set `settings-002.qa_pass=true`; remaining deeper QA is deployed SES delivery, invitation acceptance lifecycle, concurrent admin race coverage, and production-like org/team inheritance stress.
+
+2026-05-08T12:37:14Z - settings-003 QA blocked in clawhip lane
+- Started with `git status --short --branch` on `qa/opengithub-settings-003-clawhip`; initial `make doctor` was blocked by the missing ignored `.ralph-setup-done` sentinel, restored the local sentinel, and verified the shared test Postgres on `localhost:55433` before focused DB checks.
+- Passed focused non-skipped evidence: `repository_branch_settings_contract` 1/1, `api_pull_request_detail_contract` 2/2, `git_transport` 8/8, focused branch-settings/API-docs/PR-detail Vitest 29/29, `make check`, `make test` with web 655 tests, and the mandatory Editorial banned-value scan with zero matches.
+- Blocker: Docker/Postgres became unstable during browser verification. Focused `repository-settings-branches.spec.ts` did not complete against a healthy runtime (404/login fallback after API/session degradation), and `make test-e2e` reported `db-wait-test` timeout for `:55433` before hanging under the broad Playwright wrapper and being terminated.
+- No product bug was confirmed from the failed browser run; `settings-003.qa_pass` remains `false` pending stable DB/API/browser runtime evidence.
+
+2026-05-08T23:30:04Z - settings-003 QA rerun passed
+- Repaired the committed localhost:55433 test DB runtime, replaced the prior bf426621 blocker with focused non-skipped Rust/API, Vitest, live curl, and Playwright evidence, and set settings-003 qa_pass=true.
+- Fixed branch policy aggregation so force-push/deletion allowances are most-restrictive across overlapping active branch rules and rulesets, with repository_branch_settings_contract regression coverage.
+- Verification evidence: repository_branch_settings_contract 2/2, focused PR mergeability contract, focused git_transport receive-pack contract, focused branch settings/API docs/PR detail Vitest 29/29, focused repository-settings-branches Playwright 2/2, live API auth/CORS probes, make check, and Editorial banned-value scan.
+- Known unrelated baseline: broad make test web Vitest has 12 non-settings date-expectation failures; Cargo tests passed and focused settings-003 web tests passed.
+
+[2026-05-08T12:30:22Z] settings-004 QA blocked in clawhip lane: real DB Rust contracts passed (repository_webhook_settings_contract 2/2, webhook_delivery_worker 1/1), focused webhook Vitest passed 9/9, Editorial banned-value scan clean, make check passed, and make test passed (Cargo + 655 web tests). Patched repository-settings-hooks Playwright to use shared auth fixture. Focused Playwright runtime smoke remains blocked by local Docker/Postgres instability: dashboard_e2e_seed failed with pool timed out while waiting for an open connection during webServer runs. prd settings-004.qa_pass intentionally remains false.
+
+2026-05-08T23:30:45Z - settings-004 QA rerun pass
+- Restored a manageable local test DB on the committed .env.test localhost:55433 path after the previous blocker was caused by a foreign/stale opengithub-postgres-test Compose owner.
+- Verification passed: make doctor green; repository_webhook_settings_contract 2/2; webhook_delivery_worker 1/1; focused webhook Vitest 9/9; focused Chromium repository-settings-hooks Playwright setup + 1/1 feature test; live unauthenticated webhook API probes and hostile-Origin CORS probe; mandatory Editorial banned-value scan; make check.
+- Broad make test was attempted: Cargo tests passed, but broad Vitest has unrelated date-drift failures outside settings-004. Broad make test-e2e was attempted but terminated as invalid because concurrent settings QA caused db-wait failure and Playwright reused another worktree server on :3015. Set settings-004.qa_pass=true based on durable focused evidence.
+
+2026-05-08 - settings-005 QA blocked on required Ever browser evidence
+- Independent QA verified settings-005 focused contracts: repository_actions_secrets_contract passed 2/2 without self-skip against TEST_DATABASE_URL after clean test DB recovery; api_repository_actions_job_log_contract job_log_detail_groups_steps_searches_lines_and_reads_options passed 1/1.
+- Focused UI validation passed after a small fix to success status copy: RepositoryActionsSecretsPage Vitest passed 6/6 and repository-settings-secrets Playwright passed setup plus Chromium 2/2, covering secret/variable create-update-delete, write-only secret redaction, restricted state, no dead controls, and mobile no-overflow.
+- make check passed; make test passed with Cargo tests plus 655 web tests; mandatory Editorial banned-value scan over relevant settings-005 web/src files excluding og*.css returned zero matches.
+- Broad make test-e2e was attempted but not counted for pass: first run failed outside settings-005 after 65 passing tests due No space left on device from a raw worktree target write in profile-overview; shared-target rerun hung after a db-wait warning and was stopped to pursue the controller-required Ever QA.
+- Ever QA blocker: make dev booted Next on :3015 and Rust API, but dashboard_e2e_seed failed with 'pool timed out while waiting for an open connection' after Docker/test DB became unavailable; ever doctor showed everd/API OK, ever start --url http://localhost:3015 hung without creating an active session, and ever sessions reported no active sessions. settings-005.qa_pass remains false.
+
+2026-05-08 settings-005 QA rerun: passed after fixing UTC date rendering for Actions secrets/variables metadata. Evidence: repository_actions_secrets_contract 2/2 without self-skip plus compiled binary 2/2 in 7.07s; job-log masking contract 1/1; RepositoryActionsSecretsPage Vitest 6/6; isolated-target make check passed Cargo check, Web typecheck, Clippy, and Biome. make doctor remains a false negative in this worktree because the shared fixed-name Postgres container is owned by settings-003 compose and local pg_isready is unavailable; docker exec pg_isready and DB-backed contracts proved connectivity. Current Playwright rerun was not counted because :3015/:3016 were owned by settings-003, but prior same-branch browser smoke from a2fa6075 covered CRUD/no-leakage/no-dead-control/mobile behavior.
+
+2026-05-08 - settings-006 QA rerun accepted
+- Verified Pages source/domain/settings flows after build_pass=true; fixed Actions deployment creation to persist the actual workflow_run_id instead of the workflow definition id.
+- Tightened reader privacy redaction for deployment metadata: workflow artifact IDs, storage keys, manifests, build logs, and failure reasons are hidden for non-admin readers.
+- Added regression coverage for unique custom domains, Actions deployment metadata, and reader-safe E2E rendering; marked settings-006 qa_pass=true.
+- Evidence: make check passed; cargo fmt --all --check passed; ./hack/cargo_locked.sh test --test repository_pages_settings_contract -- --nocapture passed 2/2 but self-skipped DB-backed bodies because this controller run lacked Docker socket access/TEST_DATABASE_URL; cd web && npx vitest run tests/repository-pages-settings-page.test.tsx tests/api-docs.test.tsx passed 11/11. make doctor reported Docker socket permission/no test Postgres in this controller environment, so DB-backed claims rely on the prior QA lane plus focused non-DB/controller reruns.
+
+[QA releases-001 mainqa 2026-05-09T03:12:00Z]
+Status: QA PASS with environment-limited browser smoke. Fixed slash-containing release tag URL encoding, singular viewer reaction toggle semantics, and release Playwright fixture Docker psql/API readiness portability.
+Evidence: make setup-local/doctor initially healthy, later docker exec pg_isready proved Postgres accepting connections despite a shared compose-owner doctor false negative; cd web && npm test -- tests/repository-releases-page.test.tsx passed 17 tests; TEST_DATABASE_URL=... ./hack/cargo_locked.sh test -p opengithub-api --test repository_releases_contract passed 2 tests; make check passed Cargo check, web typecheck, Clippy, Biome; make test passed Cargo workspace tests but web Vitest has 11 unrelated date-sensitive non-release failures.
+Browser note: focused repository-releases Playwright was attempted after setup-local; fixture psql/API readiness issues were fixed, but live browser completion remained blocked by concurrent qa-opengithub-releases-002-rerun processes occupying fixed ports 3015/3016.
+
+2026-05-09T05:45:00Z - packages-003 QA pass
+- Verified packages-003 registry API and Actions workflow integration with real Postgres on localhost:55433 despite a make doctor compose-owner false negative.
+- Fixed workflow-token /v2/token exchange, Docker-Content-Digest on completed blob uploads, current PAT fixture ownership, runner setup/heartbeat token validation, and focused test rate-limit isolation.
+- Evidence: package_registry_contract 3/3; api_repository_actions_runners_contract 1/1; api_repository_actions_push_trigger_contract focused PR trigger 1/1; web api-docs Vitest 3/3; Playwright api-docs setup + 2 Chromium tests; make check passed.
+- Full make test was attempted and remains blocked outside packages-003 by api_repository_search_contract owner identifier expectation failures after package/Actions focused contracts passed.
+- Marked packages-003.qa_pass=true.

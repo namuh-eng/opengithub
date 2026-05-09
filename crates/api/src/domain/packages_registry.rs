@@ -79,6 +79,7 @@ pub struct RegistryUploadProgress {
     pub location: String,
     pub range: String,
     pub size_bytes: i64,
+    pub digest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -266,19 +267,22 @@ pub async fn exchange_registry_token(
     let Some(token) = registry_token_from_headers(headers) else {
         return Err(RegistryError::Unauthorized);
     };
-    let verified =
-        verify_personal_access_token(pool, &token)
-            .await
-            .map_err(|error| match error {
-                PersonalAccessTokenError::Invalid
-                | PersonalAccessTokenError::InvalidSudoConfirmation
-                | PersonalAccessTokenError::SudoRequired
-                | PersonalAccessTokenError::Validation(_)
-                | PersonalAccessTokenError::Forbidden => RegistryError::InvalidToken,
-                PersonalAccessTokenError::Sqlx(error) => RegistryError::Sqlx(error),
-            })?;
-    if !verified.allows_package_read() {
-        return Err(RegistryError::InsufficientScope);
+    match verify_personal_access_token(pool, &token).await {
+        Ok(verified) => {
+            if !verified.allows_package_read() {
+                return Err(RegistryError::InsufficientScope);
+            }
+        }
+        Err(
+            PersonalAccessTokenError::Invalid
+            | PersonalAccessTokenError::InvalidSudoConfirmation
+            | PersonalAccessTokenError::SudoRequired
+            | PersonalAccessTokenError::Validation(_)
+            | PersonalAccessTokenError::Forbidden,
+        ) => {
+            registry_workflow_auth(pool, &token).await?;
+        }
+        Err(PersonalAccessTokenError::Sqlx(error)) => return Err(RegistryError::Sqlx(error)),
     }
     Ok(RegistryToken {
         token: token.clone(),
@@ -424,6 +428,7 @@ pub async fn append_blob_upload(
         location: upload_location(namespace, image, upload_id),
         range: registry_range(size),
         size_bytes: size,
+        digest: None,
     })
 }
 
@@ -508,6 +513,7 @@ pub async fn complete_blob_upload(
         location: format!("/v2/{namespace}/{image}/blobs/{digest}"),
         range: registry_range(size),
         size_bytes: size,
+        digest: Some(digest),
     })
 }
 

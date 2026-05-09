@@ -513,6 +513,12 @@ fn upload_progress_response(
         header::RANGE,
         HeaderValue::from_str(&upload.range).unwrap_or_else(|_| HeaderValue::from_static("0-0")),
     );
+    if let Some(digest) = upload.digest {
+        response_headers.insert(
+            "docker-content-digest",
+            HeaderValue::from_str(&digest).unwrap_or_else(|_| HeaderValue::from_static("")),
+        );
+    }
     (status, response_headers, Json(json!({}))).into_response()
 }
 

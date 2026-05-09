@@ -3851,5 +3851,84 @@
       "Focused package Playwright test depended on host psql and raced API startup/rate-limit state in this QA environment."
     ],
     "fix_description": "Switched user/org package settings PATCH handlers to RestJson, declared camelCase fields for PackageSettingsMutation, hardened package detail contract tests for malformed JSON and settings action variants, isolated contract rate-limit subjects, and made the package-detail Playwright seed/smoke robust to Docker-only psql plus API startup/rate-limit state."
+  },
+  {
+    "feature_id": "packages-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed registry contract passed push/upload, manifest publish/read/delete, tag listing, blob pulls, download accounting, workflow-token publish, repository linking, webhook queueing, and audit redaction. Focused docs UI Vitest and Playwright passed for developer-facing registry snippets."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /v2/",
+          "GET /v2/token",
+          "POST/PATCH/PUT/DELETE /v2/{namespace}/{image}/blobs/uploads/",
+          "GET/HEAD /v2/{namespace}/{image}/blobs/{digest}",
+          "GET/HEAD/PUT/DELETE /v2/{namespace}/{image}/manifests/{reference}",
+          "GET /v2/{namespace}/{image}/tags/list"
+        ],
+        "notes": "Focused package_registry_contract passed 3/3 against real Postgres without self-skips and covers PAT plus workflow token authentication, read/write scopes, private redaction, media negotiation, digest validation, Docker response headers, and storage-key redaction."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "scope_enforcement",
+          "private_redaction",
+          "storage_key_redaction",
+          "runner_token_validation"
+        ],
+        "notes": "No critical package leakage found. Fixed workflow token exchange support and made runner heartbeats require the persisted runner registration token before updating private repository runners."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "No primary package registry UI was changed. Focused api-docs Playwright covered visible developer docs snippets and mobile no-overflow."
+      }
+    },
+    "tested_steps": [
+      "make doctor -> false negative in this worktree: Docker and shared opengithub-postgres-test were up, but current compose project could not exec the foreign-owned fixed-name container; docker inspect/logs/health showed healthy Postgres on localhost:55433 and DB-backed tests used the committed .env.test URL.",
+      "make setup-local -> blocked by existing fixed-name opengithub-postgres-test container owned by qa-opengithub-packages-001-mainqa-20260508; did not invent an alternate DB URL.",
+      "TMPDIR=.scratch/tmp TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=... DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test package_registry_contract -- --nocapture -> 3 passed.",
+      "Focused Actions integration regressions passed: api_repository_actions_runners_contract 1/1 and api_repository_actions_push_trigger_contract pull_request_creation_dispatches_matching_workflow_runs 1/1.",
+      "cd web && npm test -- api-docs.test.tsx -> 3 passed.",
+      "cd web && TMPDIR=../.scratch/tmp TEST_DATABASE_URL=... npx playwright test api-docs.spec.ts -> setup + 2 Chromium docs tests passed.",
+      "make check -> Cargo check, web typecheck, Clippy, and Biome passed.",
+      "make test attempted repeatedly. After fixing package/Actions blockers it progressed to unrelated api_repository_search_contract expectation failures around owner username vs email; not counted as package failure."
+    ],
+    "bugs_found": [
+      {
+        "description": "Workflow package tokens could push directly but could not pass the Docker token exchange endpoint, returning invalid registry token from /v2/token.",
+        "fix": "Fell back to package_workflow_tokens validation in exchange_registry_token and added workflow-token /v2/token contract coverage."
+      },
+      {
+        "description": "Completed blob uploads returned 201 without Docker-Content-Digest, breaking Docker-compatible clients that expect the canonical blob digest header.",
+        "fix": "Carried the validated digest through RegistryUploadProgress and emitted Docker-Content-Digest on completed upload responses."
+      },
+      {
+        "description": "Actions runner setup surfaced a fresh random token instead of the persisted runner token, and private runner heartbeats had no runner-token validation path.",
+        "fix": "Return the persisted runner registration token in setup, accept runnerToken/x-opengithub-runner-token on heartbeat, and validate it in the heartbeat update."
+      },
+      {
+        "description": "Focused contracts were susceptible to shared anonymous rate-limit buckets and an Actions PR fixture modeled a partial head tree.",
+        "fix": "Assigned unique forwarded IPs in affected contract helpers and made the PR fixture/assertion reflect realistic changed-path behavior."
+      }
+    ],
+    "fixes_made": [
+      "Registry /v2/token now accepts valid workflow package tokens as well as PATs, preserving packages:read enforcement.",
+      "Completed blob uploads now return Docker-Content-Digest on the 201 response.",
+      "Package registry contract PAT fixtures now satisfy the current resource_owner_user_id schema and isolate simulated client IPs from shared rate-limit buckets.",
+      "Actions runner setup now returns the persisted runner registration token, and runner heartbeat validates that token for private repositories.",
+      "Focused Actions tests were hardened for realistic full-tree PR fixtures and isolated request identities."
+    ],
+    "qa_pass": true,
+    "known_gaps": [
+      "Full make test is still not green in this worktree; latest failure is outside packages-003 in api_repository_search_contract owner identifier expectations after package registry and focused Actions contracts passed.",
+      "make doctor remains a compose-owner false negative because the fixed opengithub-postgres-test container belongs to another QA compose project, although docker health/logs and DB-backed tests prove localhost:55433 is usable.",
+      "No real Docker CLI binary push/pull/delete smoke was run; the DB-backed Rust contract exercises Docker-compatible HTTP flows through the Axum app."
+    ]
   }
 ]

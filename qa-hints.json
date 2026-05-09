@@ -8385,5 +8385,21 @@
       "Install @axe-core/playwright or run the QA harness that provides it to add automated axe coverage for package detail/settings pages.",
       "Re-run package settings mutation coverage once packages-003 expands registry write controls beyond the current settings/admin surface."
     ]
+  },
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "QA pass verified package_registry_contract 3/3 against real Postgres with PAT and workflow-token registry auth, blob upload/pull, manifest push/read/delete, tag listing, package download accounting, repository linking, package webhook queueing, audit rows, and redaction.",
+      "Focused Actions runner and pull_request trigger regressions passed after runner-token validation/setup-token fixes and request-isolation hardening.",
+      "Focused API docs Vitest and Playwright passed for registry developer docs snippets and mobile no-overflow.",
+      "make check passed after fixes."
+    ],
+    "needs_deeper_qa": [
+      "Full make test is still not green in this worktree; latest failure is outside packages-003 in api_repository_search_contract owner identifier expectations after package registry and focused Actions contracts passed.",
+      "make doctor remains a compose-owner false negative because the fixed opengithub-postgres-test container belongs to another QA compose project, although docker health/logs and DB-backed tests prove localhost:55433 is usable.",
+      "No real Docker CLI binary push/pull/delete smoke was run; the DB-backed Rust contract exercises Docker-compatible HTTP flows through the Axum app.",
+      "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
+      "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
+    ]
   }
 ]

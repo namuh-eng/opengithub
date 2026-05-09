@@ -81,8 +81,10 @@ async fn create_pat(pool: &PgPool, user_id: Uuid, scopes: &[&str]) -> String {
         .to_owned();
     sqlx::query(
         r#"
-        INSERT INTO personal_access_tokens (user_id, name, prefix, token_hash, scopes, expires_at)
-        VALUES ($1, 'Registry contract token', $2, $3, $4, $5)
+        INSERT INTO personal_access_tokens (
+            user_id, name, prefix, token_hash, scopes, expires_at, resource_owner_user_id
+        )
+        VALUES ($1, 'Registry contract token', $2, $3, $4, $5, $1)
         "#,
     )
     .bind(user_id)
@@ -306,7 +308,10 @@ async fn request_with_body(
     headers: HeaderMap,
     body: Body,
 ) -> (StatusCode, HeaderMap, Vec<u8>) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(uri).header(
+        "x-forwarded-for",
+        format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1),
+    );
     for (name, value) in headers {
         if let Some(name) = name {
             builder = builder.header(name, value);
@@ -638,6 +643,13 @@ async fn registry_workflow_token_publish_links_repository_and_enqueues_package_e
     )
     .await;
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), app_config());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&workflow_token));
+    let (status, _, body) = request(app.clone(), Method::GET, "/v2/token", headers).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json_body(&body)["token"], workflow_token);
+    assert_eq!(json_body(&body)["expiresIn"], 900);
 
     let upload_blob = |app: axum::Router,
                        token: String,

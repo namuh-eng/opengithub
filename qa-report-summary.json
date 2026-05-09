@@ -1622,10 +1622,23 @@
       "feature_id": "packages-003",
       "description": "Implement OCI/container package registry APIs for authenticated push, pull, tag ",
       "category": "developer-experience",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass"
+        },
+        "api_contract": {
+          "status": "pass"
+        },
+        "security": {
+          "status": "pass"
+        },
+        "accessibility": {
+          "status": "pass"
+        }
+      }
     },
     {
       "feature_id": "notifications-001",
