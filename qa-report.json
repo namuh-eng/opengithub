@@ -3864,5 +3864,48 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "commits-001",
+    "attempt": 1,
+    "status": "partial",
+    "timestamp": "2026-05-09T08:44:36Z",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Controller inspected the existing commit history implementation and focused non-DB tests. Browser/API/DB-backed acceptance verification could not be counted because make doctor reports Docker daemon not running, postgres-test container not running, and localhost:55433 unreachable; make setup-local timed out after printing \u201cCould not start Docker. Open it manually and rerun.\u201d"
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/commits (contract inspected, not live DB-verified)"
+        ],
+        "notes": "DB-backed API contract could not be run against the fixed localhost:55433/opengithub_test database because the local verification stack is unavailable."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [],
+        "notes": "Unauthenticated/security probes were not counted for this feature because the live API/E2E stack could not be brought up."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Browser/a11y verification not counted; local E2E stack blocked before reliable page execution."
+      }
+    },
+    "tested_steps": [
+      "Preserved the worker pane tail in .scratch/commits-001-worker-pane-tail.txt, then killed the stale worker lane to prevent repeated self-skipped DB/E2E claims.",
+      "Cleaned launch-helper dirt from .clawhip/state/prompt-submit.json, .env.test, .envrc, hack/create_worktree.sh, hack/cleanup_worktree.sh, and hack/setup_repo.sh; final git status was scoped before QA artifact edits.",
+      "Ran make doctor: failed with Docker daemon not running, postgres-test container not running, and Postgres not reachable on :55433.",
+      "Ran make setup-local: timed out after \u201cStarting Docker Desktop...\u201d and \u201cCould not start Docker. Open it manually and rerun.\u201d; no DB/E2E pass counted.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome all passed.",
+      "Ran make test: Cargo tests passed, but the full web Vitest suite failed in unrelated dashboard/project/profile tests, so it is not pass evidence for commits-001.",
+      "Ran focused web commit-history coverage: cd web && npx vitest run tests/repository-commit-history-page.test.tsx \u2014 6/6 passed.",
+      "Ran focused repository-code-overview coverage that includes commit history rows/history links: cd web && npx vitest run tests/repository-code-overview.test.tsx \u2014 25/25 passed.",
+      "Ran focused Rust repository_code_overview tests through ./hack/cargo_locked.sh \u2014 2/2 filtered tests passed.",
+      "Inspected commits-001 PRD/artifacts and confirmed prd.json keeps qa_pass=false; no product code change made because live DB/browser verification is blocked."
+    ],
+    "bugs_found": [],
+    "fix_description": "No product fix committed. QA remains blocked on local Docker/test Postgres; focused static/unit/component evidence is green but insufficient for qa_pass=true."
   }
 ]

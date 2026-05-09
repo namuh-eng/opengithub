@@ -8402,5 +8402,18 @@
       "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
       "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Controller QA attempt on 2026-05-09: make check passed (Cargo check, Web typecheck, Clippy, Biome).",
+      "Focused commit history component coverage passed: repository-commit-history-page Vitest 6/6 and repository-code-overview Vitest 25/25, plus focused Rust repository_code_overview 2/2 filtered tests.",
+      "Full make test is not clean on current main: Cargo tests passed but web Vitest failed in unrelated dashboard/project/profile specs, so this was not counted as commits-001 pass evidence."
+    ],
+    "needs_deeper_qa": [
+      "commits-001 remains QA_BLOCKED rather than qa_pass=true because make doctor reports Docker daemon not running, postgres-test container not running, and localhost:55433 unreachable.",
+      "make setup-local timed out after “Could not start Docker. Open it manually and rerun.”; rerun DB-backed API and Playwright acceptance flows once the fixed test DB at localhost:55433/opengithub_test is available.",
+      "Preserved stale worker pane evidence in .scratch/commits-001-worker-pane-tail.txt and cleaned launch-helper dirt before committing QA artifacts."
+    ]
   }
 ]

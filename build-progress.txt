@@ -1,3 +1,10 @@
+2026-05-09 - commits-001 controller QA blocked on local verification stack
+
+- Controller inspected commits-001 after the external QA lane stalled, preserved the pane tail in `.scratch/commits-001-worker-pane-tail.txt`, killed the stale tmux session, and cleaned launch-helper dirt so helper files are not committed.
+- Verification passed: `make check`; focused `cd web && npx vitest run tests/repository-commit-history-page.test.tsx` (6/6); focused `cd web && npx vitest run tests/repository-code-overview.test.tsx` (25/25); focused `./hack/cargo_locked.sh test -p opengithub-api repository_code_overview --test repository_code_overview` (2/2 filtered).
+- Verification blocked/not counted: `make doctor` reports Docker daemon not running, `postgres-test` not running, and Postgres unreachable on `localhost:55433`; `make setup-local` timed out after “Could not start Docker. Open it manually and rerun.” Full `make test` has unrelated web Vitest failures outside commits-001.
+- `prd.json` remains `commits-001.qa_pass=false`; `qa-report.json` records this as partial/blocked instead of pretending DB/E2E passed.
+
 2026-05-07 - api-003 REST rate limits and API version headers
 
 - Completed `api-003` as the first `build_pass:false` PRD feature: REST responses now carry GitHub-compatible `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Used`, `X-RateLimit-Resource`, and `X-GitHub-Api-Version-Selected` headers, with `/rate_limit` and `/api/rate_limit` exposing current bucket state.
