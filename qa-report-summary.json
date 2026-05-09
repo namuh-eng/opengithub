@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 64,
+    "features_passed": 65,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 43,
+      "pass": 65,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 39,
+      "pass": 61,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 40,
+      "pass": 62,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 6,
+      "pass": 27,
       "fail": 0,
       "skip": 39
     }
@@ -1054,7 +1054,7 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
+          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
         },
         "api_contract": {
           "status": "pass",
@@ -1084,7 +1084,7 @@
         "accessibility": {
           "status": "pass",
           "violations": [],
-          "notes": "Files changed page uses semantic primitives — t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
+          "notes": "Files changed page uses semantic primitives \u2014 t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
         }
       },
       "overall_status": "pass"
@@ -2100,7 +2100,7 @@
         }
       }
     },
-        {
+    {
       "feature_id": "org-admin-004",
       "description": "Build organization teams list, empty state, team creation form, nested-team rule",
       "category": "settings",
@@ -2184,10 +2184,39 @@
       "feature_id": "insights-001",
       "description": "Render repository Pulse activity summary with period selector, overview metrics,",
       "category": "data",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fixed Pulse exact date range rendering to format API period boundaries in UTC, preventing May 1, 2026 UTC from displaying as Apr 30 in America/Los_Angeles. Focused RepositoryPulsePage Vitest passed 5/5, and focused Chromium Playwright verified the live Pulse page, period selector, overview metrics, concrete destination links, chart/table fallback, no dead controls, mobile no-overflow, and screenshot capture."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
+          ],
+          "notes": "DB-backed repository_pulse_contract passed 1/1 against the required test Postgres on localhost:55433 with TEST_DATABASE_URL from .env.test; no self-skip."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "private_repo_redaction",
+            "input_validation",
+            "data_exposure",
+            "cache_metadata"
+          ],
+          "notes": "repository_pulse_contract covers privacy/cache behavior against real Postgres, including private repository access/redaction paths and request validation; focused browser smoke used a signed session and concrete links without leaking internal storage/secrets."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component tests and Chromium Playwright verify named controls, Insights navigation/menu semantics, accessible chart role plus table fallback, no dead anchors, mobile no-overflow, and keyboard-reachable links/buttons. Automated axe was not separately run for this lane."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "insights-002",
@@ -2525,7 +2554,7 @@
     },
     {
       "feature_id": "search-007",
-      "description": "File finder widget — keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2534,7 +2563,7 @@
     },
     {
       "feature_id": "security-002",
-      "description": "Active web sessions panel — list devices, locations, signed-in time; revoke indi",
+      "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke indi",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2574,7 +2603,7 @@
     },
     {
       "feature_id": "security-003",
-      "description": "Security log — append-only audit trail of security-relevant actions (sign-in, si",
+      "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, si",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2613,7 +2642,7 @@
     },
     {
       "feature_id": "globalpulls-001",
-      "description": "Global pull-request dashboard at /pulls — every PR the signed-in user opened, wa",
+      "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, wa",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2650,7 +2679,7 @@
     },
     {
       "feature_id": "globalissues-001",
-      "description": "Global issue dashboard at /issues — every issue the signed-in user opened, was a",
+      "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was a",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2872,7 +2901,7 @@
     },
     {
       "feature_id": "gist-001",
-      "description": "Gists — single-file or multi-file snippets at /gist/<id> with their own git hist",
+      "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git hist",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2881,7 +2910,7 @@
     },
     {
       "feature_id": "ai-001",
-      "description": "AI surface — repository auto-summary card, AI-generated PR summary + suggested r",
+      "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
       "category": "feature",
       "qa_pass": false,
       "attempts": 2,
