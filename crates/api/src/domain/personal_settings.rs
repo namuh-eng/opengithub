@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -144,7 +144,8 @@ pub struct UserAvatar {
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePersonalProfileSettings {
     pub display_name: Option<String>,
-    pub public_email_id: Option<Option<Uuid>>,
+    #[serde(default)]
+    pub public_email_id: NullableUpdate<Uuid>,
     pub bio: Option<String>,
     pub pronouns: Option<String>,
     pub website_url: Option<String>,
@@ -165,6 +166,60 @@ pub struct UserSocialAccountInput {
     pub provider: String,
     pub handle_or_url: String,
     pub position: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum NullableUpdate<T> {
+    #[default]
+    Missing,
+    Null,
+    Value(T),
+}
+
+impl<'de, T> Deserialize<'de> for NullableUpdate<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct NullableUpdateVisitor<T>(std::marker::PhantomData<T>);
+
+        impl<'de, T> de::Visitor<'de> for NullableUpdateVisitor<T>
+        where
+            T: Deserialize<'de>,
+        {
+            type Value = NullableUpdate<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a null or value update")
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(NullableUpdate::Null)
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(NullableUpdate::Null)
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                T::deserialize(deserializer).map(NullableUpdate::Value)
+            }
+        }
+
+        deserializer.deserialize_option(NullableUpdateVisitor(std::marker::PhantomData))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -313,7 +368,7 @@ pub async fn update_personal_profile_settings(
     user_id: Uuid,
     input: UpdatePersonalProfileSettings,
 ) -> Result<PersonalProfileSettings, PersonalSettingsError> {
-    if let Some(Some(public_email_id)) = input.public_email_id {
+    if let NullableUpdate::Value(public_email_id) = &input.public_email_id {
         let exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM user_email_addresses WHERE id = $1 AND user_id = $2)",
         )
@@ -342,30 +397,32 @@ pub async fn update_personal_profile_settings(
         }
     }
 
-    let public_email_for_update = input.public_email_id.flatten();
+    let (public_email_present, public_email_for_update) = match input.public_email_id {
+        NullableUpdate::Missing => (false, None),
+        NullableUpdate::Null => (true, None),
+        NullableUpdate::Value(public_email_id) => (true, Some(public_email_id)),
+    };
     sqlx::query(
         r#"
         UPDATE users
         SET display_name = COALESCE($2, display_name),
-            public_email_id = COALESCE($3, public_email_id),
-            bio = COALESCE($4, bio),
-            pronouns = COALESCE($5, pronouns),
-            website_url = COALESCE($6, website_url),
-            company = COALESCE($7, company),
-            location = COALESCE($8, location),
-            display_local_time = COALESCE($9, display_local_time),
-            time_zone = COALESCE($10, time_zone),
-            private_profile = COALESCE($11, private_profile),
-            profile_visibility = CASE WHEN COALESCE($11, private_profile) THEN 'private' ELSE 'public' END,
-            show_private_contribution_count = COALESCE($12, show_private_contribution_count),
-            achievements_enabled = COALESCE($13, achievements_enabled),
-            preferred_language = COALESCE($14, preferred_language)
+            bio = COALESCE($3, bio),
+            pronouns = COALESCE($4, pronouns),
+            website_url = COALESCE($5, website_url),
+            company = COALESCE($6, company),
+            location = COALESCE($7, location),
+            display_local_time = COALESCE($8, display_local_time),
+            time_zone = COALESCE($9, time_zone),
+            private_profile = COALESCE($10, private_profile),
+            profile_visibility = CASE WHEN COALESCE($10, private_profile) THEN 'private' ELSE 'public' END,
+            show_private_contribution_count = COALESCE($11, show_private_contribution_count),
+            achievements_enabled = COALESCE($12, achievements_enabled),
+            preferred_language = COALESCE($13, preferred_language)
         WHERE id = $1
         "#,
     )
     .bind(user_id)
     .bind(display_name)
-    .bind(public_email_for_update)
     .bind(bio)
     .bind(pronouns)
     .bind(website_url)
@@ -379,6 +436,14 @@ pub async fn update_personal_profile_settings(
     .bind(preferred_language)
     .execute(pool)
     .await?;
+
+    if public_email_present {
+        sqlx::query("UPDATE users SET public_email_id = $2 WHERE id = $1")
+            .bind(user_id)
+            .bind(public_email_for_update)
+            .execute(pool)
+            .await?;
+    }
 
     if let Some(accounts) = input.social_accounts {
         replace_social_accounts(pool, user_id, accounts).await?;
@@ -522,7 +587,7 @@ pub async fn update_personal_avatar(
 }
 
 async fn ensure_primary_email(pool: &PgPool, user_id: Uuid) -> Result<(), PersonalSettingsError> {
-    sqlx::query(
+    let inserted_email_id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO user_email_addresses (user_id, email, is_primary, is_public, verified_at)
         SELECT u.id, u.email, true, true, now()
@@ -532,22 +597,27 @@ async fn ensure_primary_email(pool: &PgPool, user_id: Uuid) -> Result<(), Person
               SELECT 1 FROM user_email_addresses e
               WHERE e.user_id = u.id AND lower(e.email) = lower(u.email)
           )
+        RETURNING id
         "#,
     )
     .bind(user_id)
-    .execute(pool)
+    .fetch_optional(pool)
     .await?;
-    sqlx::query(
-        r#"
-        UPDATE users u
-        SET public_email_id = e.id
-        FROM user_email_addresses e
-        WHERE u.id = $1 AND e.user_id = u.id AND e.is_primary = true AND u.public_email_id IS NULL
-        "#,
-    )
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+
+    if let Some(email_id) = inserted_email_id {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET public_email_id = $2
+            WHERE id = $1 AND public_email_id IS NULL
+            "#,
+        )
+        .bind(user_id)
+        .bind(email_id)
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
 
@@ -769,5 +839,27 @@ fn fallback_login_from_email(email: &str) -> String {
         "user".to_owned()
     } else {
         trimmed.to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NullableUpdate, UpdatePersonalProfileSettings};
+    use uuid::Uuid;
+
+    #[test]
+    fn public_email_patch_distinguishes_missing_null_and_value() {
+        let missing: UpdatePersonalProfileSettings =
+            serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(matches!(missing.public_email_id, NullableUpdate::Missing));
+
+        let null: UpdatePersonalProfileSettings =
+            serde_json::from_value(serde_json::json!({ "publicEmailId": null })).unwrap();
+        assert!(matches!(null.public_email_id, NullableUpdate::Null));
+
+        let id = Uuid::new_v4();
+        let value: UpdatePersonalProfileSettings =
+            serde_json::from_value(serde_json::json!({ "publicEmailId": id })).unwrap();
+        assert!(matches!(value.public_email_id, NullableUpdate::Value(actual) if actual == id));
     }
 }

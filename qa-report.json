@@ -4000,5 +4000,63 @@
       "api_security": "pass: anonymous GET/PATCH 401; evil OPTIONS 405 no Access-Control-Allow-Origin echo",
       "full_make_test": "attempted; unrelated organization_profile_settings_contract blocker after personal notification API tests passed"
     }
+  },
+  {
+    "feature_id": "personal-settings-001",
+    "attempt": 1,
+    "status": "pass",
+    "qa_pass": true,
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified /settings/profile implementation against PRD fields for public profile, avatar controls, optional identity fields, social accounts, local time/time zone, preferred language, and profile activity privacy. Fixed and proved optional public email clearing; focused React test covers rendering, dirty-state save, inline URL/avatar validation, privacy save, live controls, and accessible button names."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/user/settings/profile",
+          "PATCH /api/user/settings/profile",
+          "PATCH /api/user/settings/profile/avatar"
+        ],
+        "notes": "DB-backed personal_profile_settings_contract passed 2/2 against the committed .env.test database URL on localhost:55433. Coverage includes JSON content type, read shape, email/social slot defaults, identity/privacy/social saves, explicit publicEmailId:null clearing, avatar type/size validation, upload response shape, removal, and profile/avatar audit events."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authenticated route boundary inspected",
+          "input validation",
+          "cross-user email ownership validation",
+          "data exposure review"
+        ],
+        "notes": "Rust routes require AuthenticatedUser for personal profile reads/writes/avatar mutations; update rejects publicEmailId values not owned by the actor; avatar upload accepts only image MIME types and <=2 MiB; API error mapping uses stable validation_failed/internal_error envelopes without stack traces. No hardcoded GitHub palette or secret exposure found in the settings UI."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component accessibility/design smoke passed: no href=\"#\"/missing href dead links, all rendered buttons have accessible names, labels resolve to controls for the settings form, status toasts use role=status, and UI uses Editorial primitives/tokens/classes. Full Playwright/axe scan was blocked by the fixed 3015 port being occupied by another QA worktree server."
+      }
+    },
+    "tested_steps": [
+      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with \u201cPostgres container up but not accepting connections.\u201d",
+      "make setup-local attempted: blocked by fixed Docker container name conflict, existing opengithub-postgres-test container f620bdc19e810f77b82ca9148ee7a2bd0e16e78b738cd8638568b5952248f0eb already in use. Did not invent alternate DB URLs.",
+      "Installed web dependencies with npm install because web/node_modules was missing typescript and make check could not run meaningful web typecheck before dependency install.",
+      "make check passed after fixes: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "cd web && npx vitest run tests/personal-profile-settings.test.tsx passed: 6/6 tests.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api public_email_patch_distinguishes_missing_null_and_value -- --nocapture passed: nullable publicEmailId deserialization distinguishes missing/null/value.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --test personal_profile_settings_contract -- --nocapture passed: 2/2 DB-backed API contract tests.",
+      "Focused E2E attempt: cd web && npx playwright test tests/e2e/navigation-settings.spec.ts --project=chromium failed in setup before feature assertions because localhost:3015 was occupied by another worktree server (qa-opengithub-credentials-001-mainqa-20260509), /login hung until Playwright auth.setup timed out. Not counted as verified E2E."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "PATCH /api/user/settings/profile could not clear the optional public email. JSON null was indistinguishable from an omitted field in the Rust update model, and the profile read path re-defaulted public_email_id when it was NULL.",
+        "fix": "Added a NullableUpdate<T> deserializer to distinguish missing/null/value, updated public_email_id only when the field is present, and changed ensure_primary_email to default a public email only when it inserts the primary address for a new user. Added DB-backed and unit regression coverage plus UI payload coverage for clearing the select."
+      }
+    ],
+    "fix_description": "Fixed explicit public email clearing for personal profile settings and added regression coverage across Rust deserialization/API contract and React form payload behavior.",
+    "known_gaps": [
+      "make doctor remains red in this worktree because the fixed opengithub-postgres-test container belongs to another compose/worktree context and doctor cannot exec it, although DB-backed tests connected successfully through the committed .env.test localhost:55433 URL.",
+      "Focused Playwright E2E could not complete because port 3015 was already occupied by another QA worktree Next dev server that hung /login; I did not kill the foreign process."
+    ]
   }
 ]
