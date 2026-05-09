@@ -139,6 +139,10 @@ async fn repository_rest_routes_use_standard_envelopes_pagination_and_conflicts(
 
     let config = app_config();
     let owner = create_user(&pool, "api-repo-owner").await;
+    let owner_login = owner
+        .username
+        .as_deref()
+        .expect("test owner should have a generated username");
     let cookie = cookie_header(&pool, &config, &owner).await;
     let app = opengithub_api::build_app_with_config(Some(pool), config);
     let repo_name = format!("api-contract-{}", Uuid::new_v4().simple());
@@ -161,11 +165,8 @@ async fn repository_rest_routes_use_standard_envelopes_pagination_and_conflicts(
     .await;
     assert_eq!(create_status, StatusCode::CREATED);
     assert_json(&create_headers);
-    assert_eq!(create_body["owner_login"], owner.email);
-    assert_eq!(
-        create_body["href"],
-        format!("/{}/{}", owner.email, repo_name)
-    );
+    assert_eq!(create_body["owner_login"], owner_login);
+    assert_eq!(create_body["href"], format!("/{owner_login}/{repo_name}"));
 
     let (conflict_status, _conflict_headers, conflict_body) = send_json(
         app.clone(),
@@ -564,7 +565,10 @@ async fn search_rest_route_projects_code_and_commit_results_from_repository_snap
     );
     assert_eq!(
         commit_body["items"][0]["commit"]["author_login"],
-        owner.email
+        owner
+            .username
+            .as_deref()
+            .expect("test owner should have a generated username")
     );
     assert!(commit_body["items"][0]["href"]
         .as_str()

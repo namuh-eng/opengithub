@@ -3677,5 +3677,74 @@
       }
     ],
     "fix_description": "Fixed the invalid app-shell search ARIA reference exposed on /notifications and made the legacy focused notifications browser spec tolerant of cold Rust seeder startup; no notification data-model behavior changes were needed."
+  },
+  {
+    "feature_id": "personal-settings-002",
+    "attempt": 1,
+    "status": "pass",
+    "completed_at": "2026-05-09T07:12:00Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified /settings/notifications renders the Notifications settings shell, default notifications email selector, Subscriptions/System cards, Watching/Participating/Custom/Actions/Email digest preferences, disabled Dependabot/Security placeholders, concrete Custom routing/Watched repositories/Ignored repositories links, channel select-panel dialog, Cancel discard, and Save persistence. Focused Vitest and Playwright E2E passed against real local API/DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/notifications/delivery-preferences",
+          "PATCH /api/notifications/delivery-preferences",
+          "PATCH /settings/notifications/delivery"
+        ],
+        "notes": "Rust API contract test verified delivery settings read/write, verified-email requirement, unsupported disabled category validation, normalized web/email/cli channels, persistence in notification_delivery_preferences, and security_audit_events audit write. Same-origin Next route returns JSON envelopes for invalid JSON and propagates backend errors."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Direct live curl probes with fresh x-forwarded-for confirmed anonymous GET/PATCH /api/notifications/delivery-preferences return JSON 401 not_authenticated, never 200/data. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin echo. Error bodies did not include stack traces, cookies, or raw payload data. Email channel validation rejects unverified/default-missing email flows in focused API test."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Component uses labeled select, semantic buttons/links, role=status/alert feedback, role=dialog with aria-modal and aria-labelledby, visible label text for On GitHub/Email/CLI checkboxes, disabled state for unsupported placeholders, and no empty/hash-only anchors in focused render/E2E checks. No axe package was committed; manual/DOM accessibility checks found no critical blockers."
+      }
+    },
+    "tested_steps": [
+      "Ran required make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after restoring local sentinel, Docker daemon/container were visible but make doctor could not verify via compose ownership because fixed opengithub-postgres-test belonged to another worktree.",
+      "Ran make setup-local: blocked by fixed container name conflict for opengithub-postgres-test (container f620bdc19e81 already in use). Verified the existing container was accepting connections and publishing localhost:55433, then used committed .env.test DB URLs only.",
+      "Inspected PRD item, web/src/components/NotificationDeliverySettingsPage.tsx, Next delivery route, Rust notification delivery domain/routes/migration, and existing focused unit/API/E2E tests.",
+      "Ran npm ci in web/ to restore committed package-lock dependencies after initial npx tsc placeholder failure.",
+      "Ran make check: PASS (Cargo check, Web typecheck, Clippy, Biome).",
+      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx \u2014 PASS, 3 tests.",
+      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture \u2014 PASS, 1 test, no self-skip.",
+      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium \u2014 PASS, 2 tests including auth setup.",
+      "Direct API security probes against localhost:3016 with fresh x-forwarded-for: anonymous GET/PATCH returned 401 JSON not_authenticated; evil-origin OPTIONS returned 405 without ACAO.",
+      "Editorial compliance scan over web/src found no banned GitHub hex colors, Primer, Octicon, or system font-family usage; component uses existing card/btn/chip/input/list-row/type-ramp classes and CSS variables.",
+      "Attempted full make test after make check; personal notification tests passed, but the broader suite later stopped in unrelated organization_profile_settings_contract (billingEmail null/rename semantics). This is recorded as an unrelated suite blocker, not a personal-settings-002 failure."
+    ],
+    "defects_found": [
+      "Fixed unrelated global API hardening test isolation: api_contract_hardening now resets/uses a dedicated rate-limit IP so prior live probes cannot convert expected 401 auth failures into 403 rate-limit responses.",
+      "Fixed unrelated repository search contract expectations to use generated username/login for owner_login/href/author_login instead of email, matching current identity API shape."
+    ],
+    "files_changed": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json",
+      "build-progress.txt",
+      "crates/api/tests/api_contract_hardening.rs",
+      "crates/api/tests/api_repository_search_contract.rs"
+    ],
+    "evidence": {
+      "make_check": "pass",
+      "focused_unit": "pass: web notification-delivery-settings 3/3",
+      "focused_api": "pass: notification_delivery_preferences_validate_verified_email_and_audit 1/1, DB-backed no self-skip",
+      "focused_e2e": "pass: notifications.spec signed-in user saves notification delivery channels 2/2 including auth setup",
+      "api_security": "pass: anonymous GET/PATCH 401; evil OPTIONS 405 no Access-Control-Allow-Origin echo",
+      "full_make_test": "attempted; unrelated organization_profile_settings_contract blocker after personal notification API tests passed"
+    }
   }
 ]
