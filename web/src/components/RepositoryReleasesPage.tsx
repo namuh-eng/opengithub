@@ -397,7 +397,7 @@ export function RepositoryReleaseDetailPage({
                   <h2 className="t-h3 mt-1">Generated from commit history</h2>
                 </div>
                 <form
-                  action={`${basePath(repository)}/releases/${release.tagName}/ai/changelog`}
+                  action={`${basePath(repository)}/releases/${encodeURIComponent(release.tagName)}/ai/changelog`}
                   method="post"
                 >
                   <button className="btn sm" type="submit">

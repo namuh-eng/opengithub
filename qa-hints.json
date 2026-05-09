@@ -8386,5 +8386,19 @@
       "Repair the shared doctor false negative by either installing local pg_isready or making doctor detect the fixed-name Postgres container across compose project labels; do not remove the shared container while other QA lanes are using it.",
       "Continue production hardening from prior hints: real KMS/Secrets Manager backing, inherited organization/environment producers, fork/reusable/environment policy producers, masking bypass probes, and concurrent admin edit races."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "QA added release contract regressions for slash-containing tags (release/2026) to ensure html/tag/archive/compare hrefs use percent-encoded path segments and encoded detail lookup still resolves.",
+      "QA added release reaction regressions proving a viewer has a singular reaction: switching rocket to eyes decrements rocket, and toggling eyes clears viewerReaction.",
+      "QA hardened the release Playwright fixture to use docker exec psql against opengithub-postgres-test when host psql is absent and to wait for the Rust API on :3016 before navigating.",
+      "Focused release checks passed: repository_releases_contract (2 tests), repository-releases-page Vitest (17 tests), and make check."
+    ],
+    "needs_deeper_qa": [
+      "Re-run focused/full Playwright when no other worktree owns fixed ports 3015/3016; this QA run was repeatedly preempted by qa-opengithub-releases-002-rerun dev server/test processes.",
+      "Full web Vitest currently has unrelated date-sensitive failures in non-release suites; retest once shared fixture dates are stabilized.",
+      "Provider-backed asset streaming/S3 signed URL behavior, large files, content disposition, and concurrent reaction/asset races still need infrastructure-level QA."
+    ]
   }
 ]

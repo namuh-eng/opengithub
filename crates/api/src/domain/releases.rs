@@ -1449,7 +1449,10 @@ pub async fn repository_release_archive_metadata_by_owner_name(
     Ok(ReleaseArchiveMetadata {
         href: format!(
             "/api/repos/{}/{}/releases/{}/{}",
-            repository.owner_login, repository.name, format, tag_name
+            repository.owner_login,
+            repository.name,
+            format,
+            percent_encode_segment(&tag_name)
         ),
         tag_name,
         format: format.to_owned(),
@@ -1571,16 +1574,28 @@ pub async fn toggle_repository_release_reaction_by_owner_name(
         return Err(ReleasesError::NotFound);
     }
 
-    let deleted = sqlx::query(
-        "DELETE FROM release_reactions WHERE release_id = $1 AND user_id = $2 AND reaction = $3",
+    let selected = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM release_reactions
+            WHERE release_id = $1 AND user_id = $2 AND reaction = $3
+        )
+        "#,
     )
     .bind(release_id)
     .bind(actor_user_id)
     .bind(reaction)
-    .execute(pool)
-    .await?
-    .rows_affected();
-    if deleted == 0 {
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query("DELETE FROM release_reactions WHERE release_id = $1 AND user_id = $2")
+        .bind(release_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+
+    if !selected {
         sqlx::query(
             r#"
             INSERT INTO release_reactions (repository_id, release_id, user_id, reaction)
@@ -2561,10 +2576,11 @@ async fn release_contributors(
 
 fn release_links(repository: &Repository, tag_name: &str, release_id: Uuid) -> ReleaseLinks {
     let tag = clean_tag_name(tag_name);
+    let encoded_tag = percent_encode_segment(&tag);
     ReleaseLinks {
         html_href: format!(
             "/{}/{}/releases/tag/{}",
-            repository.owner_login, repository.name, tag
+            repository.owner_login, repository.name, encoded_tag
         ),
         api_href: format!(
             "/api/repos/{}/{}/releases/{}",
@@ -2572,19 +2588,19 @@ fn release_links(repository: &Repository, tag_name: &str, release_id: Uuid) -> R
         ),
         tag_href: format!(
             "/{}/{}/tree/{}",
-            repository.owner_login, repository.name, tag
+            repository.owner_login, repository.name, encoded_tag
         ),
         zipball_href: format!(
             "/api/repos/{}/{}/releases/zipball/{}",
-            repository.owner_login, repository.name, tag
+            repository.owner_login, repository.name, encoded_tag
         ),
         tarball_href: format!(
             "/api/repos/{}/{}/releases/tarball/{}",
-            repository.owner_login, repository.name, tag
+            repository.owner_login, repository.name, encoded_tag
         ),
         compare_href: format!(
             "/{}/{}/compare/{}",
-            repository.owner_login, repository.name, tag
+            repository.owner_login, repository.name, encoded_tag
         ),
     }
 }
@@ -2610,20 +2626,29 @@ fn tag_from_row(
         release_href: release_id.map(|_| {
             format!(
                 "/{}/{}/releases/tag/{}",
-                repository.owner_login, repository.name, short_name
+                repository.owner_login,
+                repository.name,
+                percent_encode_segment(&short_name)
             )
         }),
         zipball_href: format!(
             "/api/repos/{}/{}/releases/zipball/{}",
-            repository.owner_login, repository.name, short_name
+            repository.owner_login,
+            repository.name,
+            percent_encode_segment(&short_name)
         ),
         tarball_href: format!(
             "/api/repos/{}/{}/releases/tarball/{}",
-            repository.owner_login, repository.name, short_name
+            repository.owner_login,
+            repository.name,
+            percent_encode_segment(&short_name)
         ),
         compare_href: format!(
             "/{}/{}/compare/{}...{}",
-            repository.owner_login, repository.name, short_name, repository.default_branch
+            repository.owner_login,
+            repository.name,
+            percent_encode_segment(&short_name),
+            percent_encode_segment(&repository.default_branch)
         ),
     })
 }
@@ -2731,6 +2756,18 @@ async fn render_release_markdown(
 
 fn clean_tag_name(tag_name: &str) -> String {
     tag_name.trim().trim_start_matches("refs/tags/").to_owned()
+}
+
+fn percent_encode_segment(segment: &str) -> String {
+    let mut encoded = String::new();
+    for byte in segment.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
 }
 
 fn normalize_reaction(reaction: &str) -> Result<&'static str, ReleasesError> {

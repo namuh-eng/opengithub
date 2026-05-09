@@ -376,7 +376,13 @@ describe("RepositoryReleaseDetailPage", () => {
 
   it("renders generated AI changelog output with an editable generation action", () => {
     const detail: RepositoryReleaseDetail = {
-      ...release(),
+      ...release({
+        tagName: "release/2026",
+        links: {
+          ...release().links,
+          htmlHref: "/mona/octo-app/releases/tag/release%2F2026",
+        },
+      }),
       body: "## Full notes",
       bodyHtml: "<h2>Full notes</h2>",
       immutable: false,
@@ -417,7 +423,7 @@ describe("RepositoryReleaseDetailPage", () => {
     ).toBeEnabled();
     expect(
       container.querySelector(
-        'form[action="/mona/octo-app/releases/v2.0.0/ai/changelog"]',
+        'form[action="/mona/octo-app/releases/release%2F2026/ai/changelog"]',
       ),
     ).toHaveAttribute("method", "post");
   });
