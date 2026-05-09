@@ -1,3 +1,12 @@
+2026-05-09 - branches-001 QA blocked after UI fix
+
+- QA inspected branches-001 PRD, implementation, API contract tests, component tests, E2E coverage, and prior qa-hints. `prd.json` already had `build_pass=true` and `qa_pass=false`; QA keeps `qa_pass=false`.
+- Found and fixed a UI acceptance gap: the branch directory rendered branch rows but did not expose the PRD-required dense columns. `RepositoryBranchesPage` now shows Branch, Updated, Check status, Behind, Ahead, Pull request, and Actions labels and splits Behind/Ahead into separate row columns.
+- Added focused component coverage asserting those column labels. Focused `npm test -- repository-branches-page.test.tsx` passed 6/6, controller `make check` passed, `git diff --check` passed, JSON artifacts validate, and the Editorial banned-value scan over `web/src` outside og CSS returned zero matches.
+- Required local infrastructure is blocked: `make doctor` reports Docker daemon not running, `opengithub-postgres-test` not running, and Postgres unreachable on localhost:55433. `make setup-local` reported `Could not start Docker. Open it manually and rerun.`
+- Worker broad verification was noisy inside Codex sandbox, but controller salvage verified `make check` successfully. DB-backed/browser verification is still blocked by Docker/Postgres being unavailable.
+- QA status: blocked, not passed. Re-run `make doctor`, `make setup-local`, DB-backed `repository_branches_contract`, and focused repository branches Playwright/Ever browser QA once Docker/Postgres are healthy.
+
 2026-05-07 - api-003 REST rate limits and API version headers
 
 - Completed `api-003` as the first `build_pass:false` PRD feature: REST responses now carry GitHub-compatible `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Used`, `X-RateLimit-Resource`, and `X-GitHub-Api-Version-Selected` headers, with `/rate_limit` and `/api/rate_limit` exposing current bucket state.
