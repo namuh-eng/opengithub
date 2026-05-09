@@ -71,11 +71,7 @@ export async function PATCH(request: Request) {
   const requestHeaders = await headers();
   const cookie = requestHeaders.get("cookie");
   const input = await request.json().catch(() => null);
-  const enabled =
-    input && typeof input === "object" && "enabled" in input
-      ? Boolean(input.enabled)
-      : null;
-  if (enabled === null) {
+  if (!input || typeof input !== "object" || !("enabled" in input)) {
     return NextResponse.json(
       {
         error: {
@@ -87,6 +83,19 @@ export async function PATCH(request: Request) {
       { status: 422 },
     );
   }
+  if (typeof input.enabled !== "boolean") {
+    return NextResponse.json(
+      {
+        error: {
+          code: "validation_failed",
+          message: "enabled must be a boolean.",
+        },
+        status: 422,
+      },
+      { status: 422 },
+    );
+  }
+  const enabled = input.enabled;
 
   try {
     const response = await updateVigilantModeFromCookie(cookie, { enabled });
@@ -118,6 +127,18 @@ export async function DELETE(request: Request) {
         error: {
           code: "validation_failed",
           message: "keyId is required.",
+        },
+        status: 422,
+      },
+      { status: 422 },
+    );
+  }
+  if (keyKind !== "ssh" && keyKind !== "gpg") {
+    return NextResponse.json(
+      {
+        error: {
+          code: "validation_failed",
+          message: "keyKind must be ssh or gpg.",
         },
         status: 422,
       },
