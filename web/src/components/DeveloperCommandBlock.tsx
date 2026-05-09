@@ -19,16 +19,19 @@ export function DeveloperCommandBlock({
         </p>
         <CopyButton label={copyLabel} value={value} />
       </div>
-      <pre
-        className="t-mono-sm max-w-full overflow-x-auto rounded-md p-3 leading-5"
+      <section
+        aria-label={`${label} command`}
+        className="max-w-full overflow-x-auto rounded-md"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: horizontally scrollable command snippets must be keyboard-focusable for Safari/axe.
+        tabIndex={0}
         style={{
           border: "1px solid var(--line)",
           background: "var(--surface-2)",
           color: "var(--ink-1)",
         }}
       >
-        {value}
-      </pre>
+        <pre className="t-mono-sm p-3 leading-5">{value}</pre>
+      </section>
     </div>
   );
 }

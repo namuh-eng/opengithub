@@ -1820,10 +1820,47 @@
       "feature_id": "credentials-001",
       "description": "Manage personal access tokens for Git over HTTPS, REST API calls, package regist",
       "category": "developer-experience",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Verified token list, fine-grained create with sudo and one-time reveal, classic token creation, prefix-only list persistence, revoke confirmation, docs snippets, and mobile/no-overflow behavior through focused Chromium Playwright and Vitest coverage. No regenerate endpoint exists in this PRD implementation; visible-token semantics are one-time plaintext reveal plus prefix-only metadata thereafter."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/settings/tokens",
+            "GET /api/settings/tokens/new",
+            "POST /api/settings/sudo",
+            "POST /api/settings/tokens",
+            "DELETE /api/settings/tokens/{token_id}",
+            "GET /api/auth/current-user with Bearer PAT",
+            "package registry workflow token publish path"
+          ],
+          "notes": "DB-backed personal_access_tokens_contract passed 4/4 against the committed TEST_DATABASE_URL. It covers anonymous JSON 401, session-bound list/new context, sudo confirmation, fine-grained selected repository validation, classic broad scopes, REST bearer auth last_used updates, revoke invalidation, audit events, cross-user list isolation, and hash/secret redaction. Package registry workflow-token scenario passed 1/1 to cover automation/package credential behavior."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "sudo_required",
+            "secret_redaction",
+            "cross_user_isolation",
+            "scope_enforcement",
+            "revoke_invalidation",
+            "data_exposure"
+          ],
+          "notes": "Unauthenticated settings API returns 401 JSON; create/revoke require signed session plus sudo grant; list/new context omit plaintext and token_hash; creation returns plaintext only once; revoked PATs fail verification and Bearer auth; other users' tokens are not listed; registry auth accepts package-capable PAT/workflow tokens only. Fixed audit-count contract assertions to bind UUID target IDs so the real DB regression coverage runs to completion."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused axe-core WCAG 2.1 A/AA scan on signed-in /settings/tokens and /settings/personal-access-tokens/new passed with zero serious/critical violations after fixing DeveloperCommandBlock command snippets to expose keyboard-focusable scroll regions. Focused Playwright also verified no dead controls and no horizontal overflow."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "credentials-002",

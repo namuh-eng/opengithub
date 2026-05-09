@@ -463,7 +463,7 @@ async fn fine_grained_token_create_requires_sudo_reveals_once_and_persists_redac
         "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'personal_access_token.create' AND target_id = $2",
     )
     .bind(user.id)
-    .bind(token_id.to_string())
+    .bind(token_id)
     .fetch_one(&pool)
     .await
     .expect("audit should count");
@@ -603,7 +603,7 @@ async fn classic_token_create_revoke_and_bearer_auth_update_last_used() {
         "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'personal_access_token.revoke' AND target_id = $2",
     )
     .bind(user.id)
-    .bind(token_id.to_string())
+    .bind(token_id)
     .fetch_one(&pool)
     .await
     .expect("revoke audit should count");
