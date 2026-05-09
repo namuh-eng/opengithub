@@ -1,22 +1,22 @@
 use axum::{
-    body::{Body, to_bytes},
-    http::{HeaderMap, Method, Request, StatusCode, header},
+    body::{to_bytes, Body},
+    http::{header, HeaderMap, Method, Request, StatusCode},
 };
 use chrono::{Duration, Utc};
 use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::{
-        branch_policies::{BranchPolicyOperation, evaluate_branch_policy},
-        identity::{User, upsert_session, upsert_user_by_email},
+        branch_policies::{evaluate_branch_policy, BranchPolicyOperation},
+        identity::{upsert_session, upsert_user_by_email, User},
         permissions::RepositoryRole,
         repositories::{
-            CreateRepository, RepositoryOwner, RepositoryVisibility, create_repository,
-            grant_repository_permission,
+            create_repository, grant_repository_permission, CreateRepository, RepositoryOwner,
+            RepositoryVisibility,
         },
     },
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use url::Url;
@@ -105,13 +105,11 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
         create_body["rules"][0]["requirements"]["requiredApprovingReviewCount"],
         2
     );
-    assert!(
-        create_body["statusCheckSuggestions"]
-            .as_array()
-            .expect("suggestions should be present")
-            .iter()
-            .any(|value| value == "ci/test")
-    );
+    assert!(create_body["statusCheckSuggestions"]
+        .as_array()
+        .expect("suggestions should be present")
+        .iter()
+        .any(|value| value == "ci/test"));
     let rule_id = create_body["rules"][0]["id"]
         .as_str()
         .expect("rule id should be returned")
@@ -254,12 +252,10 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
     )
     .await;
     assert_eq!(delete_ruleset_status, StatusCode::OK);
-    assert!(
-        delete_ruleset_body["rulesets"]
-            .as_array()
-            .expect("rulesets should be present")
-            .is_empty()
-    );
+    assert!(delete_ruleset_body["rulesets"]
+        .as_array()
+        .expect("rulesets should be present")
+        .is_empty());
 
     let (delete_rule_status, _, delete_rule_body) = send_json(
         app.clone(),
@@ -270,12 +266,10 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
     )
     .await;
     assert_eq!(delete_rule_status, StatusCode::OK);
-    assert!(
-        delete_rule_body["rules"]
-            .as_array()
-            .expect("rules should be present")
-            .is_empty()
-    );
+    assert!(delete_rule_body["rules"]
+        .as_array()
+        .expect("rules should be present")
+        .is_empty());
 
     let audit_count = sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM repository_settings_audit_events WHERE repository_id = $1 AND event_type LIKE 'repository.branch_rule.%' OR repository_id = $1 AND event_type LIKE 'repository.ruleset.%'",
@@ -354,12 +348,10 @@ async fn branch_policy_push_enforcement_uses_most_restrictive_matching_source() 
     assert_eq!(force_summary.active_rule_count, 1);
     assert_eq!(force_summary.active_ruleset_count, 1);
     assert!(!force_summary.allows_force_pushes);
-    assert!(
-        force_summary
-            .blocking_reasons
-            .iter()
-            .any(|reason| reason == "force pushes are blocked by branch protection")
-    );
+    assert!(force_summary
+        .blocking_reasons
+        .iter()
+        .any(|reason| reason == "force pushes are blocked by branch protection"));
 
     let deletion_summary = evaluate_branch_policy(
         &pool,
@@ -375,12 +367,10 @@ async fn branch_policy_push_enforcement_uses_most_restrictive_matching_source() 
     .await
     .expect("deletion policy should evaluate");
     assert!(!deletion_summary.allows_deletions);
-    assert!(
-        deletion_summary
-            .blocking_reasons
-            .iter()
-            .any(|reason| reason == "branch deletion is blocked by branch protection")
-    );
+    assert!(deletion_summary
+        .blocking_reasons
+        .iter()
+        .any(|reason| reason == "branch deletion is blocked by branch protection"));
 }
 
 fn app_config() -> AppConfig {

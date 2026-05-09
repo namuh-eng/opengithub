@@ -614,6 +614,7 @@ pub async fn connect_repository_pages_actions_deployment_by_owner_name(
     require_pages_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let site = ensure_pages_site(pool, &repository, actor_user_id).await?;
+    let workflow_run_id = mutation.workflow_run_id;
     let source = actions_source_for_artifact(pool, repository.id, mutation).await?;
     let deployment = create_pages_deployment(
         pool,
@@ -621,7 +622,7 @@ pub async fn connect_repository_pages_actions_deployment_by_owner_name(
         site.id,
         actor_user_id,
         &source,
-        source.workflow_id,
+        Some(workflow_run_id),
         source.workflow_artifact_name.clone(),
     )
     .await?;
@@ -755,7 +756,16 @@ async fn repository_pages_settings_for_repository(
     let available_refs = pages_branch_refs(pool, repository.id).await?;
     let folder_options = pages_folder_options(pool, repository.id, latest_commit_id).await?;
     let workflow_suggestions = pages_workflow_suggestions(pool, repository.id).await?;
-    let deployments = pages_deployments(pool, repository.id).await?;
+    let mut deployments = pages_deployments(pool, repository.id, can_edit).await?;
+    if !can_edit {
+        for deployment in &mut deployments {
+            deployment.workflow_artifact_id = None;
+            deployment.artifact_storage_key = None;
+            deployment.artifact_manifest = json!({});
+            deployment.build_log_excerpt = None;
+            deployment.failure_reason = None;
+        }
+    }
     let audit_events = pages_audit_events(pool, repository.id).await?;
     let policy_lock = pages_policy_lock(pool, repository, actor_user_id).await?;
 
@@ -1255,12 +1265,17 @@ async fn pages_workflow_suggestions(
 async fn pages_deployments(
     pool: &PgPool,
     repository_id: Uuid,
+    include_sensitive: bool,
 ) -> Result<Vec<PagesDeploymentSummary>, PagesError> {
     let rows = sqlx::query(
         r#"
         SELECT id, source_kind, source_branch, source_folder, workflow_run_id,
-               workflow_artifact_id, status, conclusion, default_url, custom_domain_url,
-               artifact_storage_key, artifact_manifest, build_log_excerpt, failure_reason,
+               CASE WHEN $2 THEN workflow_artifact_id ELSE NULL END AS workflow_artifact_id,
+               status, conclusion, default_url, custom_domain_url,
+               CASE WHEN $2 THEN artifact_storage_key ELSE NULL END AS artifact_storage_key,
+               CASE WHEN $2 THEN artifact_manifest ELSE '{}'::jsonb END AS artifact_manifest,
+               CASE WHEN $2 THEN build_log_excerpt ELSE NULL END AS build_log_excerpt,
+               CASE WHEN $2 THEN failure_reason ELSE NULL END AS failure_reason,
                queued_at, completed_at, created_at
         FROM pages_deployments
         WHERE repository_id = $1
@@ -1269,6 +1284,7 @@ async fn pages_deployments(
         "#,
     )
     .bind(repository_id)
+    .bind(include_sensitive)
     .fetch_all(pool)
     .await?;
     rows.into_iter().map(deployment_from_row).collect()

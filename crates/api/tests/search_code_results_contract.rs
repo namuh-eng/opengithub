@@ -348,8 +348,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
         grouped_rust_item["blob_href"],
         format!(
             "/{}/{}/blob/main/src/router.rs",
-            owner_login,
-            public_repo.name
+            owner_login, public_repo.name
         )
     );
     assert_eq!(grouped_rust_item["snippets"].as_array().unwrap().len(), 4);
