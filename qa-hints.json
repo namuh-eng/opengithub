@@ -8400,5 +8400,18 @@
       "Full web Vitest currently has unrelated date-sensitive failures in non-release suites; retest once shared fixture dates are stabilized.",
       "Provider-backed asset streaming/S3 signed URL behavior, large files, content disposition, and concurrent reaction/asset races still need infrastructure-level QA."
     ]
+  },
+  {
+    "feature_id": "releases-003",
+    "tests_written": [
+      "QA rerun fixed unverified tag signature metadata styling to use warning styling instead of verified ok styling.",
+      "QA rerun changed tarball source archive link label from Tar to tar.gz and added focused regression coverage.",
+      "Focused evidence collected before sandbox quota failure: repository releases Vitest passed 18/18, typecheck passed, Biome passed, and make check passed."
+    ],
+    "needs_deeper_qa": [
+      "Rerun release tag/archive contract assertions against healthy Docker/Postgres :55433.",
+      "Rerun full make test after unrelated linker bus error is resolved.",
+      "Complete browser/E2E traversal for tags signature expansion, notes links, and source archive links."
+    ]
   }
 ]

@@ -10547,3 +10547,10 @@
 Status: QA PASS with environment-limited browser smoke. Fixed slash-containing release tag URL encoding, singular viewer reaction toggle semantics, and release Playwright fixture Docker psql/API readiness portability.
 Evidence: make setup-local/doctor initially healthy, later docker exec pg_isready proved Postgres accepting connections despite a shared compose-owner doctor false negative; cd web && npm test -- tests/repository-releases-page.test.tsx passed 17 tests; TEST_DATABASE_URL=... ./hack/cargo_locked.sh test -p opengithub-api --test repository_releases_contract passed 2 tests; make check passed Cargo check, web typecheck, Clippy, Biome; make test passed Cargo workspace tests but web Vitest has 11 unrelated date-sensitive non-release failures.
 Browser note: focused repository-releases Playwright was attempted after setup-local; fixture psql/API readiness issues were fixed, but live browser completion remained blocked by concurrent qa-opengithub-releases-002-rerun processes occupying fixed ports 3015/3016.
+
+[QA releases-003 rerun 2026-05-09T03:55:00Z]
+Status: QA BLOCKED with product fixes left on this branch; independent QA did not mark `releases-003.qa_pass=true`.
+Fixes: unverified tag signature metadata now uses warning styling instead of verified styling; tarball link label is `tar.gz`.
+Evidence: focused repository releases Vitest passed 18/18; focused Biome passed; `npx tsc --noEmit` passed; make check passed Cargo check, web typecheck, Clippy, and Biome. Rust release contract compiled but DB assertions self-skipped because Docker/Postgres :55433 was unreachable.
+Blockers: make test failed outside releases-003 with rust-lld/ld signal 7 bus error linking organization_member_privileges_contract; sandbox quota exhaustion prevented worker-side artifact/commit.
+Not claimed: DB-backed contract assertions, full make test, full E2E, and browser traversal.
