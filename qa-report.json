@@ -3044,7 +3044,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3069,7 +3069,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3082,7 +3082,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3099,7 +3099,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3973,9 +3973,9 @@
       "Inspected PRD item, web/src/components/NotificationDeliverySettingsPage.tsx, Next delivery route, Rust notification delivery domain/routes/migration, and existing focused unit/API/E2E tests.",
       "Ran npm ci in web/ to restore committed package-lock dependencies after initial npx tsc placeholder failure.",
       "Ran make check: PASS (Cargo check, Web typecheck, Clippy, Biome).",
-      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx — PASS, 3 tests.",
-      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture — PASS, 1 test, no self-skip.",
-      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium — PASS, 2 tests including auth setup.",
+      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx \u2014 PASS, 3 tests.",
+      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture \u2014 PASS, 1 test, no self-skip.",
+      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium \u2014 PASS, 2 tests including auth setup.",
       "Direct API security probes against localhost:3016 with fresh x-forwarded-for: anonymous GET/PATCH returned 401 JSON not_authenticated; evil-origin OPTIONS returned 405 without ACAO.",
       "Editorial compliance scan over web/src found no banned GitHub hex colors, Primer, Octicon, or system font-family usage; component uses existing card/btn/chip/input/list-row/type-ramp classes and CSS variables.",
       "Attempted full make test after make check; personal notification tests passed, but the broader suite later stopped in unrelated organization_profile_settings_contract (billingEmail null/rename semantics). This is recorded as an unrelated suite blocker, not a personal-settings-002 failure."
@@ -4037,7 +4037,7 @@
       }
     },
     "tested_steps": [
-      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with “Postgres container up but not accepting connections.”",
+      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with \u201cPostgres container up but not accepting connections.\u201d",
       "make setup-local attempted: blocked by fixed Docker container name conflict, existing opengithub-postgres-test container f620bdc19e810f77b82ca9148ee7a2bd0e16e78b738cd8638568b5952248f0eb already in use. Did not invent alternate DB URLs.",
       "Installed web dependencies with npm install because web/node_modules was missing typescript and make check could not run meaningful web typecheck before dependency install.",
       "make check passed after fixes: Cargo check, web typecheck, Clippy, and Biome passed.",
@@ -4117,6 +4117,72 @@
       "make doctor/setup-local cannot own the shared fixed Postgres container because opengithub-postgres-test is already running under another worktree compose project; exact container id f620bdc19e81, project qa-opengithub-packages-001-mainqa-20260508. DB-backed focused tests still ran against the required localhost:55433 opengithub_test database."
     ],
     "overall_status": "pass"
+  },
+  {
+    "feature_id": "org-admin-001",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retest after infra recovery passed the focused org-create Vitest suite (11/11), DB-backed Rust organization_create_contract tests (3/3), and focused Playwright organization-create E2E (5/5), covering plan picker, setup form, slug validation, mobile usability, keyboard-only selection/error recovery, successful free organization creation, redirect/navigation, contact email, ownership type, and terms acceptance."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /organizations/new/slug-availability",
+          "POST /organizations/new/create",
+          "GET /api/organizations/slug-availability",
+          "POST /api/organizations"
+        ],
+        "notes": "Focused Vitest verifies the Next slug-availability proxy forwards to API_URL and preserves non-OK backend JSON/status envelopes. DB-backed Rust organization_create_contract passed 3/3 against localhost:55433, covering anonymous rejection, reserved/duplicate/invalid fields, slug normalization, persistence defaults, audit records, race handling, canonical casing, and personal company redaction. Playwright exercised the signed-in Next create proxy through the live app/API."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_envelope_preservation",
+          "anonymous_rejection",
+          "reserved_and_duplicate_slug_rejection",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated organization creation and slug availability return preserved JSON auth envelopes instead of generic proxy failures. DB-backed contract tests cover reserved slugs, duplicate conflicts, invalid fields, concurrent create races, and no company-name leakage for personal ownership. No stack traces/secrets were exposed in verified error envelopes."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright coverage passed for accessible plan buttons, labels/descriptions, required/invalid field state, no unnamed buttons/dead anchors, keyboard-only plan selection and error recovery, focus movement to the setup heading/first invalid field, and mobile no-overflow usability."
+      }
+    },
+    "tested_steps": [
+      "Identified feature_id org-admin-001 from branch qa-opengithub-org-admin-001-mainqa-20260509 and prd.json.",
+      "Ran make doctor first: Docker daemon not running, opengithub-postgres-test not running, Postgres not reachable on localhost:55433; .env.test and .env were present.",
+      "Ran make setup-local: Docker did not become ready within 120s; required localhost:55433/opengithub_test DB remained unavailable.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check after formatting touched files: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 test file passed, 11 tests passed.",
+      "Ran focused Rust org-create contract with repo .env.test values and worktree CARGO_TARGET_DIR: binary completed but printed skip messages for all three DB-backed contract bodies because the test DB was unreachable; not counted as DB verification.",
+      "Ran focused Playwright org-create spec once with default Cargo target: blocked by read-only /home/jaeyunha/.cache/opengithub/cargo-target.",
+      "Reran focused Playwright org-create spec with exported worktree CARGO_TARGET_DIR: webServer compiled the API but failed with Operation not permitted (os error 1); no E2E assertions ran.",
+      "Fresh controller retest after infra recovery: make doctor reported Podman/Postgres/.env/.env.test/Cargo target all healthy.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 file passed, 11 tests passed.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_create_contract -- --nocapture with .env.test DATABASE_URL/TEST_DATABASE_URL and worktree CARGO_TARGET_DIR: 3 tests passed, 0 skipped.",
+      "Ran focused Playwright organization-create.spec.ts with DATABASE_URL/TEST_DATABASE_URL and worktree CARGO_TARGET_DIR: 5/5 passed, including setup auth state and 4 chromium org-create scenarios.",
+      "Worked around local Playwright ubuntu26 browser installer mismatch by pointing the expected conductor-profile browser cache entry at the already-installed Chrome-for-Testing 147 binary; this is test-runner cache hygiene, not product code.",
+      "Ran make check with worktree CARGO_TARGET_DIR after clearing stale generated web/.next dev types: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "The Next slug-availability proxy collapsed unauthenticated backend responses into a generic availability_unavailable 502, hiding the real not_authenticated API envelope from the organization create form.",
+        "expected": "GET /organizations/new/slug-availability should preserve backend error status and JSON envelopes such as 401 not_authenticated.",
+        "actual": "The prior helper returned null for non-OK backend responses, so the route returned a generic 502 availability_unavailable envelope.",
+        "file": "web/src/app/organizations/new/slug-availability/route.ts"
+      }
+    ],
+    "fix_description": "Changed the slug availability route to fetch the backend endpoint directly, forward cookies, disable caching, preserve non-OK backend JSON/status envelopes, and retain a 502 fallback only for transport/non-JSON failures. Fresh DB/API/E2E retest now passes.",
+    "known_gaps": [],
+    "timestamp": "2026-05-09T18:50:59Z"
   },
   {
     "feature_id": "settings-006",
