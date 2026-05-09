@@ -1,72 +1,27 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededOrganizationTeams = {
-  cookieName: string;
-  cookieValue: string;
-  profileActionCookieValue: string;
-  organizationProfileHref: string;
-  organizationEmptyTeamsHref: string;
-};
-
-function seedOrganizationTeams(): SeededOrganizationTeams {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        ORG_PROFILE_E2E: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededOrganizationTeams;
-}
-
-async function signIn(
-  page: Page,
-  seeded: SeededOrganizationTeams,
-  cookieValue = seeded.cookieValue,
-) {
-  await page.context().addCookies([
-    {
-      name: seeded.cookieName,
-      value: cookieValue,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: false,
-    },
-  ]);
-}
-
-test.skip(!databaseUrl, "organization teams E2E needs a test database");
+test.skip(skipWithoutTestDb(), "organization teams E2E needs a test database");
 
 test("organization teams directory supports owner/member views, filters, and navigation", async ({
   page,
-}) => {
+  seed,
+  signIn,
+}, testInfo) => {
   test.setTimeout(60_000);
-  const seeded = seedOrganizationTeams();
+  const seeded = await seed({ scenes: ["orgProfile"] });
   await signIn(page, seeded);
 
-  await page.goto(`${seeded.organizationProfileHref}/teams`);
+  await page.goto(`${seeded.hrefs.organizationProfile}/teams`);
   await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await expect(
     page.getByRole("link", { name: /Open Platform Maintainers/ }),
   ).toHaveAttribute("href", /\/orgs\/org-profile-[^/]+\/teams\/platform-/);
@@ -75,7 +30,7 @@ test("organization teams directory supports owner/member views, filters, and nav
   await expect(page.getByText("Mention notifications").first()).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-final-populated-directory.jpg",
+    path: screenshotPath(testInfo, "org-admin-004-final-populated-directory"),
   });
 
   await page.getByLabel("Search organization teams").fill("frontend");
@@ -96,32 +51,34 @@ test("organization teams directory supports owner/member views, filters, and nav
   await expect(
     page.getByRole("heading", { name: "Frontend Studio" }),
   ).toBeVisible();
+  await expectNoDeadControls(page);
   await expect(page.getByText("Direct and inherited access")).toBeVisible();
   await expect(page.getByText("Hierarchy and mention delivery")).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-final-detail-overview.jpg",
+    path: screenshotPath(testInfo, "org-admin-004-final-detail-overview"),
   });
 
   await page.setViewportSize({ width: 390, height: 850 });
-  await page.goto(`${seeded.organizationProfileHref}/teams`);
-  const scrollWidth = await page.evaluate(() => document.body.scrollWidth);
-  expect(scrollWidth).toBeLessThanOrEqual(390);
+  await page.goto(`${seeded.hrefs.organizationProfile}/teams`);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-final-mobile.jpg",
+    path: screenshotPath(testInfo, "org-admin-004-final-mobile"),
   });
 
-  await signIn(page, seeded, seeded.profileActionCookieValue);
-  await page.goto(`${seeded.organizationProfileHref}/teams`);
+  await signIn(page, seeded, "collaborator");
+  await page.goto(`${seeded.hrefs.organizationProfile}/teams`);
   await expect(page.getByText("Platform Maintainers")).toBeVisible();
   await expect(page.getByText("Frontend Studio")).toBeVisible();
   await expect(page.getByText("Security Response")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Secret/ })).toHaveCount(0);
 
   await signIn(page, seeded);
-  await page.goto(seeded.organizationEmptyTeamsHref);
+  await page.goto(seeded.hrefs.organizationEmptyTeams);
   await expect(page.getByText("Organize people by team")).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await expect(page.getByText("Flexible repository access")).toBeVisible();
   await expect(page.getByText("Request-to-join teams")).toBeVisible();
   await expect(page.getByText("Team mentions")).toBeVisible();
@@ -134,24 +91,28 @@ test("organization teams directory supports owner/member views, filters, and nav
   );
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-final-empty-state.jpg",
+    path: screenshotPath(testInfo, "org-admin-004-final-empty-state"),
   });
 });
 
 test("organization team creation validates nesting and redirects to the created team", async ({
   page,
-}) => {
+  seed,
+  signIn,
+}, testInfo) => {
   test.setTimeout(60_000);
-  const seeded = seedOrganizationTeams();
+  const seeded = await seed({ scenes: ["orgProfile"] });
   await signIn(page, seeded);
 
-  await page.goto(`${seeded.organizationProfileHref}/teams/new`);
+  await page.goto(`${seeded.hrefs.organizationProfile}/teams/new`);
   await expect(
     page.getByRole("heading", { name: "Create team" }),
   ).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-final-create-form.jpg",
+    path: screenshotPath(testInfo, "org-admin-004-final-create-form"),
   });
   await expect(page.getByLabel("Parent team")).toContainText("Platform");
   const parentValue =
@@ -173,7 +134,7 @@ test("organization team creation validates nesting and redirects to the created 
   ).toBeVisible();
   await expect(page.getByText("Fanout suppressed")).toBeVisible();
 
-  await page.goto(`${seeded.organizationProfileHref}/teams/new`);
+  await page.goto(`${seeded.hrefs.organizationProfile}/teams/new`);
   const nestedParentValue =
     (await page
       .getByLabel("Parent team")
@@ -189,6 +150,6 @@ test("organization team creation validates nesting and redirects to the created 
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-final-validation-error.jpg",
+    path: screenshotPath(testInfo, "org-admin-004-final-validation-error"),
   });
 });

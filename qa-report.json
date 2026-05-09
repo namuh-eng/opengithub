@@ -3864,5 +3864,84 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "org-admin-004",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Fixed and verified the organization teams UI active-filter label and component behavior with focused Vitest. DB-backed Rust and live Playwright/browser verification remain blocked by local infrastructure."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/teams",
+          "POST /api/orgs/{org}/teams",
+          "GET /api/orgs/{org}/teams/{team_slug}"
+        ],
+        "notes": "Source and contract inspection found coverage for auth, privacy, visibility filters, create validation, nesting, detail, mentions, inherited permissions, and redaction. Runtime API assertions require the approved localhost:55433 DB, which is not available."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "auth_bypass",
+          "secret_team_privacy",
+          "invalid_filter_redaction",
+          "data_exposure"
+        ],
+        "notes": "Existing focused Rust contract asserts anonymous 401, outsider 403/404 privacy, secret-team hiding, invitation/token redaction, and no stack/env leakage on invalid filters. These bodies self-skipped in this run because the test DB was unavailable."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Updated organization-teams Playwright to use the shared auth fixture and assert no dead controls/no horizontal overflow. Runtime browser execution is blocked before tests start by local API startup/test DB constraints, so no axe/manual browser pass is claimed."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433, .env.test present, .env present.",
+      "Ran docker info: permission denied connecting to the Docker/Podman API at unix:///run/user/1000/podman/podman.sock.",
+      "Ran make setup-local: could not start Docker, then timed out waiting 120s for Docker readiness.",
+      "Inspected prd.json org-admin-004 and relevant Rust domain/routes, organization teams React components, Vitest, and Playwright specs.",
+      "Ran cargo fmt --all: passed.",
+      "Ran cd web && npx biome check src/components/OrganizationTeamsPage.tsx tests/organization-teams-page.test.tsx tests/e2e/organization-teams.spec.ts: passed.",
+      "Ran cd web && npx vitest run tests/organization-teams-page.test.tsx: 8/8 passed.",
+      "Ran cd web && npx tsc --noEmit --pretty false: passed.",
+      "Ran rg banned Editorial/GitHub design tokens over org teams source/tests: zero matches.",
+      "Ran git diff --check: passed.",
+      "Ran make check initially: blocked at Cargo dependency index resolution because index.crates.io DNS is unavailable in this sandbox.",
+      "Ran CARGO_TARGET_DIR=/tmp/opengithub-cargo-target CARGO_NET_OFFLINE=true make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran CARGO_TARGET_DIR=/tmp/opengithub-cargo-target CARGO_NET_OFFLINE=true ./hack/cargo_locked.sh check -p opengithub-api --test organization_teams_contract: passed.",
+      "Ran CARGO_TARGET_DIR=/tmp/opengithub-cargo-target CARGO_NET_OFFLINE=true TEST_DATABASE_URL= DATABASE_URL= ./hack/cargo_locked.sh test -p opengithub-api --test organization_teams_contract -- --nocapture: compiled and reported 3 passed, but all DB-backed scenarios self-skipped because TEST_DATABASE_URL/DATABASE_URL were unset.",
+      "Ran cd web && CARGO_TARGET_DIR=/tmp/opengithub-cargo-target CARGO_NET_OFFLINE=true TEST_DATABASE_URL= DATABASE_URL= npx playwright test tests/e2e/organization-teams.spec.ts --reporter=list: blocked before tests because the webServer could not start the Rust API, Error: Operation not permitted."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "The backend My teams visibility filter retained every mentionable team instead of teams where the viewer is actually a member.",
+        "expected": "visibility=member should return only teams with a team_memberships row for the viewer.",
+        "actual": "Owners/admins could receive every visible/secret team because can_mention is true for their view.",
+        "reproduction": "As an organization owner who is not a team member, request /api/orgs/{org}/teams?visibility=member."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The active filter chip for visibility=member was labeled Visible.",
+        "expected": "The active filter chip should read My teams.",
+        "actual": "visibilityLabel only distinguished secret from non-secret values, so member displayed as Visible.",
+        "reproduction": "Open /orgs/{org}/teams?visibility=member and inspect active filters."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The organization teams Playwright spec duplicated inline cargo seeding instead of using the shared auth fixture required by web/tests/e2e/AGENTS.md.",
+        "expected": "Signed-in specs import seed/signIn from ./_fixtures/auth.",
+        "actual": "The spec imported execFileSync and minted cookies inline.",
+        "reproduction": "Open web/tests/e2e/organization-teams.spec.ts before this QA patch."
+      }
+    ],
+    "fix_description": "Changed visibility=member filtering to use is_member, corrected the active filter label, added focused regressions, and migrated the org teams Playwright spec to the shared auth fixture."
   }
 ]

@@ -8402,5 +8402,19 @@
       "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
       "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
     ]
+  },
+  {
+    "feature_id": "org-admin-004",
+    "tests_written": [
+      "Fixed backend visibility=member to filter by viewerCapabilities.isMember and added a focused organization_teams_contract regression for an owner with zero team memberships.",
+      "Fixed the active filter label for visibility=member to display My teams and added focused Vitest coverage.",
+      "Migrated web/tests/e2e/organization-teams.spec.ts to the shared _fixtures/auth seed/signIn contract and added no-dead-control/no-horizontal-overflow assertions."
+    ],
+    "needs_deeper_qa": [
+      "Rerun make doctor and make setup-local until Docker/test Postgres on localhost:55433 is healthy, then run the focused organization_teams_contract without self-skip.",
+      "Run focused organization-teams Playwright against a live API/test DB to validate directory, empty state, team creation, detail, mobile overflow, and fixture screenshots.",
+      "Run live API security probes for anonymous GET/POST/detail, outsider private-org and secret-team privacy, invalid filter/body redaction, and hostile-Origin OPTIONS once the API can start.",
+      "Run automated axe/manual keyboard checks for /orgs/{org}/teams, /orgs/{org}/teams/new, and /orgs/{org}/teams/{teamSlug} once browser execution is available."
+    ]
   }
 ]

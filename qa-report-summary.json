@@ -1909,9 +1909,26 @@
       "description": "Build organization teams list, empty state, team creation form, nested-team rule",
       "category": "settings",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "blocked",
+          "notes": "Fixed confirmed My teams filtering/label bugs and verified focused web component behavior, but DB-backed Rust/browser scenarios could not run against localhost:55433 because Docker/test Postgres is unavailable in this controller environment."
+        },
+        "api_contract": {
+          "status": "blocked",
+          "notes": "Focused organization_teams_contract compiles and self-skipped 3/3 DB-backed bodies when TEST_DATABASE_URL/DATABASE_URL were intentionally unset; make doctor reports postgres-test not running and Postgres not reachable on :55433."
+        },
+        "security": {
+          "status": "blocked",
+          "notes": "Source/test inspection covers anonymous 401, outsider 403/404 privacy, invalid-filter redaction, and no token leakage assertions, but live unauthenticated/CORS probes require a running API and test DB and were blocked."
+        },
+        "accessibility": {
+          "status": "partial",
+          "notes": "Playwright spec now uses the shared auth fixture and asserts no dead controls/no horizontal overflow on org teams pages; runtime browser execution is blocked by local API startup/test DB availability."
+        }
+      }
     },
     {
       "feature_id": "org-admin-005",
