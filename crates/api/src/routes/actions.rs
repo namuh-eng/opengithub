@@ -27,18 +27,18 @@ use crate::{
             delete_workflow_artifact_for_actor, delete_workflow_run_logs, dispatch_workflow_run,
             get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
             record_actions_recent_view, record_runner_heartbeat, repository_for_actor_by_name,
-            repository_for_optional_actor_by_name, rerun_workflow_run,
-            reserve_actions_cache_for_actor, schedule_queued_action_jobs, transition_workflow_run,
-            update_actions_log_preferences_for_viewer, update_actions_runner_settings,
-            upload_workflow_artifact_for_actor, workflow_artifact_download_for_viewer,
-            workflow_job_log_download_for_viewer, workflow_job_log_stream_for_viewer,
-            workflow_job_logs_for_viewer, workflow_run_log_archive_for_viewer,
-            ActionsArtifactUpload, ActionsCacheReserve, ActionsDashboardQuery,
-            ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery, AppendWorkflowJobLogChunk,
-            AutomationError, CreateActionsRunner, CreateWorkflow, CreateWorkflowRun,
-            DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun,
-            RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun, UpdateActionsLogPreferences,
-            UpdateActionsRunnerSettings, WorkflowRunRerunMode,
+            repository_for_optional_actor_by_name, repository_for_runner_by_name,
+            rerun_workflow_run, reserve_actions_cache_for_actor, schedule_queued_action_jobs,
+            transition_workflow_run, update_actions_log_preferences_for_viewer,
+            update_actions_runner_settings, upload_workflow_artifact_for_actor,
+            workflow_artifact_download_for_viewer, workflow_job_log_download_for_viewer,
+            workflow_job_log_stream_for_viewer, workflow_job_logs_for_viewer,
+            workflow_run_log_archive_for_viewer, ActionsArtifactUpload, ActionsCacheReserve,
+            ActionsDashboardQuery, ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery,
+            AppendWorkflowJobLogChunk, AutomationError, CreateActionsRunner, CreateWorkflow,
+            CreateWorkflowRun, DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView,
+            RerunWorkflowRun, RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun,
+            UpdateActionsLogPreferences, UpdateActionsRunnerSettings, WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -316,6 +316,7 @@ struct AppendLogChunkRequest {
 #[serde(rename_all = "camelCase")]
 struct RunnerHeartbeatRequest {
     runner_id: Uuid,
+    runner_token: Option<String>,
     status: String,
 }
 
@@ -430,18 +431,24 @@ async fn update_actions_runner_settings_route(
 
 async fn actions_runner_heartbeat_route(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path((owner, repo)): Path<(String, String)>,
     RestJson(request): RestJson<RunnerHeartbeatRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let repository = repository_for_optional_actor_by_name(pool, &owner, &repo, None)
+    let repository_id = repository_for_runner_by_name(pool, &owner, &repo)
         .await
         .map_err(map_automation_error)?;
+    let header_token = headers
+        .get("x-opengithub-runner-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
     let runner = record_runner_heartbeat(
         pool,
-        repository.id,
+        repository_id,
         RunnerHeartbeat {
             runner_id: request.runner_id,
+            runner_token: request.runner_token.or(header_token).unwrap_or_default(),
             status: request.status,
         },
     )

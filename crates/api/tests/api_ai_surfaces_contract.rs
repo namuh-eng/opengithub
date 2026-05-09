@@ -82,7 +82,10 @@ async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String
 }
 
 async fn send_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    let mut builder = Request::builder().method(Method::GET).uri(uri).header(
+        "x-forwarded-for",
+        format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -109,6 +112,10 @@ async fn post_json(
     let mut builder = Request::builder()
         .method(Method::POST)
         .uri(uri)
+        .header(
+            "x-forwarded-for",
+            format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1),
+        )
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);

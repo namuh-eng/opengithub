@@ -8368,7 +8368,7 @@
     ],
     "needs_deeper_qa": [
       "qa_pass remains false because controller-required Ever CLI browser QA was not completed: app booted, but dashboard_e2e_seed failed with a DB pool timeout after Docker/test DB became unavailable, and ever start hung without producing an active session.",
-      "Re-run Ever CLI snapshot\u2192act\u2192snapshot once Docker/test DB and Ever extension connectivity are healthy: start http://localhost:3015, seed/sign in admin, visit /{owner}/{repo}/settings/secrets, create/update/delete one secret and one variable, verify write-only secret redaction, no dead controls, restricted non-admin state, and mobile no-overflow.",
+      "Re-run Ever CLI snapshot→act→snapshot once Docker/test DB and Ever extension connectivity are healthy: start http://localhost:3015, seed/sign in admin, visit /{owner}/{repo}/settings/secrets, create/update/delete one secret and one variable, verify write-only secret redaction, no dead controls, restricted non-admin state, and mobile no-overflow.",
       "Broad make test-e2e was attempted; first run failed outside settings-005 after 65 passing tests due worktree target no-space in profile-overview, and the shared-target rerun hung after a db-wait warning before being stopped to pursue mandatory Ever QA.",
       "Continue deeper production hardening from prior hints: real KMS/Secrets Manager backing, inherited org/environment scopes, fork/reusable/environment workflow policies, masking bypasses, and concurrent admin edits."
     ]
@@ -8399,6 +8399,22 @@
       "Re-run focused/full Playwright when no other worktree owns fixed ports 3015/3016; this QA run was repeatedly preempted by qa-opengithub-releases-002-rerun dev server/test processes.",
       "Full web Vitest currently has unrelated date-sensitive failures in non-release suites; retest once shared fixture dates are stabilized.",
       "Provider-backed asset streaming/S3 signed URL behavior, large files, content disposition, and concurrent reaction/asset races still need infrastructure-level QA."
+    ]
+  },
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "QA pass verified package_registry_contract 3/3 against real Postgres with PAT and workflow-token registry auth, blob upload/pull, manifest push/read/delete, tag listing, package download accounting, repository linking, package webhook queueing, audit rows, and redaction.",
+      "Focused Actions runner and pull_request trigger regressions passed after runner-token validation/setup-token fixes and request-isolation hardening.",
+      "Focused API docs Vitest and Playwright passed for registry developer docs snippets and mobile no-overflow.",
+      "make check passed after fixes."
+    ],
+    "needs_deeper_qa": [
+      "Full make test is still not green in this worktree; latest failure is outside packages-003 in api_repository_search_contract owner identifier expectations after package registry and focused Actions contracts passed.",
+      "make doctor remains a compose-owner false negative because the fixed opengithub-postgres-test container belongs to another QA compose project, although docker health/logs and DB-backed tests prove localhost:55433 is usable.",
+      "No real Docker CLI binary push/pull/delete smoke was run; the DB-backed Rust contract exercises Docker-compatible HTTP flows through the Axum app.",
+      "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
+      "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
     ]
   }
 ]

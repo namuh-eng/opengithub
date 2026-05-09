@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 48,
+    "features_passed": 49,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 39,
+      "pass": 40,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 36,
+      "pass": 37,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 2,
+      "pass": 3,
       "fail": 0,
       "skip": 39
     }
@@ -1552,10 +1552,23 @@
       "feature_id": "packages-003",
       "description": "Implement OCI/container package registry APIs for authenticated push, pull, tag ",
       "category": "developer-experience",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass"
+        },
+        "api_contract": {
+          "status": "pass"
+        },
+        "security": {
+          "status": "pass"
+        },
+        "accessibility": {
+          "status": "pass"
+        }
+      }
     },
     {
       "feature_id": "notifications-001",

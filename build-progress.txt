@@ -10547,3 +10547,10 @@
 Status: QA PASS with environment-limited browser smoke. Fixed slash-containing release tag URL encoding, singular viewer reaction toggle semantics, and release Playwright fixture Docker psql/API readiness portability.
 Evidence: make setup-local/doctor initially healthy, later docker exec pg_isready proved Postgres accepting connections despite a shared compose-owner doctor false negative; cd web && npm test -- tests/repository-releases-page.test.tsx passed 17 tests; TEST_DATABASE_URL=... ./hack/cargo_locked.sh test -p opengithub-api --test repository_releases_contract passed 2 tests; make check passed Cargo check, web typecheck, Clippy, Biome; make test passed Cargo workspace tests but web Vitest has 11 unrelated date-sensitive non-release failures.
 Browser note: focused repository-releases Playwright was attempted after setup-local; fixture psql/API readiness issues were fixed, but live browser completion remained blocked by concurrent qa-opengithub-releases-002-rerun processes occupying fixed ports 3015/3016.
+
+2026-05-09T05:45:00Z - packages-003 QA pass
+- Verified packages-003 registry API and Actions workflow integration with real Postgres on localhost:55433 despite a make doctor compose-owner false negative.
+- Fixed workflow-token /v2/token exchange, Docker-Content-Digest on completed blob uploads, current PAT fixture ownership, runner setup/heartbeat token validation, and focused test rate-limit isolation.
+- Evidence: package_registry_contract 3/3; api_repository_actions_runners_contract 1/1; api_repository_actions_push_trigger_contract focused PR trigger 1/1; web api-docs Vitest 3/3; Playwright api-docs setup + 2 Chromium tests; make check passed.
+- Full make test was attempted and remains blocked outside packages-003 by api_repository_search_contract owner identifier expectation failures after package/Actions focused contracts passed.
+- Marked packages-003.qa_pass=true.

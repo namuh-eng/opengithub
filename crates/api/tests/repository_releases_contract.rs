@@ -301,8 +301,7 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
         slash_tag["releaseHref"],
         format!(
             "/{}-owner/{}/releases/tag/release%2F2026",
-            marker,
-            public_repo.name
+            marker, public_repo.name
         )
     );
     assert!(slash_tag["compareHref"]
@@ -835,10 +834,10 @@ async fn send_json(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("x-forwarded-for", format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1));
+    let mut builder = Request::builder().method(method).uri(uri).header(
+        "x-forwarded-for",
+        format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }

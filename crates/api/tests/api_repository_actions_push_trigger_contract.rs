@@ -467,7 +467,11 @@ jobs:
         owner.id,
         "dddddddddddddddddddddddddddddddddddddddd",
         "feature/pr-checks",
-        &[("src/lib.rs", "pub fn changed() {}")],
+        &[
+            (".github/workflows/pr.yml", workflow_yaml),
+            ("README.md", "base"),
+            ("src/lib.rs", "pub fn changed() {}"),
+        ],
     )
     .await;
 
@@ -520,10 +524,11 @@ jobs:
         "actions.workflow_pull_request"
     );
     assert_eq!(run.get::<Value, _>("event_payload")["baseRef"], "main");
-    assert_eq!(
-        run.get::<Value, _>("event_payload")["changedPaths"][0],
-        "src/lib.rs"
-    );
+    assert!(run.get::<Value, _>("event_payload")["changedPaths"]
+        .as_array()
+        .expect("changed paths should be an array")
+        .iter()
+        .any(|path| path == "src/lib.rs"));
 }
 
 #[tokio::test]

@@ -83,7 +83,10 @@ async fn json_request(
     cookie: Option<&str>,
     body: Value,
 ) -> (StatusCode, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder().method(method).uri(uri).header(
+        "x-forwarded-for",
+        format!("198.51.100.{}", Uuid::new_v4().as_u128() % 250 + 1),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -177,6 +180,10 @@ async fn actions_runners_register_heartbeat_and_schedule_matching_jobs() {
         .as_str()
         .expect("token")
         .is_empty());
+    let runner_token = create_body["setup"]["registrationToken"]
+        .as_str()
+        .expect("token")
+        .to_owned();
     assert_eq!(
         create_body["workflowPermissions"]["githubTokenPermission"],
         "read"
@@ -219,7 +226,7 @@ async fn actions_runners_register_heartbeat_and_schedule_matching_jobs() {
         Method::POST,
         &heartbeat_uri,
         None,
-        json!({ "runnerId": runner_id, "status": "online" }),
+        json!({ "runnerId": runner_id, "runnerToken": runner_token, "status": "online" }),
     )
     .await;
     assert_eq!(heartbeat_status, StatusCode::OK);

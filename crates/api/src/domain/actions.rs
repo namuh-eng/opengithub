@@ -996,6 +996,7 @@ pub struct UpdateActionsRunnerSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerHeartbeat {
     pub runner_id: Uuid,
+    pub runner_token: String,
     pub status: String,
 }
 
@@ -2928,6 +2929,18 @@ pub async fn repository_for_optional_actor_by_name(
     require_repository_read_for_viewer(pool, repository.id, actor_user_id).await
 }
 
+pub async fn repository_for_runner_by_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+) -> Result<Uuid, AutomationError> {
+    let repository = get_repository_by_owner_name(pool, owner_login, repo_name)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or(AutomationError::RepositoryNotFound)?;
+    Ok(repository.id)
+}
+
 const ACTIONS_STATUS_OPTIONS: &[&str] = &[
     "action_required",
     "cancelled",
@@ -3798,7 +3811,19 @@ pub async fn actions_runner_settings_for_viewer(
     let runners = actions_runners(pool, repository_id).await?;
     let queue = actions_runner_queue(pool, repository_id).await?;
     let workflow_permissions = actions_workflow_permissions(pool, repository_id).await?;
-    let token = format!("ogr_{}", Uuid::new_v4().simple());
+    let token = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT registration_token
+        FROM actions_runners
+        WHERE repository_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or_else(|| format!("ogr_{}", Uuid::new_v4().simple()));
 
     Ok(RepositoryActionsRunnerSettings {
         repository: ActionsDashboardRepository {
@@ -3919,12 +3944,15 @@ pub async fn record_runner_heartbeat(
             last_heartbeat = CASE WHEN $3 = 'offline' THEN last_heartbeat ELSE now() END,
             busy_since = CASE WHEN $3 = 'busy' THEN COALESCE(busy_since, now()) ELSE NULL END
         WHERE repository_id = $1 AND id = $2
+          AND registration_token = $4
+          AND length(trim($4)) > 0
         RETURNING true
         "#,
     )
     .bind(repository_id)
     .bind(input.runner_id)
     .bind(&status)
+    .bind(input.runner_token.trim())
     .fetch_optional(pool)
     .await?
     .unwrap_or(false);
