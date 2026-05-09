@@ -3323,7 +3323,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3348,7 +3348,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3361,7 +3361,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3378,7 +3378,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3650,5 +3650,51 @@
       }
     ],
     "fix_description": "Fixed releases-003 tags UI badge semantics and tar.gz archive labeling; no backend changes were needed after DB-backed contract verification."
+  },
+  {
+    "feature_id": "releases-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Dedicated release new/edit flow passed focused Vitest and Playwright smoke: generated notes, draft save, edit, asset upload/remove, update, publish draft, delete confirmation, latest, immutable, forbidden, empty, mobile, and no-dead-control checks."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "repository_release_management_contract passed against real Postgres on localhost:55433 and covers management context, generated notes, create/update/publish/delete, latest policy, upload intent create/complete/cancel, asset deletion/download count, edit context, webhook delivery queueing, and audit redaction."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Fixed release write/manage handlers to require route-level authentication. Contract now verifies anonymous management context, generated notes, upload intent, and release create requests return 401 not_authenticated; storage keys and pending storage paths remain redacted from API/audit responses."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Vitest and Playwright smoke verify accessible visible buttons, disabled aria-disabled state, forbidden/immutable states, mobile layout, and no href=\"#\"/missing-href dead controls across the release management flow."
+      }
+    },
+    "tested_steps": [
+      "make doctor => Docker and fixed opengithub-postgres-test container were present, but doctor returned a compose-owner false negative because the running fixed-name container belonged to another QA worktree; make setup-local could not recreate the fixed-name container. docker exec pg_isready and all DB-backed release tests used the required localhost:55433/.env.test database.",
+      "bash .scratch/release-management-scenario.sh => repository_release_management_contract passed: 1 test, real Postgres, no mocks.",
+      "cd web && TMPDIR=../.scratch/tmp npx vitest run tests/repository-releases-page.test.tsx --pool forks => 17 tests passed.",
+      "TMPDIR=$PWD/.scratch/tmp make check => Cargo check, web typecheck, Clippy, and Biome passed after generated Playwright caches were removed.",
+      "set -a; . ./.env.test; set +a; export TMPDIR=$PWD/.scratch/tmp; cd web && npx playwright test tests/e2e/repository-releases.spec.ts --project=chromium --timeout=120000 => 2 tests passed, including full releases-002 browser smoke.",
+      "TMPDIR=$PWD/.scratch/tmp XDG_CACHE_HOME=$PWD/web/.cache make test => Cargo workspace tests passed; web Vitest had 11 unrelated date-sensitive failures outside releases (dashboard/profile/project/wiki/actions/contributors/pulse/packages/social), with no release test failure."
+    ],
+    "bugs_found": [
+      {
+        "description": "Generated release notes omitted merged pull requests whose merge commit belonged to the selected release range when pull_requests.merged_at was later than the target ref timestamp.",
+        "fix": "Changed the generated-notes PR range query to filter/order by merge commit committed_at when available, falling back to merged_at; existing release management contract now proves the PR appears in notes."
+      },
+      {
+        "description": "Release upload lifecycle audit after_state did not explicitly identify upload-intent events, making audit consumers rely on event_type instead of payload content.",
+        "fix": "Added uploadIntentId to upload intent created/completed/cancelled audit payloads while preserving storage-key redaction."
+      },
+      {
+        "description": "Release write/manage API handlers accepted optional auth at the route layer, allowing missing credentials to surface inconsistent deeper permission responses such as 403 instead of the expected 401.",
+        "fix": "Changed release create/manage/generated-notes/upload/update/publish/delete/asset/reaction handlers to require AuthenticatedUser at the route boundary and added anonymous 401 contract coverage."
+      }
+    ],
+    "fix_description": "Fixed generated-notes PR range inclusion, explicit upload audit metadata, and route-level authentication for release write/manage endpoints; verified release create/edit/upload/publish/delete with real DB, focused UI tests, make check, and Playwright smoke."
   }
 ]

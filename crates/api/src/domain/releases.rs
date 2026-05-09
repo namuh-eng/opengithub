@@ -515,6 +515,7 @@ pub async fn create_repository_release_upload_intent_by_owner_name(
         json!({}),
         json!({
             "intentId": intent_id,
+            "uploadIntentId": intent_id,
             "assetName": asset_name,
             "byteSize": request.byte_size,
             "contentType": content_type,
@@ -677,6 +678,7 @@ pub async fn complete_repository_release_upload_intent_by_owner_name(
         &["asset"],
         json!({ "intentId": intent_id }),
         json!({
+            "uploadIntentId": intent_id,
             "assetId": asset_id,
             "assetName": name,
             "byteSize": byte_size,
@@ -748,6 +750,7 @@ pub async fn cancel_repository_release_upload_intent_by_owner_name(
         json!({ "intentId": intent_id }),
         json!({
             "intentId": intent_id,
+            "uploadIntentId": intent_id,
             "assetName": row.get::<String, _>("asset_name"),
             "reason": reason
         }),
@@ -2241,14 +2244,21 @@ async fn merged_pull_requests_between_refs(
 ) -> Result<Vec<sqlx::postgres::PgRow>, ReleasesError> {
     let rows = sqlx::query(
         r#"
-        SELECT number, title, merged_at
+        SELECT pull_requests.number, pull_requests.title, pull_requests.merged_at
         FROM pull_requests
-        WHERE repository_id = $1
-          AND state = 'merged'
-          AND merged_at IS NOT NULL
-          AND ($2::timestamptz IS NULL OR merged_at > $2)
-          AND ($3::timestamptz IS NULL OR merged_at <= $3)
-        ORDER BY merged_at DESC
+        LEFT JOIN commits merge_commit ON merge_commit.id = pull_requests.merge_commit_id
+        WHERE pull_requests.repository_id = $1
+          AND pull_requests.state = 'merged'
+          AND pull_requests.merged_at IS NOT NULL
+          AND (
+            $2::timestamptz IS NULL
+            OR COALESCE(merge_commit.committed_at, pull_requests.merged_at) > $2
+          )
+          AND (
+            $3::timestamptz IS NULL
+            OR COALESCE(merge_commit.committed_at, pull_requests.merged_at) <= $3
+          )
+        ORDER BY COALESCE(merge_commit.committed_at, pull_requests.merged_at) DESC
         LIMIT 50
         "#,
     )

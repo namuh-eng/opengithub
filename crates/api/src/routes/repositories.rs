@@ -4011,12 +4011,12 @@ async fn create_release(
     RestJson(request): RestJson<ReleaseMutation>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let release = create_repository_release_by_owner_name(
         pool,
         &owner,
         &repo,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4031,13 +4031,13 @@ async fn release_manage_new(
     Path((owner, repo)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let context = repository_release_management_context_by_owner_name(
         pool,
         &owner,
         &repo,
         None,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
     )
     .await
     .map_err(map_releases_error)?;
@@ -4051,13 +4051,13 @@ async fn release_manage_edit(
     Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let context = repository_release_management_context_by_owner_name(
         pool,
         &owner,
         &repo,
         Some(release_id),
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
     )
     .await
     .map_err(map_releases_error)?;
@@ -4072,12 +4072,12 @@ async fn release_generated_notes(
     RestJson(request): RestJson<GeneratedReleaseNotesRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let preview = generate_repository_release_notes_by_owner_name(
         pool,
         &owner,
         &repo,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4093,12 +4093,12 @@ async fn create_release_upload_intent(
     RestJson(request): RestJson<ReleaseUploadIntentRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let intent = create_repository_release_upload_intent_by_owner_name(
         pool,
         &owner,
         &repo,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4114,13 +4114,13 @@ async fn complete_release_upload_intent(
     RestJson(request): RestJson<ReleaseUploadCompleteRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let release = complete_repository_release_upload_intent_by_owner_name(
         pool,
         &owner,
         &repo,
         intent_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4136,13 +4136,13 @@ async fn cancel_release_upload_intent(
     RestJson(request): RestJson<ReleaseUploadCancelRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let intent = cancel_repository_release_upload_intent_by_owner_name(
         pool,
         &owner,
         &repo,
         intent_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4177,13 +4177,13 @@ async fn update_release(
     RestJson(request): RestJson<ReleaseMutation>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let release = update_repository_release_by_owner_name(
         pool,
         &owner,
         &repo,
         release_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4198,13 +4198,13 @@ async fn publish_release(
     Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let release = publish_repository_release_by_owner_name(
         pool,
         &owner,
         &repo,
         release_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
     )
     .await
     .map_err(map_releases_error)?;
@@ -4219,13 +4219,13 @@ async fn delete_release(
     RestJson(request): RestJson<ReleaseMutation>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     delete_repository_release_by_owner_name(
         pool,
         &owner,
         &repo,
         release_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request.delete_tag.unwrap_or(false),
     )
     .await
@@ -4364,13 +4364,13 @@ async fn create_release_asset(
     RestJson(request): RestJson<ReleaseAssetMutation>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let release = create_repository_release_asset_by_owner_name(
         pool,
         &owner,
         &repo,
         release_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         request,
     )
     .await
@@ -4385,14 +4385,14 @@ async fn delete_release_asset(
     Path((owner, repo, release_id, asset_id)): Path<(String, String, Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let release = delete_repository_release_asset_by_owner_name(
         pool,
         &owner,
         &repo,
         release_id,
         asset_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
     )
     .await
     .map_err(map_releases_error)?;
@@ -4407,13 +4407,13 @@ async fn release_reaction(
     RestJson(request): RestJson<ReleaseReactionRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let reactions = toggle_repository_release_reaction_by_owner_name(
         pool,
         &owner,
         &repo,
         release_id,
-        actor.as_ref().map(|user| user.id),
+        Some(actor.id),
         &request.content,
     )
     .await
