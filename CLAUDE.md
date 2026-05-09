@@ -40,7 +40,17 @@ All commands go through `make`. The Makefile is a contract — onboarding wires 
 The test DB definition is in `docker-compose.test.yml` (port 55433, user/pass `opengithub`/`opengithub`, db `opengithub_test`). `.env.test` is committed and matches it.
 
 ## Worktrees
-Use `./hack/create_worktree.sh [name] [base]`. It symlinks `.env`, `.env.test`, `.mcp.json`, copies `.claude/`, touches `.ralph-setup-done`, and runs `make doctor` so you immediately know if setup is healthy.
+Use `./hack/create_worktree.sh [name] [base]`. It:
+- creates the git worktree under `~/wt/opengithub/` (override with `OPENGITHUB_WORKTREE_BASE`)
+- copies `.claude/` and `hack/` helpers (so make targets work even on older branches)
+- symlinks `.env`, `.env.test`, `.mcp.json` from this repo
+- runs `hack/setup_repo.sh` which: creates `.scratch/cargo-target` (per-worktree Cargo target dir — avoids `/tmp` quota and cross-lane cache stomping), writes a `.envrc` exporting `CARGO_TARGET_DIR`, runs `npm ci` in `web/` if it exists (kills the `Cannot find module '@playwright/test'` issue), touches `.ralph-setup-done`
+- runs `make doctor` so you know immediately if verification is healthy
+- on partial setup failure, removes the worktree automatically — you never end up half-configured
+
+To activate the per-worktree Cargo cache in your shell: `export CARGO_TARGET_DIR="$PWD/.scratch/cargo-target"` (or `direnv allow` if you use direnv). Do NOT use `/tmp/opengithub-cargo-target` — it's shared across lanes with no GC and reliably exhausts `/tmp` quota.
+
+Tear down with `./hack/cleanup_worktree.sh [name]` — drops `.scratch/`, removes the worktree, prompts to delete the branch.
 
 ## Quality Standards
 - Strict type checking enabled (language-specific: TypeScript strict, Go vet, etc.)
@@ -60,6 +70,10 @@ Use `./hack/create_worktree.sh [name] [base]`. It symlinks `.env`, `.env.test`, 
 ## Pre-configured (DO NOT reinstall or recreate)
 - **Makefile** — `make check`, `make test`, `make test-e2e`, `make all` (contract targets)
 - **hack/run_silent.sh** — output formatting helper used by Makefile
+- **hack/cargo_locked.sh** — Cargo wrapper with repo-scoped lock + shared target cache fallback
+- **hack/create_worktree.sh** — full worktree setup (symlinks, deps, scratch dirs, doctor)
+- **hack/setup_repo.sh** — idempotent per-worktree setup (called by create_worktree.sh; safe to re-run)
+- **hack/cleanup_worktree.sh** — tear down a worktree and its branch
 
 ## Stack Setup
 - Onboarding wrote `ralph-config.json` (single source of truth for stack decisions).

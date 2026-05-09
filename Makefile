@@ -11,6 +11,7 @@
 .PHONY: check-header test-header check-verbose test-verbose
 .PHONY: db-generate db-migrate db-push api-dev web-dev
 .PHONY: db-up-test db-down-test db-wait-test
+.PHONY: db-up-dev db-down-dev db-wait-dev db-migrate-dev
 .PHONY: doctor setup-local
 
 # --- Guard: ensure onboarding has run ---
@@ -161,6 +162,35 @@ db-wait-test:
 # Tear down the test DB and drop the volume so the next run starts fresh.
 db-down-test:
 	@docker compose -f docker-compose.test.yml down -v
+
+# --- Dev DB (persistent, port 55434) ---
+# Separate from the test DB so `make db-down-test` never wipes your dev data.
+
+db-up-dev:
+	@docker compose -f docker-compose.dev.yml up -d
+	@$(MAKE) -s db-wait-dev
+
+db-wait-dev:
+	@for i in $$(seq 1 60); do \
+	  if docker compose -f docker-compose.dev.yml exec -T postgres-dev pg_isready -U opengithub -d opengithub_dev >/dev/null 2>&1; then \
+	    exit 0; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "dev postgres did not become ready on :55434 within 60s" >&2; \
+	exit 1
+
+# Stop the dev DB but preserve the volume — data survives across restarts.
+db-down-dev:
+	@docker compose -f docker-compose.dev.yml down
+
+# Apply migrations to the dev DB. Requires sqlx-cli.
+db-migrate-dev:
+	@if ! command -v sqlx >/dev/null 2>&1; then \
+	  echo "Install sqlx-cli first: cargo install sqlx-cli --no-default-features --features rustls,postgres"; \
+	  exit 1; \
+	fi
+	@DATABASE_URL=postgresql://opengithub:opengithub@localhost:55434/opengithub_dev sqlx migrate run --source crates/api/migrations
 
 # Diagnose local dev/test setup. Run this in any worktree to know what's
 # missing. Exits 0 if healthy, non-zero with actionable guidance if not.
