@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 50,
+    "features_passed": 51,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 41,
+      "pass": 42,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 37,
+      "pass": 38,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 38,
+      "pass": 39,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 4,
+      "pass": 5,
       "fail": 0,
       "skip": 39
     }
@@ -1698,10 +1698,28 @@
       "feature_id": "notifications-003",
       "description": "Manage custom notification inbox filters with documented qualifier validation an",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused component, DB-backed Rust contract, and signed-in Playwright create/delete custom filter scenario passed for notifications-003."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "GET/POST/PATCH/DELETE custom-filter endpoints and inbox facet integration passed through the focused DB-backed Rust contract against localhost:55433."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Unauthenticated custom-filter endpoint returned 401 JSON not_authenticated, evil-origin OPTIONS returned 405 without CORS echo, private repo qualifiers are redacted as unavailable, and no stack traces or hidden names were exposed."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Temporary axe WCAG 2.1 A/AA scan on signed-in /settings/notifications passed with zero violations."
+        }
+      }
     },
     {
       "feature_id": "notifications-004",
