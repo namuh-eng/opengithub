@@ -3789,5 +3789,80 @@
       "make doctor and make setup-local remain blocked by the shared fixed Docker container name owned by another worktree, although direct DB checks and DB-backed tests verified localhost:55433/opengithub_test.",
       "Full make test is not green in this worktree because unrelated web date expectation tests fail; notifications-003 focused component, API contract, E2E, a11y, and make check passed."
     ]
+  },
+  {
+    "feature_id": "notifications-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified repository watch menu, issue thread notifications, and pull request thread notifications with focused DB contracts, Vitest coverage, and Playwright browser smoke against localhost:55433. Fixed a watch-menu draft race and removed the invalid Merged event from issue customization."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/watch",
+          "PATCH /api/repos/{owner}/{repo}/watch",
+          "PATCH /api/repos/{owner}/{repo}/issues/{number}/subscription",
+          "PATCH /api/repos/{owner}/{repo}/pulls/{number}/subscription"
+        ],
+        "notes": "DB-backed Rust contracts passed for repository watch settings, issue subscription validation/persistence, pull request subscription validation/persistence, and notification fanout watch/thread overrides."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_redaction",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Focused contracts cover authenticated access, private/public read redaction, invalid custom event validation, actor exclusion, repository read permission gating, ignore suppression, and thread unsubscribe precedence. Responses did not expose stack traces or secrets in the tested paths."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright smoke exercised visible menu/dialog controls; issue dialog no longer exposes the invalid Merged checkbox. Banned GitHub/Primer visual-token scan was clean. No separate axe scan was added in this pass."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker and opengithub-postgres-test were present, but doctor reported Postgres not accepting connections because pg_isready is unavailable on host and docker compose exec cannot attach to the existing fixed-name container from this worktree.",
+      "Ran make setup-local as required; it failed because the fixed-name opengithub-postgres-test container already existed. Verified the existing container publishes 55433 and docker exec pg_isready reports accepting connections for opengithub_test.",
+      "Installed web dependencies with npm ci from the committed lockfile; npm reported 2 moderate transitive audit findings that were not changed for this feature QA.",
+      "Ran mandatory Editorial banned-token scan over web/src with no hits.",
+      "Ran cd web && npm test -- repository-code-overview.test.tsx repository-issue-detail.test.tsx repository-pull-request-detail.test.tsx: 49/49 passed after fixes.",
+      "Ran cd web && npx tsc --noEmit: passed.",
+      "Ran focused Rust contracts against TEST_DATABASE_URL/DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test: repository_code_overview watch coverage passed during make test before unrelated failure; api_repository_issues_list_contract issue_detail_contract_returns_public_read_model_and_redacts_private_access passed; api_pull_request_detail_contract pull_request_detail_contract_returns_screen_ready_metadata passed; api_notifications_inbox_contract notification_fanout_respects_repository_watch_and_thread_overrides passed.",
+      "Ran focused Playwright browser smoke with live make dev server: repository watch custom save, issue notification customization, and pull request notification customization passed 4/4 including setup.",
+      "Ran make check with TMPDIR=.scratch/tmp: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Attempted make test with TMPDIR=.scratch/tmp: notifications, issue, and pull request Rust suites passed before unrelated api_repository_search_contract owner identifier expectations failed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Issue thread notification customization exposed the Merged custom event even though the issue subscription API accepts only closed and reopened state-change events.",
+        "expected": "Issue customization should offer only issue-valid custom events and never let users save an invalid merged event.",
+        "actual": "The shared dialog offered Merged on issue pages, which could submit an invalid customEvents payload and return validation_failed.",
+        "reproduction": "Open an issue detail page, click Notifications > Customize, select Merged, and save."
+      },
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Repository watch menu could overwrite user draft changes if the initial settings GET resolved after the user selected Custom and checked events.",
+        "expected": "User edits made while the menu is open should be preserved until Save or Cancel.",
+        "actual": "A late GET response reset selectedWatchLevel/customEvents back to the server state, causing Save to persist Participating instead of Custom in a fast browser interaction.",
+        "reproduction": "Open repository Watch menu and immediately select Custom with issue/pull request events before the GET finishes; save persisted the old participating state."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The focused repository watch Playwright smoke synchronized on a brittle GET response predicate after the menu was already visible.",
+        "expected": "The browser test should synchronize on user-visible menu state and still assert save/persistence behavior.",
+        "actual": "The test could time out waiting for a GET response even when the watch menu was open.",
+        "reproduction": "Run the focused repository-code-overview Playwright watch-menu test on a warm dev server."
+      }
+    ],
+    "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
   }
 ]

@@ -98,14 +98,7 @@ test("signed-in repository watch menu saves custom event settings", async ({
   await page.goto(repositoryPath);
   await expect(page.getByRole("button", { name: /Watch/ })).toBeVisible();
 
-  const watchReadResponse = page.waitForResponse(
-    (response) =>
-      response.url().endsWith(`${repositoryPath}/actions/watch`) &&
-      response.request().method() === "GET" &&
-      response.status() === 200,
-  );
-  await page.locator('button[aria-haspopup="menu"]').first().click();
-  await watchReadResponse;
+  await page.getByRole("button", { name: /Watch/ }).click();
   await expect(
     page.getByRole("menu", { name: "Repository watch settings" }),
   ).toBeVisible();

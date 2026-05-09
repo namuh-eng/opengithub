@@ -1054,7 +1054,7 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
+          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
         },
         "api_contract": {
           "status": "pass",
@@ -1084,7 +1084,7 @@
         "accessibility": {
           "status": "pass",
           "violations": [],
-          "notes": "Files changed page uses semantic primitives \u2014 t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
+          "notes": "Files changed page uses semantic primitives — t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
         }
       },
       "overall_status": "pass"
@@ -1762,10 +1762,41 @@
       "feature_id": "notifications-004",
       "description": "Implement repository Watch menu and thread-level notification subscriptions for ",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Verified repository watch menu, issue thread notifications, and pull request thread notifications with focused DB contracts, Vitest coverage, and Playwright browser smoke against localhost:55433. Fixed a watch-menu draft race and removed the invalid Merged event from issue customization."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/watch",
+            "PATCH /api/repos/{owner}/{repo}/watch",
+            "PATCH /api/repos/{owner}/{repo}/issues/{number}/subscription",
+            "PATCH /api/repos/{owner}/{repo}/pulls/{number}/subscription"
+          ],
+          "notes": "DB-backed Rust contracts passed for repository watch settings, issue subscription validation/persistence, pull request subscription validation/persistence, and notification fanout watch/thread overrides."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "permission_redaction",
+            "input_validation",
+            "data_exposure"
+          ],
+          "notes": "Focused contracts cover authenticated access, private/public read redaction, invalid custom event validation, actor exclusion, repository read permission gating, ignore suppression, and thread unsubscribe precedence. Responses did not expose stack traces or secrets in the tested paths."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright smoke exercised visible menu/dialog controls; issue dialog no longer exposes the invalid Merged checkbox. Banned GitHub/Primer visual-token scan was clean. No separate axe scan was added in this pass."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "personal-settings-001",
@@ -2263,7 +2294,7 @@
     },
     {
       "feature_id": "search-007",
-      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "description": "File finder widget — keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2272,7 +2303,7 @@
     },
     {
       "feature_id": "security-002",
-      "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke indi",
+      "description": "Active web sessions panel — list devices, locations, signed-in time; revoke indi",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2312,7 +2343,7 @@
     },
     {
       "feature_id": "security-003",
-      "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, si",
+      "description": "Security log — append-only audit trail of security-relevant actions (sign-in, si",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2351,7 +2382,7 @@
     },
     {
       "feature_id": "globalpulls-001",
-      "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, wa",
+      "description": "Global pull-request dashboard at /pulls — every PR the signed-in user opened, wa",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2388,7 +2419,7 @@
     },
     {
       "feature_id": "globalissues-001",
-      "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was a",
+      "description": "Global issue dashboard at /issues — every issue the signed-in user opened, was a",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2610,7 +2641,7 @@
     },
     {
       "feature_id": "gist-001",
-      "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git hist",
+      "description": "Gists — single-file or multi-file snippets at /gist/<id> with their own git hist",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2619,7 +2650,7 @@
     },
     {
       "feature_id": "ai-001",
-      "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
+      "description": "AI surface — repository auto-summary card, AI-generated PR summary + suggested r",
       "category": "feature",
       "qa_pass": false,
       "attempts": 2,

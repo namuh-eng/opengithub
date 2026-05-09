@@ -1251,6 +1251,7 @@ export function RepositoryPullRequestDetailPage({
               <ThreadNotificationCard
                 activePath={activePath}
                 disabled={false}
+                events={["merged", "closed", "reopened"]}
                 isMutating={isMutating}
                 onSave={saveSubscription}
                 subscription={subscription}

@@ -549,6 +549,9 @@ describe("RepositoryIssueDetailPage", () => {
     expect(
       screen.getByRole("heading", { name: "Customize updates" }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("checkbox", { name: /Merged/ }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: /Closed/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Reopened/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

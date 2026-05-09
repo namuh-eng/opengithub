@@ -158,6 +158,7 @@ export function RepositoryHeaderActions({
   >(repository.viewerState.customWatchEvents ?? []);
   const [watchFeedback, setWatchFeedback] = useState<string | null>(null);
   const watchMenuRef = useRef<HTMLDivElement | null>(null);
+  const watchDraftDirtyRef = useRef(false);
   const [isPending, startTransition] = useTransition();
   const owner = repository.owner_login;
   const repo = repository.name;
@@ -229,6 +230,7 @@ export function RepositoryHeaderActions({
       return;
     }
     setWatchFeedback(null);
+    watchDraftDirtyRef.current = false;
     startTransition(async () => {
       try {
         const response = await fetch(`/${owner}/${repo}/actions/watch`, {
@@ -239,8 +241,10 @@ export function RepositoryHeaderActions({
         }
         const settings = (await response.json()) as RepositoryWatchSettings;
         setWatchSettings(settings);
-        setSelectedWatchLevel(settings.level);
-        setSelectedWatchEvents(settings.customEvents);
+        if (!watchDraftDirtyRef.current) {
+          setSelectedWatchLevel(settings.level);
+          setSelectedWatchEvents(settings.customEvents);
+        }
         setSocial((current) => socialFromWatchSettings(current, settings));
       } catch {
         setWatchFeedback("Watch settings could not be loaded.");
@@ -249,11 +253,17 @@ export function RepositoryHeaderActions({
   }
 
   function toggleWatchEvent(event: RepositoryWatchEvent) {
+    watchDraftDirtyRef.current = true;
     setSelectedWatchEvents((current) =>
       current.includes(event)
         ? current.filter((item) => item !== event)
         : [...current, event],
     );
+  }
+
+  function selectWatchLevel(level: RepositoryWatchLevel) {
+    watchDraftDirtyRef.current = true;
+    setSelectedWatchLevel(level);
   }
 
   function saveWatchSettings() {
@@ -388,7 +398,7 @@ export function RepositoryHeaderActions({
                     checked={selectedWatchLevel === option.level}
                     className="mt-1"
                     name="repository-watch-level"
-                    onChange={() => setSelectedWatchLevel(option.level)}
+                    onChange={() => selectWatchLevel(option.level)}
                     type="radio"
                     value={option.level}
                   />
