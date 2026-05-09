@@ -394,7 +394,7 @@ async fn snapshot_files(
             byte_size: bytes.len() as i64,
         });
     }
-    files.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    files.sort_by_key(|file| file.path.to_lowercase());
     Ok(files)
 }
 

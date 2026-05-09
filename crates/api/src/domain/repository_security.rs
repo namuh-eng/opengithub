@@ -6813,7 +6813,7 @@ async fn dependabot_manifest_filters(
             });
         }
     }
-    manifests.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    manifests.sort_by_key(|manifest| manifest.path.to_lowercase());
     Ok(manifests)
 }
 
@@ -8764,7 +8764,7 @@ async fn write_security_policy(
             byte_size: markdown.len() as i64,
         });
     }
-    files.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    files.sort_by_key(|file| file.path.to_lowercase());
 
     let tree_oid = deterministic_content_oid(
         "tree",

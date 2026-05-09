@@ -3379,5 +3379,66 @@
       }
     ],
     "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+  },
+  {
+    "feature_id": "settings-003",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Local verification stack was repaired to the committed .env.test/docker-compose.test.yml Postgres on localhost:55433. Focused Rust contracts, focused Vitest, live API probes, and focused Playwright browser smoke verified branch protection/ruleset CRUD, persisted admin mutations, read-only/non-admin behavior, PR mergeability policy aggregation, and Git push enforcement. A QA fix was made for most-restrictive force-push/deletion aggregation across overlapping active policies."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/settings/branches",
+          "POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/branches/rules",
+          "POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/branches/rulesets",
+          "PR mergeability branch-policy aggregation paths",
+          "Git receive-pack branch-policy enforcement paths"
+        ],
+        "notes": "DB-backed repository_branch_settings_contract now runs 2 non-skipped tests, including a new most-restrictive push-enforcement contract. Live curl happy-path GET returned 200 application/json with canEdit=true; unauthenticated GET and POST returned standard 401 JSON envelopes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization/error_envelopes",
+          "cors",
+          "data_exposure",
+          "push_enforcement"
+        ],
+        "notes": "Unauthenticated branch settings GET/POST returned 401 without data. Hostile Origin OPTIONS returned 405 and did not echo Access-Control-Allow-Origin. Focused contracts cover private repository privacy, validation envelopes, no-secret response handling, protected push rejection, and evaluate-only logging. Editorial banned-value scan over web/src excluding og*.css was clean."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused branch settings Vitest checks no inert anchors or unnamed visible buttons. Focused Playwright verified admin desktop, mobile no-overflow, and read-only states with no dead controls; screenshots refreshed under ralph/screenshots/build/settings-003-final-branches-*.jpg."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-08T23:30:04Z",
+      "passed": [
+        "make doctor after setup-local: Docker daemon running, postgres-test container up, Postgres reachable inside container, .env.test present",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test repository_branch_settings_contract -- --nocapture (2 passed, non-skipped)",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract pull_request_mergeability_uses_repository_policy_and_branch_rules -- --nocapture (1 passed)",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test git_transport receive_pack -- --nocapture (1 passed focused receive-pack auth/enforcement scenario)",
+        "cd web && npx vitest run tests/repository-branch-settings-page.test.tsx tests/api-docs.test.tsx tests/repository-pull-request-detail.test.tsx (3 files / 29 tests passed)",
+        "set -a; . ./.env.test; cd web && npx playwright test tests/e2e/repository-settings-branches.spec.ts --project=chromium (2 passed; admin create/edit/delete, reload persistence, mobile no-overflow, read-only state)",
+        "Live curl GET /api/repos/dash-5e172141006f/alpha-5e172141006f/settings/branches with seeded session returned HTTP 200 application/json and canEdit=true",
+        "Live curl unauthenticated GET and POST on branch settings endpoints returned HTTP 401 application/json not_authenticated",
+        "Live curl OPTIONS with Origin https://evil.com returned 405 without Access-Control-Allow-Origin echo",
+        "make check passed: Cargo check, web typecheck, Clippy, and Biome",
+        "make test Cargo phase passed; focused Vitest passed for settings-003 touched UI/tests",
+        "Mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches"
+      ],
+      "known_unrelated_baseline_failures": [
+        "make test broad web Vitest failed 12 unrelated existing UI date-expectation tests outside settings-003 (dashboard-onboarding, project-workspace, repository-pulse, contributors, wiki, actions workflow/secrets, user profile/repositories/contributions, owner packages, social list). Failure examples expected dates such as Updated Apr 30/Starred May 2 while current rendered dates are one day earlier; no failing file is in the settings-003 code path touched by this QA fix."
+      ],
+      "fixed": [
+        "Branch policy aggregation now treats allowsForcePushes/allowsDeletions as most-restrictive across active matching sources instead of allowing any permissive source to override a restrictive rule/ruleset."
+      ]
+    }
   }
 ]

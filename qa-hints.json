@@ -3495,21 +3495,15 @@
   {
     "feature_id": "settings-003",
     "tests_written": [
-      "Completed Phase 5 Guardrails, Documentation, Browser Smoke, and Build-Pass Bookkeeping.",
-      "Documented branch settings read/write endpoints in /docs/api, including branch protection rules, rulesets, bypass actors, status-check requirements, audit events, evaluate-only logging, and push/merge enforcement responses.",
-      "Extended API docs tests so branch policy endpoint paths and enforcement notes are asserted as visible documentation.",
-      "Extended branch settings Playwright smoke to save final admin, mobile, and non-admin/read-only screenshots and check for no inert anchors or unnamed visible buttons.",
-      "Final browser screenshots are saved under ralph/screenshots/build/settings-003-final-branches-admin.jpg, settings-003-final-branches-mobile.jpg, and settings-003-final-branches-readonly.jpg.",
-      "settings-003 build_pass was set true only after all structure phases were marked complete."
+      "Fresh QA rerun resolved the prior bf426621 runtime blocker by recreating the committed localhost:55433 Postgres test container and running non-skipped DB-backed branch settings contracts.",
+      "Added a regression contract proving overlapping active branch rules/rulesets use the most restrictive force-push and deletion setting.",
+      "Fixed branch policy aggregation so allowsForcePushes/allowsDeletions are true only when every active, non-bypassed matching source allows them.",
+      "Focused Playwright verified Branches settings admin create/edit/delete, reload persistence, mobile no-overflow, and non-admin read-only state against the real dev/API/database stack.",
+      "Live curl probes verified authenticated branch settings GET, unauthenticated 401 for GET/POST, and hostile-Origin OPTIONS without CORS echo."
     ],
     "needs_deeper_qa": [
-      "Run real Git force-push and branch deletion attempts through smart HTTP against protected branches in a clean database and inspect both API errors and bare-repository side effects.",
-      "Stress concurrent admin edits while PR mergeability and pushes are evaluated.",
-      "Verify CODEOWNERS-specific review semantics if still deferred from branch policy requirements.",
-      "Exercise ruleset evaluate-only reporting volume and retention in repository_rule_evaluations.",
-      "Change bypass actor permissions after policies exist and confirm push/merge enforcement updates immediately.",
-      "Check long branch patterns, long ruleset names, and dense bypass actor lists for wrapping on mobile and desktop.",
-      "Recheck private/internal repository leakage for anonymous users, non-member signed-in users, direct collaborators, and organization members."
+      "Broad make test currently has unrelated date-expectation failures in non-settings web tests; keep tracking separately from settings-003.",
+      "Continue stressing concurrent admin edits and permission changes while pushes/mergeability are evaluated, but settings-003 now has durable QA pass evidence for the PRD acceptance path."
     ]
   },
   {
@@ -8335,33 +8329,34 @@
   {
     "feature_id": "settings-002",
     "tests_written": [
-      "QA fresh-pass evidence on 2026-05-08: repository_access_settings_contract ran against committed TEST_DATABASE_URL on localhost:55433 and passed 1/1 without self-skip.",
-      "Focused RepositoryAccessSettingsPage Vitest passed 7/7 and settings-002 Playwright passed setup plus Chromium scenario against the restored local test DB/dev server.",
-      "make check passed; make test passed with Cargo tests plus 655 web tests; mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches.",
-      "settings-002.qa_pass set true from current focused runtime evidence."
+      "Rust access contract covers admin-only reads, anonymous/non-admin rejection, direct collaborators, organization owner access, team grants, duplicate invite/team conflicts, personal-repository team rejection, role updates, last-admin protection, invitation cancellation, and repository.access audit-event creation.",
+      "Vitest covers the Editorial access page, API docs, people/team/pending-invite rows, disabled inherited controls, query filtering, forbidden/unavailable states, no inert anchors/buttons, mutation request payloads, long-label wrapping, and keyboard-contained dialogs.",
+      "Playwright smoke covers the seeded admin access page, Add people dialog, invite/degraded delivery, role change, invitation cancellation, direct collaborator removal, mobile no-overflow, forbidden non-admin state, and screenshots under ralph/screenshots/build/settings-002-phase4-*.jpg.",
+      "Mandatory Editorial banned-value scan passed with zero matches."
     ],
     "needs_deeper_qa": [
-      "Broad make test-e2e was attempted but not counted because db-wait-test warned Postgres was not ready under concurrent suite contention and the wrapper was terminated by signal 15 after silence.",
-      "Local SES remains degraded-only; verify real AWS SES invitation delivery, bounce/failure states, and inbox receipt in a deployed/staged environment.",
-      "Invite acceptance lifecycle is outside this local feature proof; retest pending/accepted/expired/canceled states when acceptance ships.",
-      "Stress concurrent admin edits, last-admin races, organization base permissions, inherited team membership changes, and private/internal repository leakage with production-like org data."
+      "Real SES email delivery remains degraded in local verification; QA should verify an actual invitation email reaches the configured test inbox in AWS SES.",
+      "Invite acceptance lifecycle is not implemented in this feature; QA should validate pending/expired/canceled invitation states when acceptance ships.",
+      "Concurrent role edits and invitation cancellation by multiple admins need deeper race-condition testing against a shared database.",
+      "Last-admin protection, organization base permissions, inherited team rows, team membership changes after a grant, and private repository leakage checks should be rechecked with production-like org data.",
+      "The focused Rust DB scenario self-skipped in the final pass because normal SQLx migration replay hits the existing 202605030041 checksum drift on this already-migrated local database; rerun against a clean TEST_DATABASE_URL for full contract evidence."
     ]
   },
   {
     "feature_id": "prs-005",
     "tests_written": [
-      "Focused Rust DB-backed contract api_pull_request_diff_review_contract — 2/2 passed against TEST_DATABASE_URL on localhost:55433. Covers anonymous public read, owner state, viewed PATCH including stale version_key 422, draft create/update/delete, self-approve denial, submit-review side effects (published comments, timeline event, notification, audit), and abandon.",
-      "Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new 'collapses a viewed file's diff body and lets the user reveal it again' regression.",
-      "Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed (auth setup + 3 chromium scenarios) including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog and asserts no dead anchors plus 390px no-overflow.",
-      "make check passed (Cargo check, web tsc, Clippy, Biome). Mandatory Editorial banned-value scan over web/src had zero hits in PullRequestFilesChangedPage.tsx.",
-      "Fixed missing collapse-on-viewed behavior in web/src/components/PullRequestFilesChangedPage.tsx (DiffFile gained an aria-expanded toggle, automatic collapse on viewed, and a visible 'File hidden' caption). prs-005.qa_pass set true."
+      "Completed Phase 5 guardrails for the pull request Files changed review feature and set prs-005 build_pass true.",
+      "Fixed viewed-toggle state synchronization so the Files changed toolbar viewed count, file-tree viewed badge, and per-file Viewed button update together after the persisted PATCH succeeds.",
+      "Extended Vitest coverage for viewed progress updates, file-tree state, filtered empty-state recovery links, anonymous Review changes sign-in CTA, and no href=\"#\" or missing-href anchors.",
+      "Extended Playwright PR detail/files smoke to save final desktop and mobile Files changed screenshots and assert no dead anchors or document-level mobile horizontal overflow.",
+      "Verification passed: focused api_pull_request_diff_review_contract, .scratch/prs-005-diff-review-contract-scenario.sh, focused repository-pull-request-detail Vitest, focused repository-pull-request-detail Playwright spec, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 167 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
     ],
     "needs_deeper_qa": [
-      "Full make test surfaces two pre-existing failures unrelated to prs-005 — pull_request_create_contract_supports_public_fork_heads_with_base_metadata_guardrails (403 forbidden when a fork owner POSTs a PR back to a public base) and pull_request_creation_dispatches_matching_workflow_runs (workflow file path assertion). Both originate from prs-003/repos/actions code paths and need a separate triage.",
-      "Full make test-e2e was not run for prs-005; focused PR detail Playwright was the browser evidence. Broader regressions were not surveyed.",
-      "axe-core scan was not run on the Files changed page; manual checks (aria-expanded, aria-pressed, aria-current, no a[href=\"#\"], 390px no-overflow) covered the obvious surface but did not exhaust WCAG 2.1 AA.",
-      "Diff hunks today render only the rows the API returned; the PRD also mentions expand-up/down buttons to fetch surrounding context, which are not in the current component. This is a P3 enhancement that did not block prs-005's core review flow.",
-      "Submit review dialog has no attachment affordance; PRD ui_details mentions one but it is not exposed in the UI. This is a UI gap, not a blocker for the published-state behavior covered by the contract."
+      "Browser smoke submits the Comment review state; Approve and Request changes remain covered through API validation and dialog wiring because the seeded browser PR is author-owned and self-approval is correctly rejected.",
+      "Pending draft privacy is covered by API contract tests; QA should revisit simultaneous multi-user browser behavior once richer multi-user fixtures exist.",
+      "Notifications and audit events are asserted at the Rust contract level; notification inbox UI verification belongs to the later notifications features.",
+      "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
   }
 ]

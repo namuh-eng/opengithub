@@ -3085,7 +3085,7 @@ pub async fn repository_file_finder_for_actor_by_owner_name(
             }
         })
         .collect::<Vec<_>>();
-    items.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    items.sort_by_key(|item| item.path.to_lowercase());
     let total = items.len() as i64;
     let offset = ((page - 1) * page_size) as usize;
     items = items
@@ -8810,7 +8810,7 @@ async fn repository_branch_activity_for_repository(
             });
         }
     }
-    protection_events.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    protection_events.sort_by_key(|event| std::cmp::Reverse(event.updated_at));
 
     Ok(RepositoryBranchActivityView {
         repository: directory.repository,

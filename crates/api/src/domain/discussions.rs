@@ -5607,7 +5607,7 @@ async fn write_discussion_template_snapshot(
             byte_size: content.len() as i64,
         });
     }
-    files.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    files.sort_by_key(|file| file.path.to_lowercase());
     let tree_oid = deterministic_content_oid(
         "tree",
         &files

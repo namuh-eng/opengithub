@@ -382,6 +382,10 @@ fn aggregate_policy(
     let mut deployment_environments = BTreeSet::new();
     let mut blocking_deployment_environments = BTreeSet::new();
     let mut patterns = Vec::new();
+    let mut allows_force_pushes = None;
+    let mut allows_deletions = None;
+    let mut blocking_allows_force_pushes = None;
+    let mut blocking_allows_deletions = None;
 
     for source in sources {
         match source.enforcement {
@@ -410,6 +414,10 @@ fn aggregate_policy(
             &mut checks,
             &mut deployment_environments,
         );
+        allows_force_pushes =
+            Some(allows_force_pushes.unwrap_or(true) && source.requirements.allows_force_pushes);
+        allows_deletions =
+            Some(allows_deletions.unwrap_or(true) && source.requirements.allows_deletions);
         let source_is_bypassed = actor_user_id
             .zip(actor_role)
             .is_some_and(|(user_id, role)| source_bypassed(source, user_id, role));
@@ -421,11 +429,20 @@ fn aggregate_policy(
                 &mut blocking_checks,
                 &mut blocking_deployment_environments,
             );
+            blocking_allows_force_pushes = Some(
+                blocking_allows_force_pushes.unwrap_or(true)
+                    && source.requirements.allows_force_pushes,
+            );
+            blocking_allows_deletions = Some(
+                blocking_allows_deletions.unwrap_or(true) && source.requirements.allows_deletions,
+            );
         }
     }
 
     summary.required_status_checks = checks.into_iter().collect();
     summary.required_deployment_environments = deployment_environments.into_iter().collect();
+    summary.allows_force_pushes = allows_force_pushes.unwrap_or(false);
+    summary.allows_deletions = allows_deletions.unwrap_or(false);
     summary.source_count = summary.active_rule_count + summary.active_ruleset_count;
     summary.protected = summary.source_count > 0;
     summary.pattern = patterns.into_iter().next();
@@ -434,6 +451,8 @@ fn aggregate_policy(
     blocking_summary.required_status_checks = blocking_checks.into_iter().collect();
     blocking_summary.required_deployment_environments =
         blocking_deployment_environments.into_iter().collect();
+    blocking_summary.allows_force_pushes = blocking_allows_force_pushes.unwrap_or(false);
+    blocking_summary.allows_deletions = blocking_allows_deletions.unwrap_or(false);
     blocking_summary.protected = blocking_summary.source_count > 0;
 
     if summary.protected {
@@ -460,8 +479,6 @@ fn aggregate_requirements(
     summary.requires_deployments |= source.requirements.requires_deployments;
     summary.locked |= source.requirements.locked;
     summary.restricts_pushes |= source.requirements.restricts_pushes;
-    summary.allows_force_pushes |= source.requirements.allows_force_pushes;
-    summary.allows_deletions |= source.requirements.allows_deletions;
     checks.extend(source.requirements.required_status_checks.iter().cloned());
     deployment_environments.extend(
         source

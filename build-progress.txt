@@ -10508,3 +10508,15 @@
 - Evidence: `repository_access_settings_contract` passed 1/1 without self-skip, focused `repository-access-settings-page` Vitest passed 7/7, focused `repository-settings-access` Playwright passed setup + Chromium, mandatory Editorial banned-value scan returned zero matches, `make check` passed, and `make test` passed with Cargo tests plus 655 web tests.
 - Caveat: broad `make test-e2e` was attempted but not counted because `db-wait-test` warned Postgres was not ready under concurrent suite contention and the wrapper was terminated by signal 15 after silence; focused settings-002 runtime E2E passed after a green doctor.
 - Set `settings-002.qa_pass=true`; remaining deeper QA is deployed SES delivery, invitation acceptance lifecycle, concurrent admin race coverage, and production-like org/team inheritance stress.
+
+2026-05-08T12:37:14Z - settings-003 QA blocked in clawhip lane
+- Started with `git status --short --branch` on `qa/opengithub-settings-003-clawhip`; initial `make doctor` was blocked by the missing ignored `.ralph-setup-done` sentinel, restored the local sentinel, and verified the shared test Postgres on `localhost:55433` before focused DB checks.
+- Passed focused non-skipped evidence: `repository_branch_settings_contract` 1/1, `api_pull_request_detail_contract` 2/2, `git_transport` 8/8, focused branch-settings/API-docs/PR-detail Vitest 29/29, `make check`, `make test` with web 655 tests, and the mandatory Editorial banned-value scan with zero matches.
+- Blocker: Docker/Postgres became unstable during browser verification. Focused `repository-settings-branches.spec.ts` did not complete against a healthy runtime (404/login fallback after API/session degradation), and `make test-e2e` reported `db-wait-test` timeout for `:55433` before hanging under the broad Playwright wrapper and being terminated.
+- No product bug was confirmed from the failed browser run; `settings-003.qa_pass` remains `false` pending stable DB/API/browser runtime evidence.
+
+2026-05-08T23:30:04Z - settings-003 QA rerun passed
+- Repaired the committed localhost:55433 test DB runtime, replaced the prior bf426621 blocker with focused non-skipped Rust/API, Vitest, live curl, and Playwright evidence, and set settings-003 qa_pass=true.
+- Fixed branch policy aggregation so force-push/deletion allowances are most-restrictive across overlapping active branch rules and rulesets, with repository_branch_settings_contract regression coverage.
+- Verification evidence: repository_branch_settings_contract 2/2, focused PR mergeability contract, focused git_transport receive-pack contract, focused branch settings/API docs/PR detail Vitest 29/29, focused repository-settings-branches Playwright 2/2, live API auth/CORS probes, make check, and Editorial banned-value scan.
+- Known unrelated baseline: broad make test web Vitest has 12 non-settings date-expectation failures; Cargo tests passed and focused settings-003 web tests passed.
