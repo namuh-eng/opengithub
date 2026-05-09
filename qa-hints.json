@@ -8402,5 +8402,19 @@
       "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore during active pushes or pulls.",
       "Verify webhook delivery payloads/retries through the worker end to end, not only queued rows."
     ]
+  },
+  {
+    "feature_id": "settings-006",
+    "tests_written": [
+      "QA reran settings-006 from fresh origin/main HEAD 743da307 after make doctor reported the local verification stack healthy and TEST_DATABASE_URL pointed at localhost:55433/opengithub_test.",
+      "Fixed the focused Pages Playwright spec to fall back to docker exec psql inside opengithub-postgres-test when host psql is absent, preserving the real DB state transitions needed for DNS/certificate/provisioning display checks.",
+      "Verified DB-backed Rust repository_pages_settings_contract 2/2, focused Pages/API-docs Vitest 11/11, focused signed-in Chromium Pages settings E2E 2/2 including setup, and make check."
+    ],
+    "needs_deeper_qa": [
+      "Automated axe was not rerun in this lane; focused Playwright covered accessible button names, no dead controls, and mobile overflow for Pages settings.",
+      "Provider-backed Cloudflare DNS, ACM certificate readiness, CloudFront alias activation, cache invalidation, real S3/CloudFront publication, and real workflow artifact archives still require production/provider integration verification.",
+      "Continue stress testing concurrent admin edits, large static file sets, binary assets, CNAME/takeover-prevention behavior, and custom-domain conflicts across repositories."
+    ],
+    "created_at": "2026-05-09T18:58:00Z"
   }
 ]
