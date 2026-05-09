@@ -3864,5 +3864,97 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "insights-002",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Focused contributors Vitest passed after fixing UTC weekly bucket date rendering. Required DB-backed/browser verification is blocked because Docker/Podman access is denied, localhost:55433 is unreachable, and Playwright webServer cannot fetch Rust crates without network."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/graphs/contributors"
+        ],
+        "notes": "API implementation and focused Rust contract were inspected, but DB-backed contract execution could not run: make setup-local could not start Docker/test Postgres, and Cargo dependency resolution failed against index.crates.io."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth gate inspected",
+          "Editorial banned-token scan"
+        ],
+        "notes": "Route requires AuthenticatedUser before DB access and the mandatory Editorial banned-token scan over web/src was clean. Live unauthenticated/private API probes could not run without the local API/test DB."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused component assertions cover accessible chart/table names and button names. Browser/a11y smoke could not run because Playwright webServer failed before startup."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433, .env.test and .env present.",
+      "Ran docker info: permission denied while trying to connect to the docker API at unix:///run/user/1000/podman/podman.sock.",
+      "Ran make setup-local: printed Starting Docker Desktop... then Could not start Docker. Open it manually and rerun; no localhost:55433 test DB was started.",
+      "Read AGENTS.md, BUILD_GUIDE.md, prd.json insights-002 entry, .qrspi/insights-002/structure.md, existing qa-report/summary, and build-progress.txt.",
+      "Inspected contributors API route/domain code, Next contributors page, controls, data table, focused Vitest, and focused Playwright spec.",
+      "Fixed UTC date rendering for contributors weekly bucket dates in RepositoryContributorsPage, RepositoryContributorsControls, and RepositoryContributorsDataTable.",
+      "Fixed repository-contributors Playwright spec to use the shared _fixtures/auth seeding/sign-in contract instead of importing execFileSync and calling the dashboard seeder directly.",
+      "Ran cd web && npm test -- --run repository-contributors-page.test.tsx: 6/6 passed.",
+      "Ran cd web && npx biome check on changed contributors files and E2E fixture/spec: passed.",
+      "Ran cd web && npx tsc --noEmit --pretty false: passed.",
+      "Ran mandatory Editorial banned-token scan over web/src excluding og CSS: no matches.",
+      "Attempted focused Playwright repository-contributors.spec.ts: blocked before tests because webServer cargo failed to resolve index.crates.io/config.json for dependency ammonia.",
+      "Attempted focused Rust repository_contributors_contract: blocked because cargo failed to resolve index.crates.io/config.json for dependency ammonia.",
+      "Attempted make check and make test: both blocked at Cargo dependency resolution with Could not resolve host: index.crates.io.",
+      "Ran full web Vitest cd web && npm test -- --run: 648 passed and 9 failed in unrelated baseline date-sensitive tests outside insights-002.",
+      "Ran cd web && npx biome check src tests: exited 0 with four pre-existing noImportantStyles warnings in globals.css.",
+      "Resume run: restored .env.test from an accidental external symlink back to the committed localhost:55433 test config before verification.",
+      "Resume run: make doctor failed with Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433, .env.test and .env present.",
+      "Resume run: make setup-local printed Starting Docker Desktop... / Could not start Docker. Open it manually and rerun, then timed out after 120s with Docker did not become ready.",
+      "Resume run: cd web && npm test -- --run repository-contributors-page.test.tsx passed 1 file / 6 tests.",
+      "Resume run: cd web && npx biome check changed contributors files and E2E fixture/spec passed.",
+      "Resume run: cd web && npx tsc --noEmit --pretty false passed.",
+      "Resume run: jq empty prd.json qa-report.json qa-report-summary.json passed.",
+      "Resume run: make check failed in Cargo check because index.crates.io/config.json could not resolve for dependency ammonia.",
+      "Resume run: make test failed in Cargo tests because index.crates.io/config.json could not resolve for dependency ammonia.",
+      "Resume run: make test-e2e failed: db-wait-test could not reach Postgres on :55433 within 60s and Playwright webServer exited early after the same Cargo index.crates.io/ammonia resolution failure.",
+      "Resume run: mandatory Editorial banned-token scan over web/src excluding og CSS returned no matches.",
+      "Controller verification: make doctor still failed because Docker daemon/postgres-test were not running and Postgres was not reachable on :55433.",
+      "Controller verification: cd web && npm test -- --run repository-contributors-page.test.tsx passed 1 file / 6 tests.",
+      "Controller verification: cd web && npx biome check changed contributors files and E2E fixture/spec passed.",
+      "Controller verification: cd web && npx tsc --noEmit --pretty false passed.",
+      "Controller verification: with absolute per-worktree TMPDIR and CARGO_TARGET_DIR plus CARGO_NET_OFFLINE=true, timeout 300 make check passed Cargo check, Web typecheck, Clippy, and Biome.",
+      "Controller verification: mandatory Editorial banned-token scan over web/src excluding og CSS returned no matches."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Contributor weekly bucket dates rendered through the local timezone, shifting UTC midnight API buckets to the previous day in Pacific time.",
+        "expected": "Weekly bucket labels should display the API bucket dates consistently, e.g. May 1, 2026 through May 7, 2026.",
+        "actual": "Focused Vitest could not find the expected May 1 date range because the rendered output shifted the UTC boundary locally.",
+        "reproduction": "Run cd web && npm test -- --run repository-contributors-page.test.tsx in America/Los_Angeles before the fix."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The insights-002 Playwright spec bypassed the shared signed-in E2E fixture by importing execFileSync and running the dashboard seeder directly.",
+        "expected": "Signed-in Playwright specs under web/tests/e2e use _fixtures/auth for seeding and sign-in.",
+        "actual": "repository-contributors.spec.ts duplicated seeder/cookie setup and violated web/tests/e2e/AGENTS.md.",
+        "reproduction": "Inspect web/tests/e2e/repository-contributors.spec.ts before the fix or search it for execFileSync."
+      }
+    ],
+    "fix_description": "Fixed contributors UTC date formatting and moved the focused contributors Playwright setup onto the shared auth fixture. QA remains blocked on Docker/test DB and network-dependent Cargo resolution.",
+    "blockers": [
+      "Docker/test DB blocker: make doctor reports no Docker daemon, no postgres-test container, and :55433 unreachable; make setup-local could not start Docker and timed out after 120s.",
+      "Cargo/network blocker: make check, make test, focused Rust/API paths, and Playwright webServer fail with Could not resolve host: index.crates.io while fetching config.json for dependency ammonia.",
+      "Broad web Vitest baseline from the prior same-lane run was not green: 648 passed, 9 failed in unrelated date-sensitive tests outside insights-002."
+    ],
+    "timestamp": "2026-05-09T09:19:16Z",
+    "controller_outcome": "QA_BLOCKED: product/test fixes preserved, but DB-backed API/browser verification remains blocked by unavailable Docker/test Postgres on localhost:55433; offline make check now passes."
   }
 ]

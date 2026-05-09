@@ -164,13 +164,55 @@ const toSeedResult = (raw: RawSeedOutput): SeedResult => ({
 
 export type Fixtures = {
   seed: (spec?: SeedSpec) => Promise<SeedResult>;
+  seedContributorFileChanges: (repositoryHref: string) => Promise<void>;
   signIn: (page: Page, seeded: SeedResult, as?: Persona) => Promise<void>;
+};
+
+const sqlLiteral = (value: string): string =>
+  `'${value.replaceAll("'", "''")}'`;
+
+const seedContributorFileChangesForRepository = (
+  repositoryHref: string,
+): void => {
+  const url = requireTestDatabase();
+  const [, owner, repo] = repositoryHref.split("/");
+  execFileSync(
+    "psql",
+    [
+      url,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      `
+      INSERT INTO commit_file_changes (commit_id, path, status, additions, deletions)
+      SELECT commits.id, 'src/contributors.rs', 'modified', 18, 4
+      FROM commits
+      JOIN repositories ON repositories.id = commits.repository_id
+      LEFT JOIN users ON users.id = repositories.owner_user_id
+      LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+      WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(owner))}
+        AND repositories.name = ${sqlLiteral(decodeURIComponent(repo))}
+        AND commits.committed_at >= now() - interval '1 week'
+      ON CONFLICT (commit_id, path)
+      DO UPDATE SET additions = EXCLUDED.additions, deletions = EXCLUDED.deletions;
+      `,
+    ],
+    { stdio: "ignore" },
+  );
 };
 
 export const test = base.extend<Fixtures>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructuring on the first arg
   seed: async ({}, use: (fn: Fixtures["seed"]) => Promise<void>) => {
     await use(async (spec = {}) => toSeedResult(runSeeder(spec)));
+  },
+  seedContributorFileChanges: async (
+    _fixtures,
+    use: (fn: Fixtures["seedContributorFileChanges"]) => Promise<void>,
+  ) => {
+    await use(async (repositoryHref) =>
+      seedContributorFileChangesForRepository(repositoryHref),
+    );
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructuring on the first arg
   signIn: async ({}, use: (fn: Fixtures["signIn"]) => Promise<void>) => {

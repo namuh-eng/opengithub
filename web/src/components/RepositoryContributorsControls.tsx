@@ -19,6 +19,7 @@ function shortDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   }).format(date);
 }
 
