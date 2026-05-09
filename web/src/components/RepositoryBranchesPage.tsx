@@ -119,7 +119,7 @@ function BranchRow({
   const latest = branch.latestCommit;
 
   return (
-    <article className="list-row grid gap-4 px-4 py-4 lg:grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.2fr)_120px_120px_130px_auto] lg:items-center">
+    <article className="list-row grid gap-4 px-4 py-4 lg:grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.2fr)_120px_90px_90px_130px_auto] lg:items-center">
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Link
@@ -187,9 +187,11 @@ function BranchRow({
       <Link className={statusChipClass(branch)} href={branch.checks.href}>
         {statusLabel(branch)}
       </Link>
-      <div className="flex gap-2 t-mono-sm" style={{ color: "var(--ink-2)" }}>
-        <span>{branch.behind} behind</span>
-        <span>{branch.ahead} ahead</span>
+      <div className="t-mono-sm" style={{ color: "var(--ink-2)" }}>
+        {branch.behind}
+      </div>
+      <div className="t-mono-sm" style={{ color: "var(--ink-2)" }}>
+        {branch.ahead}
       </div>
       <div>
         {branch.pullRequest ? (
@@ -247,6 +249,21 @@ function BranchSection({
       </div>
       {branches.length > 0 ? (
         <div>
+          <div
+            className="hidden border-b px-4 py-2 lg:grid lg:grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.2fr)_120px_90px_90px_130px_auto] lg:gap-4"
+            style={{
+              borderColor: "var(--line)",
+              color: "var(--ink-3)",
+            }}
+          >
+            <span className="t-label">Branch</span>
+            <span className="t-label">Updated</span>
+            <span className="t-label">Check status</span>
+            <span className="t-label">Behind</span>
+            <span className="t-label">Ahead</span>
+            <span className="t-label">Pull request</span>
+            <span className="t-label text-right">Actions</span>
+          </div>
           {branches.map((branch) => (
             <BranchRow
               branch={branch}
