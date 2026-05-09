@@ -8400,5 +8400,18 @@
       "Full web Vitest currently has unrelated date-sensitive failures in non-release suites; retest once shared fixture dates are stabilized.",
       "Provider-backed asset streaming/S3 signed URL behavior, large files, content disposition, and concurrent reaction/asset races still need infrastructure-level QA."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Controller fixed the authenticated owner package list SQL builder to use QueryBuilder-bound actor UUIDs instead of raw $2 predicate strings.",
+      "Verification that does not require Docker passed: ./hack/cargo_locked.sh check -p opengithub-api.",
+      "Focused owner_packages_contract compiled; runtime DB scenarios self-skipped because TEST_DATABASE_URL/test Postgres was unavailable."
+    ],
+    "needs_deeper_qa": [
+      "Rerun make setup-local, make check, make test, and focused packages-002 Playwright/browser smoke once Docker/test Postgres is available.",
+      "Specifically re-probe authenticated /api/users/:user/packages and /api/orgs/:org/packages with package_type and visibility filters to prove the `)$2 AND` SQL syntax error is gone against real Postgres.",
+      "Complete private/internal redaction probes for anonymous viewers, package grants, linked repository grants, org members, and non-admin viewers."
+    ]
   }
 ]
