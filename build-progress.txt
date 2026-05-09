@@ -1,3 +1,9 @@
+2026-05-09T19:49:13Z - org-admin-005 QA accepted after infra recovery
+
+- Rebased onto origin/main f65720db and accepted the member-privileges fix: grouped cards now enable Save only for changed editable fields and PATCH changed unlocked fields only.
+- Fixed the focused Playwright spec to fall back to the opengithub-postgres-test container when host psql is absent under Podman QA.
+- Verification passed: make doctor; focused Vitest 4/4; DB-backed organization_member_privileges_contract 1/1; focused Chromium Playwright 2/2; make check. prd.json and QA artifacts mark org-admin-005 qa_pass=true.
+
 2026-05-07 - api-003 REST rate limits and API version headers
 
 - Completed `api-003` as the first `build_pass:false` PRD feature: REST responses now carry GitHub-compatible `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Used`, `X-RateLimit-Resource`, and `X-GitHub-Api-Version-Selected` headers, with `/rate_limit` and `/api/rate_limit` exposing current bucket state.

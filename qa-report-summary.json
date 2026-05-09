@@ -15,22 +15,22 @@
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 56,
+      "pass": 43,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 52,
+      "pass": 39,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 53,
+      "pass": 40,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 19,
+      "pass": 6,
       "fail": 0,
       "skip": 39
     }
@@ -1054,7 +1054,7 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
+          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
         },
         "api_contract": {
           "status": "pass",
@@ -1084,7 +1084,7 @@
         "accessibility": {
           "status": "pass",
           "violations": [],
-          "notes": "Files changed page uses semantic primitives \u2014 t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
+          "notes": "Files changed page uses semantic primitives — t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
         }
       },
       "overall_status": "pass"
@@ -2113,27 +2113,28 @@
       "feature_id": "org-admin-005",
       "description": "Implement organization member privilege and repository policy settings that cont",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 1,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
       "sub_phases": {
         "functional": {
-          "status": "blocked",
-          "notes": "Fixed focused UI bug in grouped member-privileges cards; focused Vitest passed, focused Rust contract passed, and make check passed with offline Cargo and /tmp target. Non-self-skipped browser/E2E evidence blocked by unavailable Docker/test Postgres and sandbox webServer startup."
+          "status": "pass",
+          "notes": "Fresh post-infra rerun passed focused Vitest 4/4, focused Chromium Playwright member-privileges E2E 2/2, make doctor, and make check; per-card changed-field-only PATCH behavior verified."
         },
         "api_contract": {
-          "status": "partial",
-          "notes": "Focused Rust contract passed for owner-only GET/PATCH, validation, confirmation_required, persistence, and audit redaction. Live DB/API probing blocked because Docker daemon and localhost:55433 test Postgres are unavailable."
+          "status": "pass",
+          "notes": "DB-backed Rust organization_member_privileges_contract passed 1/1 against localhost:55433 with TEST_DATABASE_URL/DATABASE_URL set, covering owner-only GET/PATCH, validation, confirmation_required, persistence, and audit redaction."
         },
         "security": {
-          "status": "partial",
-          "notes": "Contract covers auth bypass, private outsider 404, validation, and no stack/session-secret leakage. Live unauthenticated curl probes blocked by missing test DB/server."
+          "status": "pass",
+          "notes": "Contract covers auth bypass prevention, owner-only writes, private outsider 404/redaction, invalid enum validation, confirmation gating, audit redaction, and no stack/session-secret leakage."
         },
         "accessibility": {
-          "status": "partial",
-          "notes": "Component coverage checks accessible names, confirmation dialog focus/name, no dead links, and Editorial token expectations. Full browser/axe/manual pass blocked by test stack."
+          "status": "pass",
+          "notes": "Component and Playwright coverage verifies accessible names, confirmation dialogs, no dead controls, mobile/no-overflow screenshots, and Editorial token expectations."
         }
-      }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "commits-001",
@@ -2507,7 +2508,7 @@
     },
     {
       "feature_id": "search-007",
-      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "description": "File finder widget — keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2516,7 +2517,7 @@
     },
     {
       "feature_id": "security-002",
-      "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke indi",
+      "description": "Active web sessions panel — list devices, locations, signed-in time; revoke indi",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2556,7 +2557,7 @@
     },
     {
       "feature_id": "security-003",
-      "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, si",
+      "description": "Security log — append-only audit trail of security-relevant actions (sign-in, si",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2595,7 +2596,7 @@
     },
     {
       "feature_id": "globalpulls-001",
-      "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, wa",
+      "description": "Global pull-request dashboard at /pulls — every PR the signed-in user opened, wa",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2632,7 +2633,7 @@
     },
     {
       "feature_id": "globalissues-001",
-      "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was a",
+      "description": "Global issue dashboard at /issues — every issue the signed-in user opened, was a",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2854,7 +2855,7 @@
     },
     {
       "feature_id": "gist-001",
-      "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git hist",
+      "description": "Gists — single-file or multi-file snippets at /gist/<id> with their own git hist",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2863,7 +2864,7 @@
     },
     {
       "feature_id": "ai-001",
-      "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
+      "description": "AI surface — repository auto-summary card, AI-generated PR summary + suggested r",
       "category": "feature",
       "qa_pass": false,
       "attempts": 2,

@@ -14,24 +14,54 @@ function sqlLiteral(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function runSqlValue(sql: string) {
+function runPsql(args: string[]) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  return execFileSync("psql", [databaseUrl, "-tA", "-c", sql], {
-    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-  })
-    .toString()
-    .trim();
+  const env = {
+    ...process.env,
+    DOCKER_HOST:
+      process.env.DOCKER_HOST ??
+      `unix:///run/user/${process.getuid?.() ?? 1000}/podman/podman.sock`,
+    PGSSLMODE: process.env.PGSSLMODE ?? "disable",
+  };
+  try {
+    return execFileSync("psql", [databaseUrl, ...args], { env });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (!databaseUrl.includes("localhost:55433/opengithub_test")) {
+    throw new Error(
+      "psql is not installed and the container fallback only supports the test DB",
+    );
+  }
+
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      "opengithub",
+      "-d",
+      "opengithub_test",
+      ...args,
+    ],
+    { env },
+  );
+}
+
+function runSqlValue(sql: string) {
+  return runPsql(["-tA", "-c", sql]).toString().trim();
 }
 
 function runSql(sql: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-  execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-  });
+  runPsql(["-v", "ON_ERROR_STOP=1", "-c", sql]);
 }
 
 function seedOrganizationProfile(): SeededOrganizationProfile {

@@ -3044,7 +3044,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3069,7 +3069,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3082,7 +3082,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3099,7 +3099,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3973,9 +3973,9 @@
       "Inspected PRD item, web/src/components/NotificationDeliverySettingsPage.tsx, Next delivery route, Rust notification delivery domain/routes/migration, and existing focused unit/API/E2E tests.",
       "Ran npm ci in web/ to restore committed package-lock dependencies after initial npx tsc placeholder failure.",
       "Ran make check: PASS (Cargo check, Web typecheck, Clippy, Biome).",
-      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx \u2014 PASS, 3 tests.",
-      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture \u2014 PASS, 1 test, no self-skip.",
-      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium \u2014 PASS, 2 tests including auth setup.",
+      "Ran web focused unit: cd web && npx vitest run tests/notification-delivery-settings.test.tsx — PASS, 3 tests.",
+      "Ran focused API/DB scenario: ./hack/cargo_locked.sh test -p opengithub-api notification_delivery_preferences_validate_verified_email_and_audit -- --nocapture — PASS, 1 test, no self-skip.",
+      "Started make dev with .env.test and verified http://localhost:3015/settings/notifications returned a protected redirect; reran focused E2E: npx playwright test tests/e2e/notifications.spec.ts -g \"saves notification delivery channels\" --project=chromium — PASS, 2 tests including auth setup.",
       "Direct API security probes against localhost:3016 with fresh x-forwarded-for: anonymous GET/PATCH returned 401 JSON not_authenticated; evil-origin OPTIONS returned 405 without ACAO.",
       "Editorial compliance scan over web/src found no banned GitHub hex colors, Primer, Octicon, or system font-family usage; component uses existing card/btn/chip/input/list-row/type-ramp classes and CSS variables.",
       "Attempted full make test after make check; personal notification tests passed, but the broader suite later stopped in unrelated organization_profile_settings_contract (billingEmail null/rename semantics). This is recorded as an unrelated suite blocker, not a personal-settings-002 failure."
@@ -4037,7 +4037,7 @@
       }
     },
     "tested_steps": [
-      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with \u201cPostgres container up but not accepting connections.\u201d",
+      "make doctor first: initially blocked by missing ignored .ralph-setup-done sentinel; after creating the local sentinel, doctor reported Docker daemon and opengithub-postgres-test present but failed with “Postgres container up but not accepting connections.”",
       "make setup-local attempted: blocked by fixed Docker container name conflict, existing opengithub-postgres-test container f620bdc19e810f77b82ca9148ee7a2bd0e16e78b738cd8638568b5952248f0eb already in use. Did not invent alternate DB URLs.",
       "Installed web dependencies with npm install because web/node_modules was missing typescript and make check could not run meaningful web typecheck before dependency install.",
       "make check passed after fixes: Cargo check, web typecheck, Clippy, and Biome passed.",
@@ -4372,49 +4372,51 @@
   },
   {
     "feature_id": "org-admin-005",
-    "attempt": 1,
-    "status": "blocked",
+    "attempt": 2,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-09T19:49:13Z",
     "sub_phases": {
       "functional": {
-        "status": "blocked",
-        "notes": "Fixed a focused member-privileges UI bug: grouped policy cards now disable save until editable fields change and PATCH only changed/unlocked fields. Focused Vitest passed. Focused Rust owner policy contract passed with CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target. make check passed with the same target override. Browser/E2E could not produce non-self-skipped evidence because Docker/test Postgres is unavailable and Playwright webServer could not start in this sandbox."
+        "status": "pass",
+        "notes": "Fresh post-infra rerun from origin/main f65720db passed focused Vitest (4/4), focused Chromium Playwright member-privileges E2E (2/2 including auth setup), make doctor, and make check. UI fix verified per-card saves only enable for editable changed fields and only PATCH changed unlocked values."
       },
       "api_contract": {
-        "status": "partial",
+        "status": "pass",
         "endpoints_tested": [
           "GET /api/orgs/{org}/settings/member-privileges",
           "PATCH /api/orgs/{org}/settings/member-privileges"
         ],
-        "notes": "Focused Rust contract verified owner-only access, anonymous 401, member/admin forbidden writes, private outsider 404, invalid enum 422, confirmation_required 409, successful confirmed patch persistence, and redacted organization.policy.update audit metadata. This was not backed by the required local Docker Postgres stack; it used the cached/offline Cargo build path and the contract's harness."
+        "notes": "DB-backed Rust organization_member_privileges_contract passed 1/1 against localhost:55433 with TEST_DATABASE_URL/DATABASE_URL set, covering owner-only access, anonymous 401, member/admin forbidden writes, private outsider 404, invalid enum 422, confirmation_required 409, confirmed persistence, and audit redaction."
       },
       "security": {
-        "status": "partial",
+        "status": "pass",
         "checks": [
           "auth_bypass",
+          "owner_only_writes",
           "input_validation",
+          "private_org_redaction",
+          "audit_redaction",
           "data_exposure"
         ],
-        "notes": "Focused Rust contract verified no auth bypass for anonymous/member/admin callers, invalid enum validation, private outsider 404, and no stack/session-secret leakage in audit/error evidence. Live curl/API probes against localhost:55433 were blocked by Docker/test DB unavailability."
+        "notes": "DB-backed contract verified no auth bypass, owner-only policy writes, private outsider redaction, invalid enum validation, confirmation gating for risky permission changes, redacted audit metadata, and no stack/session-secret leakage."
       },
       "accessibility": {
-        "status": "partial",
+        "status": "pass",
         "violations": [],
-        "notes": "Focused component coverage still checks accessible button names, confirmation dialog naming/focus behavior, no dead links, and Editorial token expectations. Full Playwright/axe/manual browser review was blocked by unavailable local DB/server setup."
+        "notes": "Focused component and Playwright coverage verified accessible names, confirmation dialog behavior, no dead controls, mobile/no-overflow coverage from the org-admin-005 final smoke, and Editorial token expectations. Screenshots were saved under ralph/screenshots/build/org-admin-005-final-*.jpg."
       }
     },
     "tested_steps": [
-      "Ran make doctor first: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433, .env.test present, .env present.",
-      "Ran docker info: permission denied while connecting to the Docker API at unix:///run/user/1000/podman/podman.sock.",
-      "Attempted make setup-local: printed Starting Docker Desktop and Could not start Docker. Open it manually and rerun; the setup process did not make Docker available.",
-      "Inspected prd.json org-admin-005 and relevant component, route, API client, Rust domain, Rust contract, API docs, and E2E coverage.",
-      "Ran cd web && npx vitest run tests/organization-member-privileges-page.test.tsx: 4/4 passed after the fix.",
-      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract: blocked by restricted network resolving index.crates.io.",
-      "Ran CARGO_NET_OFFLINE=true ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract: blocked by read-only shared target path /home/jaeyunha/.cache/opengithub/cargo-target/debug/.cargo-lock.",
-      "Ran CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract: 1/1 passed.",
-      "Ran CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target make check: Cargo check, web typecheck, Clippy, and Biome passed.",
-      "Ran required Editorial banned-token scan over web/src excluding og token CSS: no banned GitHub hex, Primer, or Octicon hits.",
-      "Attempted cd web && npx playwright test tests/e2e/organization-member-privileges.spec.ts: blocked because config.webServer exited early on read-only default Cargo target path.",
-      "Retried focused Playwright with CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/tmp/opengithub-cargo-target: API binary started from /tmp target but exited with Operation not permitted before Playwright could run."
+      "Rebased the blocked org-admin-005 commit onto origin/main f65720db, preserving prior accepted QA report entries.",
+      "Ran make doctor: Podman container runtime reachable, opengithub-postgres-test up, Postgres reachable on localhost:55433, .env/.env.test present, Cargo target dir writable.",
+      "Inspected the scoped code diff for OrganizationMemberPrivilegesPage and its focused tests.",
+      "Ran cd web && npx vitest run tests/organization-member-privileges-page.test.tsx: 1 file passed, 4 tests passed.",
+      "Ran DATABASE_URL/TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test organization_member_privileges_contract -- --nocapture: 1 test passed, 0 skipped.",
+      "Initial focused Playwright run failed because the spec assumed host psql; fixed the spec to fall back to the opengithub-postgres-test container through Podman/Docker host when psql is absent.",
+      "Ran focused Playwright organization-member-privileges.spec.ts with DB env, CARGO_TARGET_DIR, and DOCKER_HOST: 2 tests passed, including auth setup and owner member-privileges flow.",
+      "Ran make check with DB env, CARGO_TARGET_DIR, and DOCKER_HOST: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran required Editorial banned-token scan via make check/Biome and existing focused coverage; no new GitHub/Primer/Octicon design violations were introduced."
     ],
     "bugs_found": [
       {
@@ -4423,9 +4425,23 @@
         "description": "Grouped organization member-privileges policy cards could submit unchanged locked fields together with an editable change.",
         "expected": "Per-card saves should only submit changed editable fields and should not enable save when the card has no editable changes.",
         "actual": "Repository creation, repository features, Pages, destructive actions, app access, and team creation saves could send unchanged fields, including policy-locked values in injected lock states.",
-        "reproduction": "Render member privileges with a locked repository creation field, toggle an unlocked field, then save; the PATCH body included the locked unchanged field."
+        "fix": "Compute editable changed fields per card, disable no-op saves, and build PATCH bodies from changed unlocked fields only."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The focused member-privileges Playwright spec depended on host psql, so it failed in the normal Ubuntu/Podman QA environment even though the test DB container was healthy.",
+        "expected": "Specs should run with the committed Podman-backed test DB even when host psql is unavailable.",
+        "actual": "spawnSync psql ENOENT before browser assertions.",
+        "fix": "Added a psql wrapper fallback that uses docker/podman exec against opengithub-postgres-test for localhost:55433/opengithub_test."
       }
     ],
-    "fix_description": "Changed the member privileges page to compute per-card editable changes, disable no-op saves, and build PATCH bodies from changed unlocked fields only; extended focused Vitest coverage for no-op disabled state and locked-field omission."
+    "fix_description": "Accepted org-admin-005 after fresh DB/API/browser evidence. Product fix limits per-card member-privileges PATCHes to changed editable fields; test fix makes the focused E2E runnable in the Podman QA environment without host psql.",
+    "known_gaps": [
+      "Real Google OAuth owner/member session was not repeated; deterministic signed-cookie fixtures were used.",
+      "Large organization/concurrent policy-write stress remains future hardening.",
+      "Screen-reader traversal remains manual future QA beyond focused accessibility assertions."
+    ],
+    "timestamp": "2026-05-09T19:49:13Z"
   }
 ]
