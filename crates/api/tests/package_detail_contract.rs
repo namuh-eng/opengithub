@@ -92,7 +92,10 @@ async fn get_json(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    let mut builder = Request::builder()
+        .method(Method::GET)
+        .uri(uri)
+        .header("x-forwarded-for", "10.200.0.42");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -105,7 +108,12 @@ async fn get_json(
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should read");
-    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    let value = serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+        panic!(
+            "response should be JSON: {error}; status={status}; body={}",
+            String::from_utf8_lossy(&bytes)
+        )
+    });
     (status, headers, value)
 }
 
@@ -120,6 +128,7 @@ async fn patch_json(
             Request::builder()
                 .method(Method::PATCH)
                 .uri(uri)
+                .header("x-forwarded-for", "10.200.0.43")
                 .header(header::COOKIE, cookie)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(body.to_string()))
@@ -132,7 +141,48 @@ async fn patch_json(
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should read");
-    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    let value = serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+        panic!(
+            "response should be JSON: {error}; status={status}; body={}",
+            String::from_utf8_lossy(&bytes)
+        )
+    });
+    (status, headers, value)
+}
+
+async fn patch_raw(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: &str,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::PATCH)
+        .uri(uri)
+        .header("x-forwarded-for", "10.200.0.44")
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_owned()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+        panic!(
+            "response should be JSON: {error}; status={status}; body={}",
+            String::from_utf8_lossy(&bytes)
+        )
+    });
     (status, headers, value)
 }
 
@@ -447,6 +497,13 @@ async fn private_detail_redacts_until_package_or_linked_repository_permission_gr
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(!public_body.to_string().contains(marker.as_str()));
 
+    let (status, headers, malformed_body) =
+        patch_raw(app.clone(), &format!("{path}/settings"), None, "{bad-json").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_json(&headers);
+    assert_eq!(malformed_body["error"]["code"], "invalid_json");
+    assert!(!malformed_body.to_string().contains(marker.as_str()));
+
     let (status, _, download_body) =
         get_json(app.clone(), &format!("{path}/download?version=2.0.0"), None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -538,10 +595,13 @@ async fn private_detail_redacts_until_package_or_linked_repository_permission_gr
         settings_body["linkedRepositories"][0]["fullName"],
         format!("{marker}-owner/{marker}-repo")
     );
-    assert_eq!(
-        settings_body["inheritedRepositoryAccess"][0]["login"],
-        format!("{marker}-repo-reader")
-    );
+    assert!(settings_body["inheritedRepositoryAccess"]
+        .as_array()
+        .expect("inherited repository access")
+        .iter()
+        .any(
+            |access| access["login"] == format!("{marker}-repo-reader") && access["role"] == "read"
+        ));
     assert!(settings_body["registryWriteCapabilities"]
         .as_array()
         .expect("capabilities")
@@ -659,15 +719,59 @@ async fn package_settings_admin_mutations_soft_delete_and_audit_without_leaking_
         .iter()
         .any(|repo| repo["id"] == linked_repo.id.to_string()));
 
+    let (status, _, unlink_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({
+            "action": "unlinkRepository",
+            "repositoryId": linked_repo.id.to_string()
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!unlink_body["linkedRepositories"]
+        .as_array()
+        .expect("linked repos")
+        .iter()
+        .any(|repo| repo["id"] == linked_repo.id.to_string()));
+
+    let (status, _, revoke_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({
+            "action": "revokeAccess",
+            "userId": grantee.id.to_string()
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!revoke_body["explicitPermissions"]
+        .as_array()
+        .expect("permissions")
+        .iter()
+        .any(|permission| permission["userId"] == grantee.id.to_string()));
+
     let (status, _, deleted_version_body) = patch_json(
         app.clone(),
         &path,
         &owner_cookie,
-        json!({ "action": "deleteVersion", "versionId": latest_version_id }),
+        json!({ "action": "deleteVersion", "versionId": latest_version_id.to_string() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{deleted_version_body}");
+    assert_ne!(deleted_version_body["package"]["latestVersion"], "2.0.0");
+
+    let (status, _, restored_version_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({ "action": "restoreVersion", "versionId": latest_version_id.to_string() }),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_ne!(deleted_version_body["package"]["latestVersion"], "2.0.0");
+    assert_eq!(restored_version_body["package"]["latestVersion"], "2.0.0");
 
     let (status, _, package_deleted_body) = patch_json(
         app.clone(),
@@ -696,7 +800,7 @@ async fn package_settings_admin_mutations_soft_delete_and_audit_without_leaking_
     .fetch_one(&pool)
     .await
     .expect("audit count should load");
-    assert!(audit_count >= 5);
+    assert!(audit_count >= 8);
 }
 
 #[tokio::test]

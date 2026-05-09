@@ -3323,7 +3323,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3348,7 +3348,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3361,7 +3361,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3378,7 +3378,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3757,5 +3757,99 @@
       }
     ],
     "fix_description": "Fixed package-list UTC date rendering, authenticated package visibility SQL binding, and organization private-package authorization; added DB-backed contract coverage and focused E2E coverage for user/org package listing visibility."
+  },
+  {
+    "feature_id": "packages-002",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Docker daemon/test Postgres unavailable; make setup-local failed to start Docker within 120s, so full package detail browser smoke was not rerun."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "notes": "Controller rescue fixed the owner package list SQL builder: visibility/auth predicates now bind actor UUIDs through QueryBuilder instead of pushing raw $2 placeholders, eliminating the observed PostgreSQL syntax `)$2 AND ...` when authenticated package_type/visibility filters are combined. Full DB/browser QA is blocked because Docker Desktop/daemon could not be started in this controller environment."
+      },
+      "security": {
+        "status": "blocked",
+        "notes": "Security/redaction DB probes not completed because test Postgres was unavailable."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "notes": "Browser/a11y checks not rerun because the local verification stack could not start."
+      }
+    },
+    "tested_steps": [
+      "Captured and killed stalled qa-og-pkg002-mainqa-20260508 tmux lane after it sat in Postgres log output with no product diff; preserved /tmp/qa-og-pkg002-mainqa-20260508.pre-rescue-pane.txt.",
+      "make doctor => failed: Docker daemon not running, postgres-test container not running, Postgres not reachable on :55433.",
+      "make setup-local => failed: could not start Docker; Docker did not become ready within 120s.",
+      "./hack/cargo_locked.sh check -p opengithub-api => passed.",
+      "./hack/cargo_locked.sh test -p opengithub-api --test owner_packages_contract -- --nocapture => compiled and 2 tests reported ok, but both DB-backed scenarios self-skipped because TEST_DATABASE_URL was unavailable.",
+      "cargo fmt --all --check => failed only on pre-existing repository_releases_contract.rs formatting drift, not this packages.rs change."
+    ],
+    "bugs_found": [
+      {
+        "description": "Authenticated owner package list filters generated invalid SQL by pushing a visibility predicate string containing raw $2 placeholders and then appending QueryBuilder bind placeholders after the predicate, producing `...)$2 AND p.package_type = $3`.",
+        "fix": "Replaced the raw visibility_predicate/bind_auth pair with push_visibility_predicate, which emits every actor UUID through QueryBuilder at the exact SQL locations for user, organization, package permission, and repository permission checks."
+      }
+    ],
+    "fix_description": "Fixed owner package list authenticated visibility predicate SQL generation; full QA remains blocked by local Docker/test Postgres startup failure.",
+    "created_at": "2026-05-09T04:54:16Z"
+  },
+  {
+    "feature_id": "packages-002",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed Rust package detail contract passed; focused Vitest package detail page passed; focused Playwright package-detail smoke passed against real Postgres/API/Next for user detail, selected digest URL, copy feedback, download metadata increment, settings mutation flow, org package detail, forbidden private package redaction, mobile no-overflow, and screenshot capture."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/users/{username}/packages/{package_type}/{package_name}",
+          "GET /api/orgs/{org}/packages/{package_type}/{package_name}",
+          "GET /api/users/{username}/packages/{package_type}/{package_name}/download",
+          "GET /api/users/{username}/packages/{package_type}/{package_name}/settings",
+          "PATCH /api/users/{username}/packages/{package_type}/{package_name}/settings",
+          "GET /api/orgs/{org}/packages/{package_type}/{package_name}/settings",
+          "PATCH /api/orgs/{org}/packages/{package_type}/{package_name}/settings"
+        ],
+        "notes": "Fixed package settings mutation parsing to accept the documented camelCase action payloads and to return the standard JSON invalid_json envelope for malformed bodies. Contract coverage verifies selected tag/digest resolution, download metadata accounting, settings redaction, grant/revoke/link/unlink/delete/restore mutations, and no storage-key leakage."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_package_redaction",
+          "input_validation",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous private/internal package reads and settings reads redacted package identity; unauthenticated settings mutations returned 401; malformed JSON returned a generic JSON invalid_json envelope; hostile Origin OPTIONS did not echo Access-Control-Allow-Origin; contract and browser checks assert no s3:// storage keys or redacted layer names leak."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "@axe-core/playwright was not installed in this worktree, so axe was unavailable. Manual/browser coverage verified labelled version select, accessible copy/settings/action buttons, semantic headings, no dead anchors, keyboard-addressable details/disclosure controls, and no mobile horizontal overflow in the focused Playwright package smoke."
+      }
+    },
+    "tested_steps": [
+      "Started with git status/diff; restored helper dirt in .clawhip/state/prompt-submit.json and .env.test, preserving package source changes.",
+      "Ran make doctor; Docker and postgres-test were present but doctor reported a Postgres readiness false negative. Confirmed docker exec opengithub-postgres-test pg_isready succeeds and used TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test.",
+      "Ran focused DB-backed Rust package_detail_contract: 4 passed after fixes.",
+      "Ran focused Vitest: cd web && TMPDIR=../.scratch/tmp npm test -- --run package-detail-page.test.tsx: 8 passed.",
+      "Ran focused Playwright: cd web && TEST_DATABASE_URL/DATABASE_URL set npm run test:e2e -- package-detail.spec.ts: 2 passed, screenshots refreshed under ralph/screenshots/build/packages-002-final-*.jpg.",
+      "Ran make check with TEST_DATABASE_URL/DATABASE_URL and TMPDIR=.scratch/tmp: Cargo check, web typecheck, clippy, and Biome passed.",
+      "Attempted full make test twice. First stopped in unrelated Actions dashboard tests due shared rate-limit state; after clearing rate_limit_buckets it progressed and stopped in unrelated api_repository_search_contract username/email assertions. Not counted as packages-002 failure."
+    ],
+    "bugs_found": [
+      "Package settings mutation routes used Axum Json extractor, causing non-standard text/plain JSON rejection responses for malformed settings payloads.",
+      "Package settings mutation enum did not reliably accept documented camelCase struct-variant fields such as userId, repositoryId, and versionId.",
+      "Focused package Playwright test depended on host psql and raced API startup/rate-limit state in this QA environment."
+    ],
+    "fix_description": "Switched user/org package settings PATCH handlers to RestJson, declared camelCase fields for PackageSettingsMutation, hardened package detail contract tests for malformed JSON and settings action variants, isolated contract rate-limit subjects, and made the package-detail Playwright seed/smoke robust to Docker-only psql plus API startup/rate-limit state."
   }
 ]

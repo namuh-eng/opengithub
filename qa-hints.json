@@ -2876,62 +2876,6 @@
     ]
   },
   {
-    "feature_id": "profiles-001",
-    "tests_written": [
-      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
-      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
-      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
-      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
-      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
-      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
-    ],
-    "needs_deeper_qa": [
-      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
-    ]
-  },
-  {
-    "feature_id": "profiles-001",
-    "tests_written": [
-      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
-      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
-      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
-      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
-      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
-      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
-    ],
-    "needs_deeper_qa": [
-      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
-    ]
-  },
-  {
-    "feature_id": "profiles-001",
-    "tests_written": [
-      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
-      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
-      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
-      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
-      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
-      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
-    ],
-    "needs_deeper_qa": [
-      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
-    ]
-  },
-  {
-    "feature_id": "profiles-001",
-    "tests_written": [
-      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
-      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
-      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
-      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
-      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
-      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
-    ],
-    "needs_deeper_qa": [
-      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
-    ]
-  },
-  {
     "feature_id": "profiles-002",
     "tests_written": [
       "Completed Phase 1 repository list API contract without marking profiles-002 build_pass=true.",
@@ -8332,39 +8276,6 @@
     ]
   },
   {
-    "feature_id": "settings-002",
-    "tests_written": [
-      "Rust access contract covers admin-only reads, anonymous/non-admin rejection, direct collaborators, organization owner access, team grants, duplicate invite/team conflicts, personal-repository team rejection, role updates, last-admin protection, invitation cancellation, and repository.access audit-event creation.",
-      "Vitest covers the Editorial access page, API docs, people/team/pending-invite rows, disabled inherited controls, query filtering, forbidden/unavailable states, no inert anchors/buttons, mutation request payloads, long-label wrapping, and keyboard-contained dialogs.",
-      "Playwright smoke covers the seeded admin access page, Add people dialog, invite/degraded delivery, role change, invitation cancellation, direct collaborator removal, mobile no-overflow, forbidden non-admin state, and screenshots under ralph/screenshots/build/settings-002-phase4-*.jpg.",
-      "Mandatory Editorial banned-value scan passed with zero matches."
-    ],
-    "needs_deeper_qa": [
-      "Real SES email delivery remains degraded in local verification; QA should verify an actual invitation email reaches the configured test inbox in AWS SES.",
-      "Invite acceptance lifecycle is not implemented in this feature; QA should validate pending/expired/canceled invitation states when acceptance ships.",
-      "Concurrent role edits and invitation cancellation by multiple admins need deeper race-condition testing against a shared database.",
-      "Last-admin protection, organization base permissions, inherited team rows, team membership changes after a grant, and private repository leakage checks should be rechecked with production-like org data.",
-      "The focused Rust DB scenario self-skipped in the final pass because normal SQLx migration replay hits the existing 202605030041 checksum drift on this already-migrated local database; rerun against a clean TEST_DATABASE_URL for full contract evidence."
-    ]
-  },
-  {
-    "feature_id": "prs-005",
-    "tests_written": [
-      "Completed Phase 5 guardrails for the pull request Files changed review feature and set prs-005 build_pass true.",
-      "Fixed viewed-toggle state synchronization so the Files changed toolbar viewed count, file-tree viewed badge, and per-file Viewed button update together after the persisted PATCH succeeds.",
-      "Extended Vitest coverage for viewed progress updates, file-tree state, filtered empty-state recovery links, anonymous Review changes sign-in CTA, and no href=\"#\" or missing-href anchors.",
-      "Extended Playwright PR detail/files smoke to save final desktop and mobile Files changed screenshots and assert no dead anchors or document-level mobile horizontal overflow.",
-      "Verification passed: focused api_pull_request_diff_review_contract, .scratch/prs-005-diff-review-contract-scenario.sh, focused repository-pull-request-detail Vitest, focused repository-pull-request-detail Playwright spec, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 167 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
-    ],
-    "needs_deeper_qa": [
-      "Browser smoke submits the Comment review state; Approve and Request changes remain covered through API validation and dialog wiring because the seeded browser PR is author-owned and self-approval is correctly rejected.",
-      "Pending draft privacy is covered by API contract tests; QA should revisit simultaneous multi-user browser behavior once richer multi-user fixtures exist.",
-      "Notifications and audit events are asserted at the Rust contract level; notification inbox UI verification belongs to the later notifications features.",
-      "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
-      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
-    ]
-  },
-  {
     "feature_id": "settings-005",
     "tests_written": [
       "QA blocked evidence on 2026-05-08: focused Rust DB contract repository_actions_secrets_contract passed 2/2 without self-skip after clean test DB recovery.",
@@ -8374,7 +8285,7 @@
     ],
     "needs_deeper_qa": [
       "qa_pass remains false because controller-required Ever CLI browser QA was not completed: app booted, but dashboard_e2e_seed failed with a DB pool timeout after Docker/test DB became unavailable, and ever start hung without producing an active session.",
-      "Re-run Ever CLI snapshot\u2192act\u2192snapshot once Docker/test DB and Ever extension connectivity are healthy: start http://localhost:3015, seed/sign in admin, visit /{owner}/{repo}/settings/secrets, create/update/delete one secret and one variable, verify write-only secret redaction, no dead controls, restricted non-admin state, and mobile no-overflow.",
+      "Re-run Ever CLI snapshot→act→snapshot once Docker/test DB and Ever extension connectivity are healthy: start http://localhost:3015, seed/sign in admin, visit /{owner}/{repo}/settings/secrets, create/update/delete one secret and one variable, verify write-only secret redaction, no dead controls, restricted non-admin state, and mobile no-overflow.",
       "Broad make test-e2e was attempted; first run failed outside settings-005 after 65 passing tests due worktree target no-space in profile-overview, and the shared-target rerun hung after a db-wait warning before being stopped to pursue mandatory Ever QA.",
       "Continue deeper production hardening from prior hints: real KMS/Secrets Manager backing, inherited org/environment scopes, fork/reusable/environment workflow policies, masking bypasses, and concurrent admin edits."
     ]
@@ -8435,5 +8346,44 @@
       "Run a dedicated axe-core scan if the QA lane needs machine-readable WCAG artifacts beyond the existing no-dead-control and accessible-name Playwright checks."
     ],
     "created_at": "2026-05-09T04:45:00Z"
+  },
+  {
+    "feature_id": "packages-001",
+    "tests_written": [
+      "Added owner package list contract coverage in crates/api/tests/owner_packages_contract.rs for user and organization package lists, search/type/visibility/sort filters, package downloads, linked repositories, public redaction, package permissions, and organization-member internal package visibility.",
+      "Added OwnerPackagesPage Vitest coverage for GitHub Packages and Linked artifacts tabs, type/visibility/sort/search controls, clear-filter and empty-state links, package metadata rows, linked repository links, download counts, and ownerPackagesHref serialization.",
+      "Verification passed: focused cargo test -p opengithub-api --test owner_packages_contract; focused npm --prefix web test -- owner-packages-page.test.tsx; web typecheck with npx tsc --noEmit --incremental false; mandatory Editorial banned-value scan on touched UI files; make check; CARGO_INCREMENTAL=0 make test with Cargo tests plus 249 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Linked artifacts is intentionally a placeholder tab until artifact provenance ships; QA should verify the explanatory copy and return link rather than expecting artifact rows.",
+      "No browser E2E/manual Ever smoke was added in the build lane; independent QA should exercise /{owner}?tab=packages and /orgs/{org}/packages with signed-out, member, and collaborator viewers.",
+      "Stress long package names, large download counts, mixed package_repository_links, direct package_permissions for non-members, and URL query preservation across all dropdowns."
+    ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Controller fixed the authenticated owner package list SQL builder to use QueryBuilder-bound actor UUIDs instead of raw $2 predicate strings.",
+      "Verification that does not require Docker passed: ./hack/cargo_locked.sh check -p opengithub-api.",
+      "Focused owner_packages_contract compiled; runtime DB scenarios self-skipped because TEST_DATABASE_URL/test Postgres was unavailable."
+    ],
+    "needs_deeper_qa": [
+      "Rerun make setup-local, make check, make test, and focused packages-002 Playwright/browser smoke once Docker/test Postgres is available.",
+      "Specifically re-probe authenticated /api/users/:user/packages and /api/orgs/:org/packages with package_type and visibility filters to prove the `)$2 AND` SQL syntax error is gone against real Postgres.",
+      "Complete private/internal redaction probes for anonymous viewers, package grants, linked repository grants, org members, and non-admin viewers."
+    ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "QA passed packages-002 with focused DB-backed Rust package_detail_contract, focused package-detail Vitest, focused Playwright browser smoke, and make check.",
+      "Fixed settings PATCH routes to use RestJson and accept documented camelCase mutation fields: userId, repositoryId, and versionId.",
+      "Focused Playwright package-detail smoke now falls back to Docker psql, waits for API health, clears local test rate-limit buckets, and uses explicit X-Forwarded-For for the download metadata probe."
+    ],
+    "needs_deeper_qa": [
+      "Full make test still has unrelated repository search contract failures expecting email where current responses expose fallback usernames; do not treat that as packages-002 evidence.",
+      "Install @axe-core/playwright or run the QA harness that provides it to add automated axe coverage for package detail/settings pages.",
+      "Re-run package settings mutation coverage once packages-003 expands registry write controls beyond the current settings/admin surface."
+    ]
   }
 ]

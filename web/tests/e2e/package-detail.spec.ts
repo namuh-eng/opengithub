@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -19,154 +20,140 @@ function sqlLiteral(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+function execPsql(args: string[]) {
+  const env = { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" };
+  try {
+    return execFileSync("psql", args, { env });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (!databaseUrl?.includes("localhost:55433/opengithub_test")) {
+    throw new Error(
+      "psql is not installed and Docker fallback only supports the test DB",
+    );
+  }
+
+  const dockerArgs = [
+    "exec",
+    "-i",
+    "opengithub-postgres-test",
+    "psql",
+    "-U",
+    "opengithub",
+    "-d",
+    "opengithub_test",
+  ];
+  const psqlArgs = args[0] === databaseUrl ? args.slice(1) : args;
+  let input: Buffer | undefined;
+  for (let index = 0; index < psqlArgs.length; index += 1) {
+    const arg = psqlArgs[index];
+    if (arg === "-f") {
+      const file = psqlArgs[index + 1];
+      if (!file) {
+        throw new Error("psql -f requires a file");
+      }
+      input = readFileSync(file);
+      dockerArgs.push("-f", "-");
+      index += 1;
+    } else {
+      dockerArgs.push(arg);
+    }
+  }
+
+  return execFileSync("docker", dockerArgs, { input });
+}
+
 function runSql(sql: string) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-  });
+  execPsql([databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql]);
 }
 
 function queryScalar(sql: string) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  return execFileSync("psql", [databaseUrl, "-tAc", sql], {
-    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-  })
-    .toString()
-    .trim();
+  return execPsql([databaseUrl, "-tAc", sql]).toString().trim();
 }
 
 function ensurePackageDetailSchema() {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
-  const hasPackageDownloads = execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-tAc",
-      "SELECT to_regclass('public.package_downloads') IS NOT NULL",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
-  )
+  const hasPackageDownloads = execPsql([
+    databaseUrl,
+    "-tAc",
+    "SELECT to_regclass('public.package_downloads') IS NOT NULL",
+  ])
     .toString()
     .trim();
   if (hasPackageDownloads !== "t") {
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605030041_owner_packages.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
-    );
-  }
-  const hasPackageBlobs = execFileSync(
-    "psql",
-    [
+    execPsql([
       databaseUrl,
-      "-tAc",
-      "SELECT to_regclass('public.package_blobs') IS NOT NULL",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
-  )
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605030041_owner_packages.up.sql",
+    ]);
+  }
+  const hasPackageBlobs = execPsql([
+    databaseUrl,
+    "-tAc",
+    "SELECT to_regclass('public.package_blobs') IS NOT NULL",
+  ])
     .toString()
     .trim();
   if (hasPackageBlobs !== "t") {
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605031930_package_detail_metadata.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
-    );
-  }
-  const hasPackageRegistryAudit = execFileSync(
-    "psql",
-    [
+    execPsql([
       databaseUrl,
-      "-tAc",
-      "SELECT to_regclass('public.package_registry_audit_events') IS NOT NULL",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
-  )
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605031930_package_detail_metadata.up.sql",
+    ]);
+  }
+  const hasPackageRegistryAudit = execPsql([
+    databaseUrl,
+    "-tAc",
+    "SELECT to_regclass('public.package_registry_audit_events') IS NOT NULL",
+  ])
     .toString()
     .trim();
   if (hasPackageRegistryAudit !== "t") {
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605032020_package_registry_manifest_reads.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
-    );
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605032230_package_registry_actions_publishing.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
-    );
-  }
-  const hasPackageDeletedAt = execFileSync(
-    "psql",
-    [
+    execPsql([
       databaseUrl,
-      "-tAc",
-      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'packages' AND column_name = 'deleted_at')",
-    ],
-    {
-      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-    },
-  )
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605032020_package_registry_manifest_reads.up.sql",
+    ]);
+    execPsql([
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605032230_package_registry_actions_publishing.up.sql",
+    ]);
+  }
+  const hasPackageDeletedAt = execPsql([
+    databaseUrl,
+    "-tAc",
+    "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'packages' AND column_name = 'deleted_at')",
+  ])
     .toString()
     .trim();
   if (hasPackageDeletedAt !== "t") {
-    execFileSync(
-      "psql",
-      [
-        databaseUrl,
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-f",
-        "../crates/api/migrations/202605032345_package_admin_lifecycle.up.sql",
-      ],
-      {
-        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
-      },
-    );
+    execPsql([
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605032345_package_admin_lifecycle.up.sql",
+    ]);
   }
 }
 
@@ -370,6 +357,29 @@ test.skip(
 test("package detail final smoke covers user, org, settings, forbidden, and mobile states", async ({
   page,
 }) => {
+  test.setTimeout(90_000);
+
+  runSql("DELETE FROM rate_limit_buckets");
+  await expect
+    .poll(
+      async () => {
+        try {
+          const response = await page.request.get(
+            "http://localhost:3016/health",
+            {
+              headers: { "X-Forwarded-For": "10.201.0.1" },
+              timeout: 1000,
+            },
+          );
+          return response.status();
+        } catch {
+          return 0;
+        }
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(200);
+
   const seeded = seedDashboard();
   await signIn(page, seeded);
   const packageHref = seedPackage(seeded.firstRepositoryHref);
@@ -419,6 +429,7 @@ test("package detail final smoke covers user, org, settings, forbidden, and mobi
   expect(downloadsAfterRender).toBe(27);
   const metadataResponse = await page.request.get(
     `http://localhost:3016/api/users/${packageHref.split("/")[1]}/packages/container/${packageName}/download?version=1.0.0`,
+    { headers: { "X-Forwarded-For": "10.201.0.2" } },
   );
   expect(metadataResponse.ok()).toBe(true);
   const metadata = await metadataResponse.json();
