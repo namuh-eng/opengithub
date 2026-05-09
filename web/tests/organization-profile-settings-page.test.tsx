@@ -332,6 +332,11 @@ describe("OrganizationProfileSettingsForm", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<OrganizationProfileSettingsForm settings={profileSettings()} />);
 
+    const profileForm = screen
+      .getByRole("button", { name: "Save profile changes" })
+      .closest("form");
+    expect(profileForm).toHaveAttribute("novalidate");
+
     fireEvent.change(screen.getByLabelText("Organization display name"), {
       target: { value: " " },
     });

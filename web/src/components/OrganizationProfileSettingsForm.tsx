@@ -548,6 +548,7 @@ export function OrganizationProfileSettingsForm({
       <SettingsCard kicker="Public profile" title="Organization profile">
         <form
           className="grid gap-4"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void saveSection("profile");
@@ -626,6 +627,7 @@ export function OrganizationProfileSettingsForm({
 
       <SettingsCard kicker="Contact" title="Administrative contact">
         <form
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void saveSection("contact");
@@ -665,6 +667,7 @@ export function OrganizationProfileSettingsForm({
 
       <SettingsCard kicker="Social" title="Social accounts">
         <form
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void saveSection("social");

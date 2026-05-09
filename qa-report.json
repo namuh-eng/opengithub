@@ -3864,5 +3864,68 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "org-admin-002",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Code-level profile/settings behavior was partially verified, but full browser/E2E verification is blocked in this worktree. make doctor failed because Docker daemon is not running, postgres-test container is not running, and Postgres is unreachable on localhost:55433. Focused Playwright org profile/settings specs could not start the dev webServer: first the default Cargo cache was read-only at $HOME/.cache/opengithub/cargo-target/debug/.cargo-lock; after exporting CARGO_TARGET_DIR to .scratch/cargo-target, launching the Rust api exited with Operation not permitted (os error 1). Not counted as E2E verified."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "PATCH /organizations/{org}/settings/profile/actions",
+          "POST /organizations/{org}/settings/profile/actions",
+          "PATCH /api/orgs/{org}/settings/profile",
+          "GET /api/orgs/{org}/settings/profile"
+        ],
+        "notes": "Focused Rust organization profile/profile-settings contract tests passed 4/4. Focused Vitest route tests passed and verify the Next action route preserves upstream 403/409 status and error codes instead of flattening owner-access/conflict errors into 422 validation_failed. Rust deserialization now distinguishes omitted fields from explicit null values for profile patch fields."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "auth_bypass",
+          "data_exposure"
+        ],
+        "notes": "Owner-only Rust profile settings contracts passed, including redacted private/unauthorized behavior, but live unauthenticated/browser/API probes were not completed because the local Docker/Postgres/dev-server stack is blocked. No security pass is claimed."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Not verified. Focused Playwright/browser startup is blocked in this environment, so no axe or manual keyboard pass is claimed."
+      }
+    },
+    "tested_steps": [
+      "Identified feature from branch/session name as org-admin-002.",
+      "Ran make doctor: failed because Docker daemon is not running, postgres-test container is not running, and Postgres is unreachable on localhost:55433; .env and .env.test are present.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check: Cargo check passed, web typecheck passed, Clippy passed, Biome passed after formatting the new focused Vitest route test.",
+      "Ran cd web && npx vitest run tests/organization-profile-settings-page.test.tsx tests/organization-profile-actions-route.test.ts: 2 files passed, 8 tests passed.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target ./hack/cargo_locked.sh test --test organization_profile_settings_contract --test organization_profile_contract: 2 contract files passed, 4 tests passed.",
+      "Attempted cd web && npx playwright test tests/e2e/organization-settings-profile.spec.ts tests/e2e/organization-profile.spec.ts: initial run timed out waiting 120000ms for http://localhost:3015.",
+      "Retried focused Playwright after Rust compile warmed: webServer failed opening read-only $HOME/.cache/opengithub/cargo-target/debug/.cargo-lock.",
+      "Retried focused Playwright with CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target: webServer compiled but launching api failed with Operation not permitted (os error 1)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Organization profile settings PATCH could not clear optional text fields because serde deserialized explicit JSON null the same as an omitted field for Option<Value> patch members.",
+        "fix": "Added a custom deserialize_with helper plus serde(default) for profile patch value fields so explicit null is preserved as Some(Value::Null) while omitted fields remain None."
+      },
+      {
+        "severity": "major",
+        "description": "The Next profile actions route flattened upstream owner-access and rename conflict errors into 422 validation_failed responses.",
+        "fix": "Shared apiErrorResponse now preserves upstream cause.status and cause.error.code for PATCH and POST action failures."
+      },
+      {
+        "severity": "minor",
+        "description": "Browser-native form validation could prevent the custom inline save/error path from running for intentionally invalid org profile values.",
+        "fix": "Added noValidate to the profile, contact, and social settings forms and covered the profile form behavior in Vitest."
+      }
+    ],
+    "fix_description": "Preserved explicit null profile patch semantics, propagated upstream action-route error statuses/codes, disabled native validation so app-level validation handles saves consistently, and added focused route/form tests. Full QA remains blocked by local Docker/Postgres/dev-server startup issues.",
+    "recorded_at": "2026-05-09"
   }
 ]

@@ -9,6 +9,17 @@ type OrganizationProfileActionsRouteProps = {
   params: Promise<{ org: string }>;
 };
 
+function apiErrorResponse(error: unknown, fallbackMessage: string) {
+  const cause =
+    error instanceof Error && error.cause && typeof error.cause === "object"
+      ? (error.cause as { status?: number; error?: { code?: string } })
+      : null;
+  const status = cause?.status ?? 422;
+  const code = cause?.error?.code ?? "validation_failed";
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  return NextResponse.json({ error: { code, message }, status }, { status });
+}
+
 export async function PATCH(
   request: Request,
   { params }: OrganizationProfileActionsRouteProps,
@@ -37,13 +48,9 @@ export async function PATCH(
     );
     return NextResponse.json(settings);
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Organization profile settings update failed";
-    return NextResponse.json(
-      { error: { code: "validation_failed", message }, status: 422 },
-      { status: 422 },
+    return apiErrorResponse(
+      error,
+      "Organization profile settings update failed",
     );
   }
 }
@@ -76,14 +83,6 @@ export async function POST(
     );
     return NextResponse.json(settings);
   } catch (error) {
-    const cause =
-      error instanceof Error && error.cause && typeof error.cause === "object"
-        ? (error.cause as { status?: number; error?: { code?: string } })
-        : null;
-    const status = cause?.status ?? 422;
-    const code = cause?.error?.code ?? "validation_failed";
-    const message =
-      error instanceof Error ? error.message : "Organization rename failed";
-    return NextResponse.json({ error: { code, message }, status }, { status });
+    return apiErrorResponse(error, "Organization rename failed");
   }
 }

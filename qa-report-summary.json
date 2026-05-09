@@ -1891,9 +1891,38 @@
       "description": "Render and save organization profile/settings shell with public profile fields, ",
       "category": "settings",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "blocked",
+          "notes": "Code-level profile/settings behavior was partially verified, but full browser/E2E verification is blocked in this worktree. make doctor failed because Docker daemon is not running, postgres-test container is not running, and Postgres is unreachable on localhost:55433. Focused Playwright org profile/settings specs could not start the dev webServer: first the default Cargo cache was read-only at $HOME/.cache/opengithub/cargo-target/debug/.cargo-lock; after exporting CARGO_TARGET_DIR to .scratch/cargo-target, launching the Rust api exited with Operation not permitted (os error 1). Not counted as E2E verified."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "PATCH /organizations/{org}/settings/profile/actions",
+            "POST /organizations/{org}/settings/profile/actions",
+            "PATCH /api/orgs/{org}/settings/profile",
+            "GET /api/orgs/{org}/settings/profile"
+          ],
+          "notes": "Focused Rust organization profile/profile-settings contract tests passed 4/4. Focused Vitest route tests passed and verify the Next action route preserves upstream 403/409 status and error codes instead of flattening owner-access/conflict errors into 422 validation_failed. Rust deserialization now distinguishes omitted fields from explicit null values for profile patch fields."
+        },
+        "security": {
+          "status": "blocked",
+          "checks": [
+            "auth_bypass",
+            "data_exposure"
+          ],
+          "notes": "Owner-only Rust profile settings contracts passed, including redacted private/unauthorized behavior, but live unauthenticated/browser/API probes were not completed because the local Docker/Postgres/dev-server stack is blocked. No security pass is claimed."
+        },
+        "accessibility": {
+          "status": "blocked",
+          "violations": [],
+          "notes": "Not verified. Focused Playwright/browser startup is blocked in this environment, so no axe or manual keyboard pass is claimed."
+        }
+      },
+      "overall_status": "blocked"
     },
     {
       "feature_id": "org-admin-003",
