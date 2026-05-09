@@ -3864,5 +3864,63 @@
       }
     ],
     "fix_description": "Made thread notification event options page-specific, preserved repository watch draft edits across late settings loads, and tightened focused E2E synchronization while keeping save and persistence assertions."
+  },
+  {
+    "feature_id": "org-admin-001",
+    "attempt": 1,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Fixed and unit-tested the Next slug-availability proxy so unauthenticated backend envelopes are preserved instead of being converted to a generic 502. Full signed-in create flow could not be verified because Docker did not become ready for the required localhost:55433 opengithub_test database and Playwright webServer failed to start in this sandbox."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /organizations/new/slug-availability",
+          "GET /api/organizations/slug-availability"
+        ],
+        "notes": "Focused Vitest covered the Next proxy forwarding to API_URL and preserving a 401 not_authenticated JSON envelope. Rust organization_create_contract compiled but its DB-backed test bodies self-skipped because the TEST_DATABASE_URL endpoint was unreachable without Docker/Postgres."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_envelope_preservation",
+          "data_exposure"
+        ],
+        "notes": "The fixed proxy no longer hides unauthenticated API envelopes behind a generic availability failure. DB-backed auth, duplicate slug, and creation security paths remain unverified in this run because the required test database was unavailable."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "No browser/a11y pass was possible because the focused Playwright org-create spec could not start the dev server in this environment."
+      }
+    },
+    "tested_steps": [
+      "Identified feature_id org-admin-001 from branch qa-opengithub-org-admin-001-mainqa-20260509 and prd.json.",
+      "Ran make doctor first: Docker daemon not running, opengithub-postgres-test not running, Postgres not reachable on localhost:55433; .env.test and .env were present.",
+      "Ran make setup-local: Docker did not become ready within 120s; required localhost:55433/opengithub_test DB remained unavailable.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check after formatting touched files: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npx vitest run tests/organization-create-page.test.tsx: 1 test file passed, 11 tests passed.",
+      "Ran focused Rust org-create contract with repo .env.test values and worktree CARGO_TARGET_DIR: binary completed but printed skip messages for all three DB-backed contract bodies because the test DB was unreachable; not counted as DB verification.",
+      "Ran focused Playwright org-create spec once with default Cargo target: blocked by read-only /home/jaeyunha/.cache/opengithub/cargo-target.",
+      "Reran focused Playwright org-create spec with exported worktree CARGO_TARGET_DIR: webServer compiled the API but failed with Operation not permitted (os error 1); no E2E assertions ran."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "The Next slug-availability proxy collapsed unauthenticated backend responses into a generic availability_unavailable 502, hiding the real not_authenticated API envelope from the organization create form.",
+        "expected": "GET /organizations/new/slug-availability should preserve backend error status and JSON envelopes such as 401 not_authenticated.",
+        "actual": "The prior helper returned null for non-OK backend responses, so the route returned a generic 502 availability_unavailable envelope.",
+        "file": "web/src/app/organizations/new/slug-availability/route.ts"
+      }
+    ],
+    "fix_description": "Changed the slug availability route to fetch the backend endpoint directly, forward cookies, disable caching, preserve non-OK backend JSON/status envelopes, and retain a 502 fallback only for transport/non-JSON failures.",
+    "known_gaps": [
+      "DB-backed Rust contract behavior and signed-in organization creation E2E were blocked by Docker/test Postgres unavailability on localhost:55433.",
+      "Focused Playwright browser verification was blocked by dev-server startup failure: Operation not permitted (os error 1)."
+    ],
+    "timestamp": "2026-05-09T07:57:38.742Z"
   }
 ]

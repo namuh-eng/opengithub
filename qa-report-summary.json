@@ -1882,9 +1882,36 @@
       "description": "Create organization flow with plan picker, setup form, slug validation, contact ",
       "category": "onboarding",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "partial",
+          "notes": "Fixed and unit-tested the Next slug-availability proxy so unauthenticated backend envelopes are preserved instead of being converted to a generic 502. Full signed-in create flow could not be verified because Docker did not become ready for the required localhost:55433 opengithub_test database and Playwright webServer failed to start in this sandbox."
+        },
+        "api_contract": {
+          "status": "partial",
+          "endpoints_tested": [
+            "GET /organizations/new/slug-availability",
+            "GET /api/organizations/slug-availability"
+          ],
+          "notes": "Focused Vitest covered the Next proxy forwarding to API_URL and preserving a 401 not_authenticated JSON envelope. Rust organization_create_contract compiled but its DB-backed test bodies self-skipped because the TEST_DATABASE_URL endpoint was unreachable without Docker/Postgres."
+        },
+        "security": {
+          "status": "partial",
+          "checks": [
+            "auth_envelope_preservation",
+            "data_exposure"
+          ],
+          "notes": "The fixed proxy no longer hides unauthenticated API envelopes behind a generic availability failure. DB-backed auth, duplicate slug, and creation security paths remain unverified in this run because the required test database was unavailable."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "No browser/a11y pass was possible because the focused Playwright org-create spec could not start the dev server in this environment."
+        }
+      },
+      "overall_status": "partial"
     },
     {
       "feature_id": "org-admin-002",
