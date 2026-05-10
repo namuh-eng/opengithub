@@ -10775,3 +10775,14 @@ Prior evidence preserved: focused contributors Vitest passed 6/6; biome on chang
 Status: QA PASS. Fresh controller recovery accepted and ready for main merge.
 Evidence: make doctor healthy on podman + localhost:55433; make check passed Cargo check, web typecheck, Clippy, Biome; repository-contributors-page Vitest passed 6/6; DB-backed repository_contributors_contract passed 1/1 without self-skip; focused Chromium repository-contributors Playwright passed setup + flow 2/2 using /usr/bin/google-chrome.
 Fixes accepted: UTC weekly bucket date rendering in contributors controls/table/page; repository-contributors E2E moved onto shared auth fixture; shared fixture contributor-file-change seeding now falls back to docker exec psql for the standard test DB when host psql is absent.
+
+Controller merge: preserved additional QA evidence from insights-004 recovery branch:
+[QA insights-004 mainqa 2026-05-09T21:53:39Z]
+Status: QA BLOCKED with scoped fixes salvaged. make doctor and make check passed; DB-backed package_detail_contract 4/4, projects_list_contract 1/1, and repository_network_contract 1/1 passed against localhost:55433; focused Network/Forks/API docs Vitest passed 9/9.
+Fixes: package settings camelCase serde IDs, project copy FOR UPDATE OF projects + workflow_key clone + org membership/base-role guard, corrected projects default-open contract expectation, and isolated repository_network_contract rate-limit identity.
+Blockers: full make test Cargo passed but broad web Vitest still has unrelated user-profile-contributions Jan month expectation; focused Playwright repository-network.spec.ts is blocked because both bundled Chromium and /usr/bin/google-chrome exit SIGTRAP during auth.setup.ts before assertions, even with TMPDIR under .scratch/tmp after freeing workspace caches. insights-004 qa_pass remains false.
+
+[QA insights-004 recovery 2026-05-10T07:06:15Z]
+Status: QA PASS. Fresh controller recovery accepted for Network/Forks and ready for main merge.
+Evidence: make doctor healthy; make check passed; DB-backed package_detail_contract 4/4, projects_list_contract 1/1, and repository_network_contract 1/1 passed against localhost:55433; focused Network/Forks/API docs Vitest passed 9/9; focused system-Chrome repository-network Playwright passed setup + flow 2/2 in 21.0s.
+Fixes accepted: package settings camelCase serde IDs, project copy FOR UPDATE OF projects + workflow_key clone + org membership/base-role guard, corrected projects default-open expectation, repository_network_contract rate-limit identity isolation, and repository-network E2E now uses shared auth plus container-backed psql fallback instead of host psql.

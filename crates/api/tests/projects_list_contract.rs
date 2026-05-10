@@ -305,7 +305,7 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     .await
     .expect("fields should insert");
     sqlx::query(
-        "INSERT INTO project_workflows (project_id, name, enabled, trigger_event) VALUES ($1, 'Auto archive', true, 'item_closed')",
+        "INSERT INTO project_workflows (project_id, workflow_key, name, enabled, trigger_event) VALUES ($1, 'auto-archive', 'Auto archive', true, 'item_closed')",
     )
     .bind(public_project_id)
     .execute(&pool)
@@ -348,7 +348,7 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
         json!({ "title": "[COPY] Platform roadmap", "includeDraftIssues": true }),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_json(&headers);
     let copied_project_id = Uuid::parse_str(body["id"].as_str().expect("copy id")).expect("uuid");
     assert_eq!(body["title"], "[COPY] Platform roadmap");
@@ -369,7 +369,7 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
           (SELECT count(*)::bigint FROM project_workflows WHERE project_id = $1) AS workflows,
           (SELECT count(*)::bigint FROM project_items WHERE project_id = $1 AND item_type = 'draft_issue') AS drafts,
           (SELECT count(*)::bigint FROM project_items WHERE project_id = $1 AND item_type <> 'draft_issue') AS linked_items,
-          (SELECT count(*)::bigint FROM audit_events WHERE target_id = $1 AND event_type = 'project.copy') AS audits,
+          (SELECT count(*)::bigint FROM audit_events WHERE target_id = $1::text AND event_type = 'project.copy') AS audits,
           (SELECT count(*)::bigint FROM project_recent_visits WHERE project_id = $1 AND user_id = $2 AND reason = 'copy') AS visits
         "#
     )
@@ -406,7 +406,7 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     assert_eq!(body["pageSize"], 1);
     assert_eq!(body["total"], 3);
     assert_eq!(body["items"].as_array().expect("items").len(), 1);
-    assert_eq!(body["items"][0]["title"], "Private acquisition plan");
+    assert_eq!(body["items"][0]["title"], "Platform roadmap");
 
     let closed_uri = format!("/api/orgs/{marker}/projects?state=closed");
     let (status, _, body) = get_json(app.clone(), &closed_uri, Some(&member_cookie)).await;

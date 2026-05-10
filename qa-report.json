@@ -4710,6 +4710,99 @@
     "fix_description": "Moved traffic test data into dashboard_e2e_seed.rs, rewrote repository-traffic.spec.ts to use the shared auth fixture/personas, added API health waiting before signed repository navigation, and wired Playwright launchOptions to use system Chrome when PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set."
   },
   {
+    "feature_id": "insights-004",
+    "attempt": 3,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-10T07:06:15Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused signed-in Playwright Network/Forks smoke passed with system Chrome after moving the spec onto the shared auth fixture and container-backed psql fallback."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/network",
+          "GET /api/repos/{owner}/{repo}/forks",
+          "PUT /api/repos/{owner}/{repo}/forks/defaults",
+          "package detail/settings collateral contracts",
+          "projects list/copy collateral contract"
+        ],
+        "notes": "Fresh DB-backed repository_network_contract 1/1, package_detail_contract 4/4, and projects_list_contract 1/1 passed against localhost:55433 with no self-skips."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_fork_omission",
+          "saved_default_validation",
+          "rate_limit_isolation",
+          "data_exposure",
+          "shared_auth_fixture"
+        ],
+        "notes": "Focused Rust contracts cover privacy/error/default validation paths; Playwright now uses the shared signed-in fixture instead of ad hoc cookie minting."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser E2E verified named controls, no dead controls, desktop screenshots, and mobile no-horizontal-overflow using /usr/bin/google-chrome."
+      }
+    },
+    "tested_steps": [
+      "Merged origin/qa-opengithub-insights-004-mainqa-20260509-fresh into origin/main 8f324059 on recovery/insights-004-mainqa-rerun and resolved build-progress/qa-report conflicts by preserving adjacent insights-002/003/005 evidence plus the latest insights-004 artifact.",
+      "Ran make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable, .env/.env.test present, per-worktree Cargo target writable.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed before the Playwright harness fix.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_network_contract --test package_detail_contract --test projects_list_contract -- --test-threads=1 --nocapture: package_detail 4/4, projects_list 1/1, repository_network 1/1 passed.",
+      "Ran cd web && npm test -- tests/repository-network-page.test.tsx tests/repository-forks-page.test.tsx tests/api-docs.test.tsx: 9/9 passed.",
+      "Initial focused Playwright rerun with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome proved Chrome launch but failed because repository-network.spec.ts called host psql directly (spawnSync psql ENOENT).",
+      "Fixed repository-network.spec.ts to use the shared auth fixture seed/signIn path and exported runPsql from _fixtures/auth.ts so the existing container-backed psql fallback works on localhost:55433.",
+      "Ran PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test DB_SSL=false npx playwright test tests/e2e/repository-network.spec.ts --project=chromium --reporter=list: setup + Network/Forks flow 2/2 passed in 21.0s."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "repository-network.spec.ts bypassed the shared E2E auth fixture and called host psql directly, so browser QA failed on controller hosts where psql is only available inside opengithub-postgres-test.",
+        "expected": "Signed-in E2E specs use _fixtures/auth seed/signIn and shared database helpers with docker exec psql fallback for localhost:55433.",
+        "actual": "Focused Playwright reached system Chrome successfully, then failed before page assertions with spawnSync psql ENOENT.",
+        "reproduction": "Run the focused Network/Forks Playwright spec with system Chrome on a host without psql installed."
+      },
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Package settings serde IDs, project copy locking/workflow key/org membership guards, and repository network rate-limit identity isolation needed fixes from the salvaged branch before contracts passed.",
+        "expected": "Focused DB contracts pass without self-skip against localhost:55433.",
+        "actual": "Prior broad QA exposed these contract regressions; salvaged branch fixed them.",
+        "reproduction": "Run the focused package_detail_contract, projects_list_contract, and repository_network_contract before the salvaged fixes."
+      }
+    ],
+    "fix_description": "Accepted insights-004 Network/Forks fixes, moved the focused E2E onto shared auth/psql fallback, and verified doctor/check/DB contracts/component tests/system-Chrome Playwright.",
+    "evidence": {
+      "base": "origin/main 675df7b4",
+      "branch": "qa-opengithub-insights-004-mainqa-20260509-fresh 22f202b9 before this artifact update",
+      "tests_passed": [
+        "make doctor",
+        "make check",
+        "package_detail_contract 4/4",
+        "projects_list_contract 1/1",
+        "repository_network_contract 1/1",
+        "repository-network/forks/api-docs Vitest 9/9"
+      ],
+      "blocked": [
+        "focused Playwright repository-network.spec.ts: /opt/google/chrome exits SIGTRAP in auth.setup.ts before assertions"
+      ],
+      "timestamp": "2026-05-10T05:00:23Z"
+    },
+    "known_gaps": [
+      "Live browser Network/Forks E2E, screenshots, keyboard-only/a11y traversal, and mobile no-overflow need rerun on a host where Chromium/Chrome launches.",
+      "Real Google OAuth was not repeated; signed-cookie fixture path cannot start because browser launch fails first."
+    ],
+    "blockers": [],
+    "timestamp": "2026-05-10T07:06:15Z",
+    "controller_outcome": "QA_PASS: fresh doctor/check/component/DB-contract/focused system-Chrome E2E evidence passed on localhost:55433; ready to merge to main."
+  },
+  {
     "feature_id": "insights-005",
     "attempt": 2,
     "status": "pass",

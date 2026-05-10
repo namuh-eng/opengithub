@@ -171,7 +171,7 @@ export type Fixtures = {
 
 const sqlLiteral = (value: string): string => `'${value.replace(/'/g, "''")}'`;
 
-const runPsql = (url: string, args: string[]): Buffer => {
+export const runPsql = (url: string, args: string[]): Buffer => {
   const env = {
     ...process.env,
     DOCKER_HOST:
