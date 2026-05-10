@@ -4704,5 +4704,74 @@
       "Live browser Network/Forks E2E, screenshots, keyboard-only/a11y traversal, and mobile no-overflow need rerun on a host where Chromium launches.",
       "Real Google OAuth was not repeated; signed-cookie fixture path could not start because browser launch fails first."
     ]
+  },
+  {
+    "feature_id": "insights-004",
+    "attempt": 2,
+    "status": "blocked",
+    "qa_pass": false,
+    "completed_at": "2026-05-10T05:00:23Z",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Fresh recovery QA re-ran the mainqa checks on origin/main 675df7b4 + insights-004 salvage branch 22f202b9. Network/Forks DB contracts and component coverage pass; live Playwright remains blocked before auth setup assertions because local Chrome exits with SIGTRAP."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/network",
+          "GET /api/repos/{owner}/{repo}/forks",
+          "PUT /api/repos/{owner}/{repo}/forks/defaults",
+          "package detail/settings collateral contracts",
+          "projects list/copy collateral contract"
+        ],
+        "notes": "DB-backed Rust contracts passed against localhost:55433 with TEST_DATABASE_URL set: package_detail_contract 4/4, projects_list_contract 1/1, repository_network_contract 1/1; no self-skips."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_fork_omission",
+          "saved_default_validation",
+          "rate_limit_isolation",
+          "data_exposure"
+        ],
+        "notes": "Fresh DB-backed repository_network_contract retained coverage for anonymous/privacy/error paths, unreadable private fork omission, saved defaults validation, and no secret leakage."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Focused RepositoryNetworkPage/RepositoryForksPage Vitest still passes named controls/concrete links/no dead anchors. Browser a11y/no-overflow smoke cannot run because Chrome exits SIGTRAP before auth setup."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: container runtime reachable, opengithub-postgres-test up, Postgres reachable, .env.test present, per-worktree Cargo target writable; .env missing only for live OAuth/AWS dev.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_network_contract --test package_detail_contract --test projects_list_contract -- --test-threads=1 --nocapture: package_detail 4/4, projects_list 1/1, repository_network 1/1 passed.",
+      "Ran cd web && npm test -- tests/repository-network-page.test.tsx tests/repository-forks-page.test.tsx tests/api-docs.test.tsx: 9/9 passed.",
+      "Attempted focused Playwright repository-network.spec.ts with TEST_DATABASE_URL, TMPDIR under web/.scratch/tmp, and a temporary channel=chrome config using /opt/google/chrome; failed in auth.setup.ts before test assertions because Chrome exited with signal=SIGTRAP."
+    ],
+    "bugs_found": [],
+    "fix_description": "No new product fixes in recovery attempt 2. Salvaged scoped fixes from attempt 1 remain preserved; insights-004 is still QA_BLOCKED solely on local browser launch SIGTRAP, with fresh doctor/check/DB/API/component evidence passing.",
+    "evidence": {
+      "base": "origin/main 675df7b4",
+      "branch": "qa-opengithub-insights-004-mainqa-20260509-fresh 22f202b9 before this artifact update",
+      "tests_passed": [
+        "make doctor",
+        "make check",
+        "package_detail_contract 4/4",
+        "projects_list_contract 1/1",
+        "repository_network_contract 1/1",
+        "repository-network/forks/api-docs Vitest 9/9"
+      ],
+      "blocked": [
+        "focused Playwright repository-network.spec.ts: /opt/google/chrome exits SIGTRAP in auth.setup.ts before assertions"
+      ],
+      "timestamp": "2026-05-10T05:00:23Z"
+    },
+    "known_gaps": [
+      "Live browser Network/Forks E2E, screenshots, keyboard-only/a11y traversal, and mobile no-overflow need rerun on a host where Chromium/Chrome launches.",
+      "Real Google OAuth was not repeated; signed-cookie fixture path cannot start because browser launch fails first."
+    ]
   }
 ]
