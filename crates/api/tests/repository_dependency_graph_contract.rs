@@ -148,7 +148,10 @@ async fn request_json(
     cookie: Option<&str>,
 ) -> (StatusCode, Value) {
     let mut builder = Request::builder().uri(uri);
-    builder = builder.method(method);
+    builder = builder.method(method).header(
+        "x-forwarded-for",
+        format!("dependency-graph-contract-{}", Uuid::new_v4()),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -445,7 +448,11 @@ version = "0.5.2"
         .all(|dependency| dependency["package"]["ecosystem"] == "npm"));
 
     let (unauthenticated_status, unauthenticated_body) = get_json(app.clone(), &uri, None).await;
-    assert_eq!(unauthenticated_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        unauthenticated_status,
+        StatusCode::UNAUTHORIZED,
+        "{unauthenticated_body}"
+    );
     assert_eq!(unauthenticated_body["error"]["code"], "not_authenticated");
 
     let (outsider_status, outsider_body) =

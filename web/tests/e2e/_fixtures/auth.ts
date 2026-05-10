@@ -36,6 +36,7 @@ export type Persona = "owner" | "collaborator" | "outsider";
 const SCENE_ENVS = {
   empty: { DASHBOARD_E2E_EMPTY: "1" },
   treeRefs: { DASHBOARD_E2E_TREE_REFS: "1" },
+  dependencyGraph: { DASHBOARD_E2E_DEPENDENCY_GRAPH: "1" },
   forkRefs: { DASHBOARD_E2E_FORK_REFS: "1" },
   blobEdge: { DASHBOARD_E2E_BLOB_EDGE: "1" },
   pullRequestMerge: { PULL_REQUEST_MERGE_E2E: "1" },
