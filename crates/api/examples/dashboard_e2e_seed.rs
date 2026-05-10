@@ -298,6 +298,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
         seed_tree_refs(&pool, user.id, tree_repository.id).await?;
+        seed_repository_traffic(&pool, tree_repository.id).await?;
         if seed_blob_edge_files() {
             seed_blob_edge_cases(&pool, tree_repository.id).await?;
         }
@@ -2005,6 +2006,63 @@ async fn seed_issue_templates(
     .bind(template_id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+async fn seed_repository_traffic(pool: &PgPool, repository_id: Uuid) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_traffic_daily (
+            repository_id, traffic_date, clones_total, clones_unique, visitors_total, visitors_unique
+        )
+        VALUES
+            ($1, current_date - interval '2 days', 8, 3, 32, 14),
+            ($1, current_date - interval '1 day', 12, 5, 48, 20),
+            ($1, current_date, 14, 6, 55, 23)
+        ON CONFLICT (repository_id, traffic_date)
+        DO UPDATE SET
+            clones_total = EXCLUDED.clones_total,
+            clones_unique = EXCLUDED.clones_unique,
+            visitors_total = EXCLUDED.visitors_total,
+            visitors_unique = EXCLUDED.visitors_unique
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_referrers_daily (
+            repository_id, traffic_date, referrer, total_views, unique_visitors
+        )
+        VALUES
+            ($1, current_date - interval '1 day', 'https://search.opengithub.local/results?q=traffic', 24, 10),
+            ($1, current_date - interval '1 day', 'https://example.com/docs', 12, 6),
+            ($1, current_date - interval '1 day', 'https://very-long-referrer.example.com/docs/product/analytics/traffic/reports/2026/05/that-keeps-wrapping-in-the-table', 5, 2)
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_popular_content_daily (
+            repository_id, traffic_date, path, title, total_views, unique_visitors
+        )
+        VALUES
+            ($1, current_date - interval '1 day', 'README.md', 'README', 30, 12),
+            ($1, current_date - interval '1 day', 'src/main.rs', 'Application entrypoint', 16, 7),
+            ($1, current_date - interval '1 day', 'docs/product/analytics/traffic/reports/2026/05/very-long-file-name.md', 'Very long traffic report', 5, 2)
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+
     Ok(())
 }
 
