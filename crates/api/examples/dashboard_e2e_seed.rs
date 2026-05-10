@@ -73,6 +73,13 @@ fn seed_tree_repository() -> bool {
     )
 }
 
+fn seed_dependency_graph() -> bool {
+    matches!(
+        std::env::var("DASHBOARD_E2E_DEPENDENCY_GRAPH").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
 fn seed_fork_compare_repository() -> bool {
     matches!(
         std::env::var("DASHBOARD_E2E_FORK_REFS").as_deref(),
@@ -298,6 +305,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
         seed_tree_refs(&pool, user.id, tree_repository.id).await?;
+        if seed_dependency_graph() {
+            seed_dependency_graph_fixture(&pool, tree_repository.id, &suffix).await?;
+        }
         if seed_blob_edge_files() {
             seed_blob_edge_cases(&pool, tree_repository.id).await?;
         }
@@ -2129,6 +2139,176 @@ Describe the change.
     .bind(repository_id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+async fn seed_dependency_graph_fixture(
+    pool: &PgPool,
+    repository_id: Uuid,
+    suffix: &str,
+) -> anyhow::Result<()> {
+    let commit_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT target_commit_id
+        FROM repository_git_refs
+        WHERE repository_id = $1 AND name = 'refs/heads/main'
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    let short_suffix = &suffix[..12];
+    for (path, content) in [
+        (
+            "package.json",
+            r#"{"dependencies":{"@playwright/test":"^1.56.0"},"devDependencies":{"vitest":"^4.0.0"}}"#,
+        ),
+        (
+            "package-lock.json",
+            r#"{"packages":{"node_modules/@playwright/test":{"version":"1.56.0"},"node_modules/vitest":{"version":"4.0.0"}}}"#,
+        ),
+        (
+            "crates/api/Cargo.toml",
+            r#"[package]
+name = "opengithub-api"
+[dependencies]
+sqlx = "0.8"
+"#,
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (repository_id, commit_id, lower(path))
+            DO UPDATE SET content = EXCLUDED.content, oid = EXCLUDED.oid, byte_size = EXCLUDED.byte_size
+            "#,
+        )
+        .bind(repository_id)
+        .bind(commit_id)
+        .bind(path)
+        .bind(content)
+        .bind(format!("dependency-{short_suffix}-{}", path.replace('/', "-")))
+        .bind(content.len() as i64)
+        .execute(pool)
+        .await?;
+    }
+
+    let package_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO dependency_packages (ecosystem, name, package_href)
+        VALUES ('npm', '@playwright/test', 'https://www.npmjs.com/package/@playwright/test')
+        ON CONFLICT (ecosystem, lower(name))
+        DO UPDATE SET package_href = EXCLUDED.package_href, updated_at = now()
+        RETURNING id
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    let manifest_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO dependency_manifests (repository_id, path, ecosystem, lockfile_path, dependency_count)
+        VALUES ($1, 'package.json', 'npm', 'package-lock.json', 2)
+        ON CONFLICT (repository_id, lower(path))
+        DO UPDATE SET ecosystem = EXCLUDED.ecosystem,
+                      lockfile_path = EXCLUDED.lockfile_path,
+                      dependency_count = EXCLUDED.dependency_count,
+                      updated_at = now()
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_dependencies (
+            repository_id, manifest_id, package_id, package_version, relationship, license, lockfile_path
+        )
+        VALUES ($1, $2, $3, '1.56.0', 'direct', 'Apache-2.0', 'package-lock.json')
+        ON CONFLICT (manifest_id, package_id, relationship)
+        DO UPDATE SET package_version = EXCLUDED.package_version,
+                      license = EXCLUDED.license,
+                      lockfile_path = EXCLUDED.lockfile_path,
+                      updated_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(manifest_id)
+    .bind(package_id)
+    .execute(pool)
+    .await?;
+
+    let public_owner_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO users (username, email, display_name, avatar_url)
+        VALUES ($1, $2, $3, NULL)
+        ON CONFLICT (lower(email)) DO UPDATE SET username = EXCLUDED.username
+        RETURNING id
+        "#,
+    )
+    .bind(format!("public-consumer-{short_suffix}"))
+    .bind(format!("public-consumer-{short_suffix}@opengithub.local"))
+    .bind(format!("Public consumer {short_suffix}"))
+    .fetch_one(pool)
+    .await?;
+    let private_owner_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO users (username, email, display_name, avatar_url)
+        VALUES ($1, $2, $3, NULL)
+        ON CONFLICT (lower(email)) DO UPDATE SET username = EXCLUDED.username
+        RETURNING id
+        "#,
+    )
+    .bind(format!("private-consumer-{short_suffix}"))
+    .bind(format!("private-consumer-{short_suffix}@opengithub.local"))
+    .bind(format!("Private consumer {short_suffix}"))
+    .fetch_one(pool)
+    .await?;
+    let public_repo_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO repositories (owner_user_id, name, description, visibility, default_branch, created_by_user_id)
+        VALUES ($1, $2, 'Uses the opengithub package in production.', 'public', 'main', $1)
+        ON CONFLICT (owner_user_id, lower(name)) WHERE owner_user_id IS NOT NULL
+        DO UPDATE SET description = EXCLUDED.description, visibility = 'public'
+        RETURNING id
+        "#,
+    )
+    .bind(public_owner_id)
+    .bind(format!("workflow-tools-{short_suffix}"))
+    .fetch_one(pool)
+    .await?;
+    let private_repo_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO repositories (owner_user_id, name, description, visibility, default_branch, created_by_user_id)
+        VALUES ($1, $2, 'Private dependent repository.', 'private', 'main', $1)
+        ON CONFLICT (owner_user_id, lower(name)) WHERE owner_user_id IS NOT NULL
+        DO UPDATE SET description = EXCLUDED.description, visibility = 'private'
+        RETURNING id
+        "#,
+    )
+    .bind(private_owner_id)
+    .bind(format!("private-workflow-tools-{short_suffix}"))
+    .fetch_one(pool)
+    .await?;
+    for dependent_repo_id in [public_repo_id, private_repo_id] {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_dependents (
+                source_repository_id, dependent_repository_id, package_id, manifest_path
+            )
+            VALUES ($1, $2, $3, 'package.json')
+            ON CONFLICT (source_repository_id, dependent_repository_id, package_id)
+            DO UPDATE SET manifest_path = EXCLUDED.manifest_path, detected_at = now()
+            "#,
+        )
+        .bind(repository_id)
+        .bind(dependent_repo_id)
+        .bind(package_id)
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
 

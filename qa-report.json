@@ -4597,5 +4597,59 @@
       }
     ],
     "fix_description": "Fixed Pulse UTC boundary date rendering and verified insights-001 with real DB contract, focused component tests, and focused browser E2E."
+  },
+  {
+    "feature_id": "insights-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused signed-in Playwright dependency graph smoke passed with seeded dependencyGraph fixture: dependencies page, query/ecosystem/relationship filters, SBOM export/download, dependents package/owner filters, private dependent redaction, no dead controls, and mobile no-overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/network/dependencies",
+          "POST /api/repos/{owner}/{repo}/network/dependencies/sbom",
+          "GET /api/repos/{owner}/{repo}/network/dependencies/sbom/{export_id}",
+          "GET /api/repos/{owner}/{repo}/network/dependents"
+        ],
+        "notes": "repository_dependency_graph_contract passed all 3 tests, covering extraction/filter contracts, SBOM export/download/audit, unauthenticated 401, outsider/private access controls, public dependents filtering, and private consumer hiding."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_repository_redaction",
+          "private_dependent_redaction",
+          "error_envelope"
+        ],
+        "notes": "Contract tests verified anonymous dependency requests return 401 not_authenticated, outsiders cannot read private repository graph data, and private dependent repositories are counted/redacted rather than listed."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright smoke exercised accessible headings, nav/link names, form controls, menu items, no dead controls, and mobile no-horizontal-overflow checks."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local Podman/Postgres/.env verification stack healthy.",
+      "Ran make check: cargo check, web typecheck, clippy, and biome passed.",
+      "Ran focused API contract: ./hack/cargo_locked.sh test -p opengithub-api --test repository_dependency_graph_contract -- --nocapture; 3/3 passed.",
+      "Ran focused E2E with system Chrome to avoid the known snap Chromium resource failure: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-dependency-graph.spec.ts --project=chromium --reporter=list; setup + chromium tests passed.",
+      "Attempted broad make test after scoped verification; it failed in unrelated package_detail_contract::package_settings_admin_mutations_soft_delete_and_audit_without_leaking_storage (expected 200, got 400), outside insights-005 touched files."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Dependency graph E2E used inline SQL/cookie seeding and snap Chromium path that repeatedly hit ERR_INSUFFICIENT_RESOURCES.",
+        "expected": "Signed-in dependency graph E2E should use the shared auth fixture and portable browser config.",
+        "actual": "Previous worker evidence showed direct filter navigation failing under /snap/bin/chromium after old inline setup.",
+        "file": "web/tests/e2e/repository-dependency-graph.spec.ts"
+      }
+    ],
+    "fix_description": "Moved dependency graph E2E seeding into dashboard_e2e_seed/auth fixture scene, converted the spec to shared signed-in fixtures, added dependency manifests/dependents fixture data, made Playwright accept an explicit Chromium executable path, and isolated rate-limit buckets in the API contract helper.",
+    "timestamp": "2026-05-09T21:41:47-07:00"
   }
 ]

@@ -64,6 +64,7 @@ To request a 4th persona, extend `Persona` in `_fixtures/auth.ts` and the corres
 | ------------------ | -------------------------------------------------- |
 | `empty`            | empty dashboard (no repos, no notifications)       |
 | `treeRefs`         | tree-view repo + the `outsider` cookie             |
+| `dependencyGraph`  | dependency manifests, dependencies, and dependents |
 | `forkRefs`         | fork chain + compare data                          |
 | `blobEdge`         | blob view edge cases (binary, LFS, large)          |
 | `pullRequestMerge` | merge-ready PR + commits/diff                      |
