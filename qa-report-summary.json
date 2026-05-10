@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 66,
+    "features_passed": 72,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 66,
+      "pass": 67,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 62,
+      "pass": 63,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 63,
+      "pass": 64,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 28,
+      "pass": 29,
       "fail": 0,
       "skip": 39
     }
@@ -2248,22 +2248,41 @@
       "overall_status": "pass"
     },
     {
-      "feature_id": "insights-002",
-      "description": "Render repository contributor analytics with repository-wide commit chart, perio",
-      "category": "data",
-      "qa_pass": false,
-      "attempts": 0,
-      "exhausted": false,
-      "sub_phases": {}
-    },
-    {
       "feature_id": "insights-003",
       "description": "Render repository traffic analytics for push-access users, including clones, vis",
       "category": "data",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "System Chrome Playwright path is now honored through launchOptions and the traffic E2E waits for the Rust API before loading repository pages. Focused signed browser traffic E2E passed for owner analytics, chart focus/hover values, safe links, long labels, desktop/mobile screenshots, no dead controls, and no horizontal overflow."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/graphs/traffic"
+          ],
+          "notes": "Focused Rust repository_traffic_contract passed with the localhost:55433 test DB. Live API probes returned 200 owner traffic JSON with seeded 14-day clone/visitor/referrer/content data, 403 traffic_access_required for read-only users, and 401 not_authenticated for anonymous requests."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "permission_redaction",
+            "safe_external_links",
+            "markup_guardrails"
+          ],
+          "notes": "Read-only traffic response redacts counts/referrers behind traffic_access_required; anonymous access stays 401. Browser E2E verifies external referrers use noopener noreferrer and no inert/dead controls are present."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused browser E2E verified named chart images, accessible chart points, named tables, keyboard focus tooltip behavior, no dead visible buttons, and no horizontal overflow at desktop and 390px mobile widths."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "insights-004",
@@ -2284,32 +2303,19 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "Focused signed-in Playwright dependency graph smoke passed with seeded dependencyGraph fixture: dependencies page, query/ecosystem/relationship filters, SBOM export/download, dependents package/owner filters, private dependent redaction, no dead controls, and mobile no-overflow."
+          "notes": "Fresh controller recovery passed focused system-Chrome Playwright dependency graph E2E after merging origin/main and avoiding project-local TMPDIR Chrome SIGTRAP."
         },
         "api_contract": {
           "status": "pass",
-          "endpoints_tested": [
-            "GET /api/repos/{owner}/{repo}/network/dependencies",
-            "POST /api/repos/{owner}/{repo}/network/dependencies/sbom",
-            "GET /api/repos/{owner}/{repo}/network/dependencies/sbom/{export_id}",
-            "GET /api/repos/{owner}/{repo}/network/dependents"
-          ],
-          "notes": "repository_dependency_graph_contract passed all 3 tests, covering extraction/filter contracts, SBOM export/download/audit, unauthenticated 401, outsider/private access controls, public dependents filtering, and private consumer hiding."
+          "notes": "Fresh DB-backed repository_dependency_graph_contract passed 3/3 against localhost:55433, covering dependency filters, SBOM export/download/audit, auth/privacy, and dependents redaction."
         },
         "security": {
           "status": "pass",
-          "checks": [
-            "auth_bypass",
-            "private_repository_redaction",
-            "private_dependent_redaction",
-            "error_envelope"
-          ],
-          "notes": "Contract tests verified anonymous dependency requests return 401 not_authenticated, outsiders cannot read private repository graph data, and private dependent repositories are counted/redacted rather than listed."
+          "notes": "Focused Rust contract verified anonymous 401, private repository protection, and private dependent redaction; make check passed Clippy/Biome/typecheck."
         },
         "accessibility": {
           "status": "pass",
-          "violations": [],
-          "notes": "Focused Playwright smoke exercised accessible headings, nav/link names, form controls, menu items, no dead controls, and mobile no-horizontal-overflow checks."
+          "notes": "Focused Playwright flow passed no-dead-controls and no-horizontal-overflow assertions on desktop/mobile dependency graph paths."
         }
       },
       "overall_status": "pass"
@@ -3009,14 +3015,33 @@
         }
       },
       "overall_status": "partial"
+    },
+    {
+      "feature_id": "insights-002",
+      "description": "Render repository contributor analytics with repository-wide commit chart, perio",
+      "category": "data",
+      "qa_pass": true,
+      "attempts": 2,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh controller verification passed: contributors component Vitest 6/6 and focused Chromium Playwright repository-contributors flow 2/2 with shared auth fixture against localhost:55433."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "Fresh DB-backed Rust repository_contributors_contract passed 1/1 against TEST_DATABASE_URL localhost:55433; contract covers analytics response, privacy, and cache behavior."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Authenticated route contract passed privacy checks; make check passed Clippy/Biome/typecheck, and no new banned Editorial token usage was introduced."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused Playwright flow passed expectNoDeadControls and expectNoHorizontalOverflow assertions and captured final screenshots via the shared E2E screenshot path helper."
+        }
+      },
+      "overall_status": "pass"
     }
-  ],
-  "controller_verification_20260510": {
-    "feature_id": "insights-005",
-    "qa_pass": false,
-    "status": "blocked",
-    "blocker": "Controller rerun of focused Playwright dependency graph E2E cannot launch /usr/bin/google-chrome: Playwright auth.setup.ts exits with SIGTRAP before assertions on this host. DB/API/check evidence remains green, but browser E2E is not controller-accepted.",
-    "updated_at": "2026-05-10T05:02:52Z",
-    "branch": "qa-opengithub-insights-005-mainqa-20260509"
-  }
+  ]
 }

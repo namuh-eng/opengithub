@@ -1,167 +1,45 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededDashboard = {
-  cookieName: string;
-  cookieValue: string;
-  trafficReadOnlyCookieValue: string;
-  treeRepositoryHref: string;
-  trafficReadOnlyRepositoryHref: string;
-};
-
-function seedDashboard(): SeededDashboard {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+async function waitForApiHealth(page: Page) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await page.request.get("http://localhost:3016/health", {
+        timeout: 1000,
+      });
+      if (response.ok()) {
+        return;
+      }
+    } catch {
+      await page.waitForTimeout(500);
+    }
   }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "0",
-        DASHBOARD_E2E_TREE_REFS: "1",
-        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededDashboard;
+  throw new Error("Rust API did not become healthy for repository Traffic E2E");
 }
 
-function sqlLiteral(value: string) {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function seedTraffic(repositoryHref: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-  const [, owner, repo] = repositoryHref.split("/");
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
-      WITH target_repo AS (
-        SELECT repositories.id
-        FROM repositories
-        LEFT JOIN users ON users.id = repositories.owner_user_id
-        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
-        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(owner))}
-          AND repositories.name = ${sqlLiteral(decodeURIComponent(repo))}
-        LIMIT 1
-      )
-      INSERT INTO repository_traffic_daily (
-        repository_id, traffic_date, clones_total, clones_unique, visitors_total, visitors_unique
-      )
-      SELECT id, current_date - interval '2 days', 8, 3, 32, 14 FROM target_repo
-      UNION ALL
-      SELECT id, current_date - interval '1 day', 12, 5, 48, 20 FROM target_repo
-      UNION ALL
-      SELECT id, current_date, 14, 6, 55, 23 FROM target_repo
-      ON CONFLICT (repository_id, traffic_date)
-      DO UPDATE SET
-        clones_total = EXCLUDED.clones_total,
-        clones_unique = EXCLUDED.clones_unique,
-        visitors_total = EXCLUDED.visitors_total,
-        visitors_unique = EXCLUDED.visitors_unique;
-
-      WITH target_repo AS (
-        SELECT repositories.id
-        FROM repositories
-        LEFT JOIN users ON users.id = repositories.owner_user_id
-        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
-        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(owner))}
-          AND repositories.name = ${sqlLiteral(decodeURIComponent(repo))}
-        LIMIT 1
-      )
-      INSERT INTO repository_referrers_daily (
-        repository_id, traffic_date, referrer, total_views, unique_visitors
-      )
-      SELECT id, current_date - interval '1 day', 'https://search.opengithub.local/results?q=traffic', 24, 10 FROM target_repo
-      UNION ALL
-      SELECT id, current_date - interval '1 day', 'https://example.com/docs', 12, 6 FROM target_repo
-      UNION ALL
-      SELECT id, current_date - interval '1 day', 'https://very-long-referrer.example.com/docs/product/analytics/traffic/reports/2026/05/that-keeps-wrapping-in-the-table', 5, 2 FROM target_repo;
-
-      WITH target_repo AS (
-        SELECT repositories.id
-        FROM repositories
-        LEFT JOIN users ON users.id = repositories.owner_user_id
-        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
-        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(owner))}
-          AND repositories.name = ${sqlLiteral(decodeURIComponent(repo))}
-        LIMIT 1
-      )
-      INSERT INTO repository_popular_content_daily (
-        repository_id, traffic_date, path, title, total_views, unique_visitors
-      )
-      SELECT id, current_date - interval '1 day', 'README.md', 'README', 30, 12 FROM target_repo
-      UNION ALL
-      SELECT id, current_date - interval '1 day', 'src/main.rs', 'Application entrypoint', 16, 7 FROM target_repo
-      UNION ALL
-      SELECT id, current_date - interval '1 day', 'docs/product/analytics/traffic/reports/2026/05/very-long-file-name.md', 'Very long traffic report', 5, 2 FROM target_repo;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
-}
-
-async function signIn(page: Page, seeded: SeededDashboard) {
-  await signInWithCookie(page, seeded.cookieName, seeded.cookieValue);
-}
-
-async function signInWithCookie(
-  page: Page,
-  cookieName: string,
-  cookieValue: string,
-) {
-  await page.context().addCookies([
-    {
-      domain: "localhost",
-      httpOnly: true,
-      name: cookieName,
-      path: "/",
-      sameSite: "Lax",
-      secure: false,
-      value: cookieValue,
-    },
-  ]);
-}
-
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
-
-test.skip(!databaseUrl, "repository Traffic smoke needs a database URL");
+test.skip(skipWithoutTestDb(), "repository Traffic smoke needs a database URL");
 test.setTimeout(90_000);
+
+test.beforeEach(async ({ page }) => {
+  await waitForApiHealth(page);
+});
 
 test("repository Traffic renders traffic analytics and concrete links", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedTraffic(seeded.treeRepositoryHref);
-  await signIn(page, seeded);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  await signIn(page, seeded, "owner");
 
-  await page.goto(`${seeded.treeRepositoryHref}/graphs/traffic`);
+  await page.goto(`${seeded.hrefs.treeRepository}/graphs/traffic`);
   await expect(
     page.getByRole("heading", { name: "Traffic analytics" }),
   ).toBeVisible();
@@ -221,43 +99,35 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
   ).toHaveAttribute("href", /very-long-file-name\.md$/);
 
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-003-final-desktop.jpg",
+    path: screenshotPath(testInfo, "insights-003-final-desktop"),
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
     page.getByRole("heading", { name: "Traffic analytics" }),
   ).toBeVisible();
-  const horizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  );
-  expect(horizontalOverflow).toBe(false);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-003-final-mobile.jpg",
+    path: screenshotPath(testInfo, "insights-003-final-mobile"),
   });
 });
 
 test("repository Traffic hides counts from read-only collaborators", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedDashboard();
-  if (
-    !seeded.trafficReadOnlyCookieValue ||
-    !seeded.trafficReadOnlyRepositoryHref
-  ) {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  if (!seeded.hrefs.trafficReadOnlyRepository) {
     throw new Error("dashboard seed did not return read-only traffic fixture");
   }
-  seedTraffic(seeded.trafficReadOnlyRepositoryHref);
-  await signInWithCookie(
-    page,
-    seeded.cookieName,
-    seeded.trafficReadOnlyCookieValue,
-  );
+  await signIn(page, seeded, "outsider");
 
-  await page.goto(`${seeded.trafficReadOnlyRepositoryHref}/graphs/traffic`);
+  await page.goto(`${seeded.hrefs.trafficReadOnlyRepository}/graphs/traffic`);
   const unavailable = page.getByRole("region", {
     name: "Traffic unavailable details",
   });
@@ -271,11 +141,12 @@ test("repository Traffic hides counts from read-only collaborators", async ({
   ).toBeVisible();
   await expect(
     unavailable.getByRole("link", { name: "Back to Code" }),
-  ).toHaveAttribute("href", seeded.trafficReadOnlyRepositoryHref);
+  ).toHaveAttribute("href", seeded.hrefs.trafficReadOnlyRepository);
   await expect(unavailable.getByText("42")).toHaveCount(0);
   await expect(unavailable.getByText("24")).toHaveCount(0);
   await expect(
     unavailable.getByText("https://search.opengithub.local/results?q=traffic"),
   ).toHaveCount(0);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
 });

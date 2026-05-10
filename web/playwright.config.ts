@@ -3,6 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 const port = 3015;
 const browserChannel = process.env.PLAYWRIGHT_BROWSER_CHANNEL;
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const chromiumLaunchOptions = chromiumExecutablePath
+  ? { launchOptions: { executablePath: chromiumExecutablePath } }
+  : {};
+const chromiumChannelOptions =
+  browserChannel && !chromiumExecutablePath ? { channel: browserChannel } : {};
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -12,12 +17,8 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${port}`,
     trace: "retain-on-failure",
-    ...(browserChannel && !chromiumExecutablePath
-      ? { channel: browserChannel }
-      : {}),
-    ...(chromiumExecutablePath
-      ? { launchOptions: { executablePath: chromiumExecutablePath } }
-      : {}),
+    ...chromiumChannelOptions,
+    ...chromiumLaunchOptions,
   },
   projects: [
     {
@@ -29,9 +30,8 @@ export default defineConfig({
       dependencies: ["setup"],
       use: {
         ...devices["Desktop Chrome"],
-        ...(browserChannel && !chromiumExecutablePath
-          ? { channel: browserChannel }
-          : {}),
+        ...chromiumChannelOptions,
+        ...chromiumLaunchOptions,
       },
     },
   ],
