@@ -8,7 +8,7 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 65,
+    "features_passed": 70,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
@@ -2248,15 +2248,6 @@
       "overall_status": "pass"
     },
     {
-      "feature_id": "insights-002",
-      "description": "Render repository contributor analytics with repository-wide commit chart, perio",
-      "category": "data",
-      "qa_pass": false,
-      "attempts": 0,
-      "exhausted": false,
-      "sub_phases": {}
-    },
-    {
       "feature_id": "insights-003",
       "description": "Render repository traffic analytics for push-access users, including clones, vis",
       "category": "data",
@@ -2978,6 +2969,33 @@
         }
       },
       "overall_status": "partial"
+    },
+    {
+      "feature_id": "insights-002",
+      "description": "Render repository contributor analytics with repository-wide commit chart, perio",
+      "category": "data",
+      "qa_pass": true,
+      "attempts": 2,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh controller verification passed: contributors component Vitest 6/6 and focused Chromium Playwright repository-contributors flow 2/2 with shared auth fixture against localhost:55433."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "Fresh DB-backed Rust repository_contributors_contract passed 1/1 against TEST_DATABASE_URL localhost:55433; contract covers analytics response, privacy, and cache behavior."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Authenticated route contract passed privacy checks; make check passed Clippy/Biome/typecheck, and no new banned Editorial token usage was introduced."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused Playwright flow passed expectNoDeadControls and expectNoHorizontalOverflow assertions and captured final screenshots via the shared E2E screenshot path helper."
+        }
+      },
+      "overall_status": "pass"
     }
   ]
 }

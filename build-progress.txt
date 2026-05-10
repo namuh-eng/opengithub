@@ -10765,3 +10765,13 @@ Controller merge: preserved additional QA evidence from personal-settings-001 br
 - Rebased the prior blocked teams fixes onto origin/main f65720db, preserved adjacent QA ledger entries, and updated org-admin-004 from blocked to pass after fresh infra-backed verification.
 - Fixed/stabilized: visibility=member now filters by actual team membership, My teams label displays correctly, org teams E2E uses shared auth fixture, and the broad focused Playwright scenarios use a 90s per-test cap to avoid cold-run false timeouts.
 - Evidence: make doctor healthy; make check passed; DB-backed organization_teams_contract 3/3 non-skipped passed against localhost:55433; OrganizationTeamsPage Vitest 8/8 passed; focused Chromium organization-teams Playwright 3/3 passed.
+
+[QA insights-002 recovery 2026-05-09T09:19:16Z]
+Status: QA BLOCKED. Preserved stale branch fixes for repository contributors analytics, but DB/API/browser verification remained blocked in the original lane by unavailable Docker/test Postgres on localhost:55433 and network-dependent Cargo resolution.
+Fixes preserved: UTC weekly bucket date rendering in contributors controls/table/page and repository-contributors Playwright setup moved onto shared auth fixture.
+Prior evidence preserved: focused contributors Vitest passed 6/6; biome on changed files passed; TypeScript passed; offline make check passed; Editorial banned-token scan clean. Required fresh controller verification still needed before qa_pass=true/merge acceptance.
+
+[QA insights-002 recovery 2026-05-10T05:11:19Z]
+Status: QA PASS. Fresh controller recovery accepted and ready for main merge.
+Evidence: make doctor healthy on podman + localhost:55433; make check passed Cargo check, web typecheck, Clippy, Biome; repository-contributors-page Vitest passed 6/6; DB-backed repository_contributors_contract passed 1/1 without self-skip; focused Chromium repository-contributors Playwright passed setup + flow 2/2 using /usr/bin/google-chrome.
+Fixes accepted: UTC weekly bucket date rendering in contributors controls/table/page; repository-contributors E2E moved onto shared auth fixture; shared fixture contributor-file-change seeding now falls back to docker exec psql for the standard test DB when host psql is absent.

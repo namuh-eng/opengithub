@@ -4597,5 +4597,68 @@
       }
     ],
     "fix_description": "Fixed Pulse UTC boundary date rendering and verified insights-001 with real DB contract, focused component tests, and focused browser E2E."
+  },
+  {
+    "feature_id": "insights-002",
+    "attempt": 2,
+    "status": "passed",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh controller verification passed contributors component Vitest and focused Chromium E2E with real localhost:55433 test DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/graphs/contributors"
+        ],
+        "notes": "DB-backed Rust repository_contributors_contract passed against TEST_DATABASE_URL localhost:55433, covering analytics payload, private repo gating, and cache headers."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authenticated route/privacy contract",
+          "make check Clippy/Biome/typecheck",
+          "Editorial banned-token hygiene via changed UI review"
+        ],
+        "notes": "No auth bypass or data exposure regression found in the focused DB contract/E2E path."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Chromium E2E passed dead-control and horizontal-overflow assertions on the contributors analytics flow."
+      }
+    },
+    "tested_steps": [
+      "Recovery branch origin/qa-opengithub-insights-002-mainqa-20260509 e28ec5f9 was not ancestor of origin/main 675df7b4; salvaged changes were staged on recovery/insights-002-mainqa.",
+      "make doctor passed: podman runtime reachable, opengithub-postgres-test up, Postgres reachable, .env.test/.env present, per-worktree Cargo target writable.",
+      "make check passed: Cargo check, web typecheck, Clippy, and Biome all green.",
+      "cd web && npm test -- --run repository-contributors-page.test.tsx passed 1 file / 6 tests.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_contributors_contract -- --nocapture passed 1/1 against localhost:55433 without self-skip.",
+      "Focused Playwright initially exposed real harness issues: missing Playwright browser binary and no host psql. Verification used /usr/bin/google-chrome via a temporary local config and fixed the shared auth fixture to fall back to docker exec psql for the committed localhost:55433 test DB.",
+      "cd web && npx playwright test repository-contributors.spec.ts --project=chromium --reporter=list --config=playwright.local-chrome.config.ts passed setup + Chromium contributors flow, 2/2 in 12.0s."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Contributor weekly bucket dates rendered through the local timezone, shifting UTC midnight API buckets to the previous day in Pacific time.",
+        "expected": "Weekly bucket labels display API bucket dates consistently, e.g. May 1, 2026 through May 7, 2026.",
+        "actual": "Focused Vitest could not find the expected May 1 date range before the UTC formatting fix.",
+        "reproduction": "Run cd web && npm test -- --run repository-contributors-page.test.tsx in a non-UTC timezone before the fix."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "The repository-contributors Playwright spec bypassed the shared signed-in E2E fixture and assumed host psql existed.",
+        "expected": "Signed-in specs use _fixtures/auth, and DB setup works on the standard podman-backed localhost:55433 test DB even when psql is only inside the container.",
+        "actual": "The spec duplicated seeding/sign-in and failed with spawnSync psql ENOENT during recovery verification.",
+        "reproduction": "Run the focused spec on the standard controller host without host psql before the fixture fallback fix."
+      }
+    ],
+    "fix_description": "Fixed contributors UTC date formatting, moved contributors E2E onto the shared auth fixture, and made that fixture seed contributor file changes through host psql or docker exec fallback for the standard test DB.",
+    "blockers": [],
+    "timestamp": "2026-05-10T05:11:19Z",
+    "controller_outcome": "QA_PASS: fresh doctor/check/component/DB-contract/focused Chromium E2E evidence passed on localhost:55433; ready to merge to main."
   }
 ]

@@ -164,13 +164,89 @@ const toSeedResult = (raw: RawSeedOutput): SeedResult => ({
 
 export type Fixtures = {
   seed: (spec?: SeedSpec) => Promise<SeedResult>;
+  seedContributorFileChanges: (repositoryHref: string) => Promise<void>;
   signIn: (page: Page, seeded: SeedResult, as?: Persona) => Promise<void>;
+};
+
+const sqlLiteral = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+
+const runPsql = (url: string, args: string[]): Buffer => {
+  const env = {
+    ...process.env,
+    DOCKER_HOST:
+      process.env.DOCKER_HOST ??
+      `unix:///run/user/${process.getuid?.() ?? 1000}/podman/podman.sock`,
+    PGSSLMODE: process.env.PGSSLMODE ?? "disable",
+  };
+  try {
+    return execFileSync("psql", [url, ...args], { env });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (!url.includes("localhost:55433/opengithub_test")) {
+    throw new Error(
+      "psql is not installed and the container fallback only supports the test DB",
+    );
+  }
+
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      "opengithub",
+      "-d",
+      "opengithub_test",
+      ...args,
+    ],
+    { env },
+  );
+};
+
+const seedContributorFileChangesForRepository = (
+  repositoryHref: string,
+): void => {
+  const url = requireTestDatabase();
+  const [, owner, repo] = repositoryHref.split("/");
+  runPsql(url, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
+      INSERT INTO commit_file_changes (commit_id, path, status, additions, deletions)
+      SELECT commits.id, 'src/contributors.rs', 'modified', 18, 4
+      FROM commits
+      JOIN repositories ON repositories.id = commits.repository_id
+      LEFT JOIN users ON users.id = repositories.owner_user_id
+      LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+      WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(owner))}
+        AND repositories.name = ${sqlLiteral(decodeURIComponent(repo))}
+        AND commits.committed_at >= now() - interval '1 week'
+      ON CONFLICT (commit_id, path)
+      DO UPDATE SET additions = EXCLUDED.additions, deletions = EXCLUDED.deletions;
+      `,
+  ]);
 };
 
 export const test = base.extend<Fixtures>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructuring on the first arg
   seed: async ({}, use: (fn: Fixtures["seed"]) => Promise<void>) => {
     await use(async (spec = {}) => toSeedResult(runSeeder(spec)));
+  },
+  seedContributorFileChanges: async (
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructuring on the first arg
+    {},
+    use: (fn: Fixtures["seedContributorFileChanges"]) => Promise<void>,
+  ) => {
+    await use(async (repositoryHref) =>
+      seedContributorFileChangesForRepository(repositoryHref),
+    );
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructuring on the first arg
   signIn: async ({}, use: (fn: Fixtures["signIn"]) => Promise<void>) => {
