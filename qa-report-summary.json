@@ -3010,5 +3010,13 @@
       },
       "overall_status": "partial"
     }
-  ]
+  ],
+  "controller_verification_20260510": {
+    "feature_id": "insights-005",
+    "qa_pass": false,
+    "status": "blocked",
+    "blocker": "Controller rerun of focused Playwright dependency graph E2E cannot launch /usr/bin/google-chrome: Playwright auth.setup.ts exits with SIGTRAP before assertions on this host. DB/API/check evidence remains green, but browser E2E is not controller-accepted.",
+    "updated_at": "2026-05-10T05:02:52Z",
+    "branch": "qa-opengithub-insights-005-mainqa-20260509"
+  }
 }

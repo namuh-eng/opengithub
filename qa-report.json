@@ -4651,5 +4651,43 @@
     ],
     "fix_description": "Moved dependency graph E2E seeding into dashboard_e2e_seed/auth fixture scene, converted the spec to shared signed-in fixtures, added dependency manifests/dependents fixture data, made Playwright accept an explicit Chromium executable path, and isolated rate-limit buckets in the API contract helper.",
     "timestamp": "2026-05-09T21:41:47-07:00"
+  },
+  {
+    "feature_id": "insights-005",
+    "attempt": "controller-verification-20260510",
+    "status": "blocked",
+    "qa_pass": false,
+    "completed_at": "2026-05-10T05:02:52Z",
+    "blocker": "Controller rerun of focused Playwright dependency graph E2E cannot launch /usr/bin/google-chrome: Playwright auth.setup.ts exits with SIGTRAP before assertions on this host. DB/API/check evidence remains green, but browser E2E is not controller-accepted.",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused browser E2E did not run because Chrome SIGTRAPs during auth setup before page assertions."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "Controller reran DB-backed repository_dependency_graph_contract against localhost:55433: 3/3 passed."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Covered by DB-backed contract authorization/privacy checks; no fresh browser evidence."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "notes": "No fresh browser/a11y acceptance due Chrome SIGTRAP."
+      }
+    },
+    "evidence": {
+      "base": "origin/main 675df7b4a9739e7b0585c3f13dd76c752baafdee",
+      "branch": "qa-opengithub-insights-005-mainqa-20260509",
+      "tests": [
+        "make doctor passed (Podman/Postgres localhost:55433 healthy)",
+        "make check passed",
+        "TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_dependency_graph_contract -- --test-threads=1 --nocapture passed 3/3",
+        "cd web && TMPDIR=$PWD/.scratch/tmp TEST_DATABASE_URL=... PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e -- tests/e2e/repository-dependency-graph.spec.ts --project=chromium --reporter=line failed: /usr/bin/google-chrome SIGTRAP during auth.setup.ts"
+      ]
+    },
+    "accepted": false,
+    "merged_to_main": false
   }
 ]
