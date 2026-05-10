@@ -1,6 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = 3015;
+const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const chromiumLaunchOptions = chromiumExecutablePath
+  ? { launchOptions: { executablePath: chromiumExecutablePath } }
+  : {};
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -10,6 +14,7 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${port}`,
     trace: "retain-on-failure",
+    ...chromiumLaunchOptions,
   },
   projects: [
     {
@@ -21,6 +26,7 @@ export default defineConfig({
       dependencies: ["setup"],
       use: {
         ...devices["Desktop Chrome"],
+        ...chromiumLaunchOptions,
       },
     },
   ],

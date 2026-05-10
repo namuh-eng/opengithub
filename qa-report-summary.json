@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 70,
+    "features_passed": 71,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 65,
+      "pass": 66,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 61,
+      "pass": 62,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 62,
+      "pass": 63,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 27,
+      "pass": 28,
       "fail": 0,
       "skip": 39
     }
@@ -2251,38 +2251,38 @@
       "feature_id": "insights-003",
       "description": "Render repository traffic analytics for push-access users, including clones, vis",
       "category": "data",
-      "qa_pass": false,
-      "attempts": 1,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
       "sub_phases": {
         "functional": {
-          "status": "blocked",
-          "notes": "Focused RepositoryTrafficPage Vitest passed 5/5 and covered shell rendering, summary metrics, chart focus/hover values, permission denial without leaked counts, empty states, safe links, long labels, and unsafe-markup guardrails. Controller rerun after infra fix verified the live app answered on http://localhost:3015/login with Postgres reachable on localhost:55433, but signed browser/E2E verification is still blocked because Playwright Chromium headless shell exits with SIGTRAP in tests/e2e/auth.setup.ts before repository traffic tests run. Retrying with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome did not override the bundled crashing headless shell."
+          "status": "pass",
+          "notes": "System Chrome Playwright path is now honored through launchOptions and the traffic E2E waits for the Rust API before loading repository pages. Focused signed browser traffic E2E passed for owner analytics, chart focus/hover values, safe links, long labels, desktop/mobile screenshots, no dead controls, and no horizontal overflow."
         },
         "api_contract": {
-          "status": "blocked",
+          "status": "pass",
           "endpoints_tested": [
             "GET /api/repos/{owner}/{repo}/graphs/traffic"
           ],
-          "notes": "Route/domain contract was inspected and the focused Rust traffic contract compiled. The old DB self-skip blocker is stale after the Podman/Postgres infra fix, but this card still lacks a completed fresh signed DB/API/E2E traffic run because Playwright crashes in auth setup with Chromium SIGTRAP before the traffic spec executes. API behavior is therefore not counted as fully verified in this run."
+          "notes": "Focused Rust repository_traffic_contract passed with the localhost:55433 test DB. Live API probes returned 200 owner traffic JSON with seeded 14-day clone/visitor/referrer/content data, 403 traffic_access_required for read-only users, and 401 not_authenticated for anonymous requests."
         },
         "security": {
-          "status": "blocked",
+          "status": "pass",
           "checks": [
+            "auth_bypass",
             "permission_redaction",
             "safe_external_links",
-            "markup_guardrails",
-            "editorial_token_scan"
+            "markup_guardrails"
           ],
-          "notes": "Component tests passed for permission-denial redaction, safe referrer rel attributes, no inert anchors, no unsafe HTML rendering, and no banned GitHub/Primer visual tokens in the traffic implementation. DB-backed auth/privacy probes remain blocked by the Playwright Chromium SIGTRAP in signed auth setup, not by Docker/Postgres/GitHub auth."
+          "notes": "Read-only traffic response redacts counts/referrers behind traffic_access_required; anonymous access stays 401. Browser E2E verifies external referrers use noopener noreferrer and no inert/dead controls are present."
         },
         "accessibility": {
-          "status": "blocked",
+          "status": "pass",
           "violations": [],
-          "notes": "Focused component coverage asserts accessible chart/table names and named buttons. Browser-level keyboard/a11y sweep could not run because the local Playwright Chromium runtime exits with SIGTRAP during auth setup."
+          "notes": "Focused browser E2E verified named chart images, accessible chart points, named tables, keyboard focus tooltip behavior, no dead visible buttons, and no horizontal overflow at desktop and 390px mobile widths."
         }
       },
-      "overall_status": "blocked"
+      "overall_status": "pass"
     },
     {
       "feature_id": "insights-004",

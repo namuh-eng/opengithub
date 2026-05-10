@@ -4660,5 +4660,53 @@
     "blockers": [],
     "timestamp": "2026-05-10T05:11:19Z",
     "controller_outcome": "QA_PASS: fresh doctor/check/component/DB-contract/focused Chromium E2E evidence passed on localhost:55433; ready to merge to main."
+  },
+  {
+    "feature_id": "insights-003",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "System Chrome Playwright path is now honored through launchOptions and the traffic E2E waits for the Rust API before loading repository pages. Focused signed browser traffic E2E passed for owner analytics, chart focus/hover values, safe links, long labels, desktop/mobile screenshots, no dead controls, and no horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/graphs/traffic"
+        ],
+        "notes": "Focused Rust repository_traffic_contract passed with the localhost:55433 test DB. Live API probes returned 200 owner traffic JSON with seeded 14-day clone/visitor/referrer/content data, 403 traffic_access_required for read-only users, and 401 not_authenticated for anonymous requests."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_redaction",
+          "safe_external_links",
+          "markup_guardrails"
+        ],
+        "notes": "Read-only traffic response redacts counts/referrers behind traffic_access_required; anonymous access stays 401. Browser E2E verifies external referrers use noopener noreferrer and no inert/dead controls are present."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser E2E verified named chart images, accessible chart points, named tables, keyboard focus tooltip behavior, no dead visible buttons, and no horizontal overflow at desktop and 390px mobile widths."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: Podman test Postgres on localhost:55433 and worktree env files healthy.",
+      "Ran npx playwright test tests/e2e/auth.setup.ts --project=setup with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome: passed, proving browser launch fixed.",
+      "Ran focused repository traffic Playwright spec with system Chrome: 3 passed including setup, owner analytics, and read-only redaction.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test repository_traffic_contract: 1 passed.",
+      "Ran live curl probes against /api/repos/{owner}/{repo}/graphs/traffic for owner/read-only/anonymous: 200/403/401 with expected JSON contracts.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran make test: broad workspace test suite reached package_detail_contract and failed in unrelated package_settings_admin_mutations_soft_delete_and_audit_without_leaking_storage (400 vs expected 200); not counted as insights-003 evidence."
+    ],
+    "bugs_found": [
+      "Traffic E2E bypassed the shared auth fixture and seeded traffic through inline psql/container SQL, violating web/tests/e2e/AGENTS.md and making the spec brittle.",
+      "The Playwright webServer considered Next.js ready before the Rust API was healthy, so repository pages could render RepositoryUnavailablePage even with freshly seeded DB data.",
+      "The dashboard E2E seeder's treeRefs scene did not seed repository traffic rows, forcing the spec to mutate DB state itself."
+    ],
+    "fix_description": "Moved traffic test data into dashboard_e2e_seed.rs, rewrote repository-traffic.spec.ts to use the shared auth fixture/personas, added API health waiting before signed repository navigation, and wired Playwright launchOptions to use system Chrome when PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set."
   }
 ]
