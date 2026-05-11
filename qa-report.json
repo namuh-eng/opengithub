@@ -4970,5 +4970,83 @@
       "The focused signed-in E2E duplicated seeding/cookie helpers instead of using the shared auth fixture, which made it easier to self-skip or drift from real DB-backed auth."
     ],
     "fix_description": "Added an Editorial tokenized resizable file-tree/diff pane control and per-file More actions menu, standardized the signed-in E2E on the shared DB-backed auth fixture, and expanded component/E2E coverage for resize/menu behavior."
+  },
+  {
+    "feature_id": "insights-004",
+    "attempt": 4,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-11T15:07:19Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Current origin/main Network/Forks renders the Insights shell, repository network graph, filters, saved defaults, dense fork rows, concrete owner/repository/tree/network links, and mobile no-horizontal-overflow. Focused signed-in Playwright passed with system Chrome after increasing the spec budget above cold-lane setup/screenshot time and using the shared screenshot path convention."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/network",
+          "GET /api/repos/{owner}/{repo}/forks",
+          "PUT /api/repos/{owner}/{repo}/forks/defaults"
+        ],
+        "notes": "DB-backed repository_network_contract passed 1/1 against localhost:55433 without self-skips and covers readable projection data, filters, saved defaults, privacy, validation, and rate-limit identity isolation."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required",
+          "private_fork_omission",
+          "saved_default_validation",
+          "rate_limit_isolation",
+          "no_dead_controls"
+        ],
+        "notes": "Existing focused Rust contract covers unauthorized/private/default-validation paths; focused Playwright verified no dead controls and concrete hrefs for fork rows/actions."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser E2E asserts accessible headings/nav/menu/buttons/links, screenshot evidence, and mobile no-horizontal-overflow at 390px."
+      }
+    },
+    "tested_steps": [
+      "Reset isolated worktree to current origin/main 972bb1ff and kept helper dirt out of the commit.",
+      "Ran make doctor: container runtime reachable (podman), opengithub-postgres-test up, Postgres reachable, .env.test present, Cargo target dir writable; .env missing only for live OAuth/AWS dev, not tests.",
+      "Verified DB schema with podman exec opengithub-postgres-test psql: to_regclass('public.repositories') returned repositories.",
+      "Inspected prd.json, qa-hints.json, prior qa-report insights-004 evidence, RepositoryNetworkPage, RepositoryForksPage, RepositoryForkFilters, server routes/domain, Rust domain/contract coverage, focused Playwright coverage, and stale insights-004 branches.",
+      "Found stale insights-004 recovery branches either already merged behind origin/main or carrying broad obsolete harness/artifact diffs; no product code gap remained on current origin/main.",
+      "Fixed repository-network.spec.ts to use a 180s focused budget and shared screenshotPath(testInfo, ...) convention for insights-004 screenshots.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test DATABASE_URL=same DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_network_contract -- --test-threads=1 --nocapture: 1/1 passed.",
+      "Ran cd web && npm test -- tests/repository-network-page.test.tsx tests/repository-forks-page.test.tsx tests/api-docs.test.tsx: 9/9 passed.",
+      "Ran cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-network.spec.ts --project=chromium --reporter=list with TEST_DATABASE_URL/DATABASE_URL/DB_SSL: setup + chromium 2/2 passed in 14.7s.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "medium",
+        "phase": "functional",
+        "description": "The focused repository Network/Forks E2E had a too-tight 90s test budget for cold controller lanes and used literal relative screenshot paths instead of the shared Playwright screenshotPath convention.",
+        "expected": "Focused signed-in E2E has enough per-test budget to complete cold-lane setup and writes review screenshots through screenshotPath(testInfo, label).",
+        "actual": "The current spec could exhaust its budget on cold setup/screenshots and bypassed the documented screenshot helper used by the E2E fixture contract.",
+        "reproduction": "Run repository-network.spec.ts cold with system Chrome/default lane setup and inspect screenshot destinations."
+      }
+    ],
+    "fix_description": "Kept product behavior unchanged; fixed the focused Playwright verification harness timeout and screenshot path convention, then re-verified doctor/schema/check/DB contract/component tests/system-Chrome E2E on current origin/main.",
+    "evidence": {
+      "base": "origin/main 972bb1ff",
+      "tests_passed": [
+        "make doctor",
+        "to_regclass('public.repositories') = repositories",
+        "make check",
+        "repository_network_contract 1/1",
+        "repository-network/forks/api-docs Vitest 9/9",
+        "repository-network Playwright setup + chromium 2/2"
+      ],
+      "blocked": [],
+      "timestamp": "2026-05-11T15:07:19Z"
+    },
+    "known_gaps": [],
+    "blockers": [],
+    "timestamp": "2026-05-11T15:07:19Z",
+    "controller_outcome": "QA_PASS: current origin/main Network/Forks behavior passed fresh doctor/schema/check/DB-contract/component/system-Chrome Playwright evidence on localhost:55433."
   }
 ]

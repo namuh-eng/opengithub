@@ -1531,7 +1531,9 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true,
+    "qa_status": "QA_PASS",
+    "qa_notes": "2026-05-11T15:07:19Z remainder v3 verification on current origin/main 972bb1ff: make doctor passed (Podman/Postgres/.env.test/Cargo target healthy; .env only missing for live OAuth/AWS), to_regclass(public.repositories) returned repositories via podman psql, make check passed, DB-backed repository_network_contract 1/1 passed against localhost:55433, repository network/forks/api-docs Vitest 9/9 passed, and focused signed-in Playwright repository-network.spec.ts passed setup + chromium 2/2 with system Chrome from web cwd. Fixed the focused E2E timeout/screenshot-path convention; no product behavior changes were needed."
   },
   {
     "id": "insights-005",

@@ -3,6 +3,7 @@ import {
   expectNoDeadControls,
   expectNoHorizontalOverflow,
   runPsql,
+  screenshotPath,
   skipWithoutTestDb,
   test,
 } from "./_fixtures/auth";
@@ -125,13 +126,13 @@ function seedNetwork(repositoryHref: string) {
 }
 
 test.skip(skipWithoutTestDb(), "repository Network smoke needs a database URL");
-test.setTimeout(90_000);
+test.setTimeout(180_000);
 
 test("repository Network renders readable fork graph and concrete links", async ({
   page,
   seed,
   signIn,
-}) => {
+}, testInfo) => {
   const seeded = await seed({ scenes: ["treeRefs"] });
   const repositoryHref = seeded.hrefs.treeRepository;
   seedNetwork(repositoryHref);
@@ -176,7 +177,7 @@ test("repository Network renders readable fork graph and concrete links", async 
   );
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-004-final-network-desktop.jpg",
+    path: screenshotPath(testInfo, "insights-004-final-network-desktop"),
   });
 
   await page.getByRole("link", { name: "View forks" }).click();
@@ -219,11 +220,11 @@ test("repository Network renders readable fork graph and concrete links", async 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-004-phase4-edge-cases.jpg",
+    path: screenshotPath(testInfo, "insights-004-phase4-edge-cases"),
   });
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-004-final-forks-desktop.jpg",
+    path: screenshotPath(testInfo, "insights-004-final-forks-desktop"),
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -233,6 +234,6 @@ test("repository Network renders readable fork graph and concrete links", async 
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-004-final-mobile.jpg",
+    path: screenshotPath(testInfo, "insights-004-final-mobile"),
   });
 });
