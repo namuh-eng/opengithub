@@ -1,65 +1,33 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededDashboard = {
-  cookieName: string;
-  cookieValue: string;
-  treeRepositoryHref: string;
-};
-
-function seedDashboard(): SeededDashboard {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "0",
-        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
-        DASHBOARD_E2E_TREE_REFS: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededDashboard;
-}
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  requireTestDatabase,
+  runPsql,
+  type SeedResult,
+  type SeedSpec,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
 function seedSecurityOverview(repositoryHref: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
+  const databaseUrl = requireTestDatabase();
   const [, owner, repo] = repositoryHref.split("/");
   const decodedOwner = decodeURIComponent(owner);
   const decodedRepo = decodeURIComponent(repo);
   const suffix = decodedRepo.replace(/^tree-nav-/, "");
   const policyMarkdown =
     "# Security policy\n\nPlease email [security](mailto:security@example.com).\n\n<script>alert('x')</script>";
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(databaseUrl, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
       WITH target_repo AS (
         SELECT repositories.id, repositories.default_branch
         FROM repositories
@@ -137,26 +105,19 @@ function seedSecurityOverview(repositoryHref: string) {
                     status = 'published',
                     updated_at = now();
       `,
-    ],
-    { stdio: "ignore" },
-  );
+  ]);
 }
 
 function deleteSecurityPolicy(repositoryHref: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
+  const databaseUrl = requireTestDatabase();
   const [, owner, repo] = repositoryHref.split("/");
   const decodedOwner = decodeURIComponent(owner);
   const decodedRepo = decodeURIComponent(repo);
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(databaseUrl, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
       WITH target_repo AS (
         SELECT repositories.id
         FROM repositories
@@ -188,43 +149,32 @@ function deleteSecurityPolicy(repositoryHref: string) {
           'docs/security.md'
         );
       `,
-    ],
-    { stdio: "ignore" },
-  );
-}
-
-async function signIn(page: Page, seeded: SeededDashboard) {
-  await page.context().addCookies([
-    {
-      domain: "localhost",
-      httpOnly: true,
-      name: seeded.cookieName,
-      path: "/",
-      sameSite: "Lax",
-      secure: false,
-      value: seeded.cookieValue,
-    },
   ]);
 }
 
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
+async function seedSecurityRepository(
+  seed: (spec?: SeedSpec) => Promise<SeedResult>,
+) {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  seedSecurityOverview(seeded.hrefs.treeRepository);
+  return seeded;
 }
 
-test.skip(!databaseUrl, "repository Security smoke needs a database URL");
-test.setTimeout(90_000);
+test.skip(
+  skipWithoutTestDb(),
+  "repository Security smoke needs a database URL",
+);
+test.setTimeout(150_000);
 
 test("repository Security overview renders policy, feature cards, and advisory links", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityOverview(seeded.treeRepositoryHref);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seedSecurityRepository(seed);
   await signIn(page, seeded);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security`);
   await expect(
     page.getByRole("heading", { name: "Security overview" }),
   ).toBeVisible();
@@ -249,11 +199,14 @@ test("repository Security overview renders policy, feature cards, and advisory l
   await expect(page.locator("script", { hasText: "alert" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Source" })).toHaveAttribute(
     "href",
-    `${seeded.treeRepositoryHref}/blob/main/SECURITY.md`,
+    `${seeded.hrefs.treeRepository}/blob/main/SECURITY.md`,
   );
   await expect(
     page.getByRole("link", { name: "Dependabot" }).last(),
-  ).toHaveAttribute("href", `${seeded.treeRepositoryHref}/security/dependabot`);
+  ).toHaveAttribute(
+    "href",
+    `${seeded.hrefs.treeRepository}/security/dependabot`,
+  );
   await expect(
     page.getByText("Dependency alerts are monitored."),
   ).toBeVisible();
@@ -263,20 +216,22 @@ test("repository Security overview renders policy, feature cards, and advisory l
     page.getByRole("link", { name: "Visible advisory" }),
   ).toHaveAttribute("href", /\/security\/advisories\/GHSA-visible-/);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-001-phase2-overview.jpg",
+    path: screenshotPath(testInfo, "code-security-001-phase2-overview"),
   });
 });
 
 test("repository Security policy renders markdown anchors and file actions", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityOverview(seeded.treeRepositoryHref);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seedSecurityRepository(seed);
   await signIn(page, seeded);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security/policy`);
   await expect(
     page.getByRole("heading", { exact: true, name: "Security policy" }).first(),
   ).toBeVisible();
@@ -302,39 +257,41 @@ test("repository Security policy renders markdown anchors and file actions", asy
     page.getByRole("link", { exact: true, name: "Source" }),
   ).toHaveAttribute(
     "href",
-    `${seeded.treeRepositoryHref}/blob/main/SECURITY.md`,
+    `${seeded.hrefs.treeRepository}/blob/main/SECURITY.md`,
   );
   await expect(
     page.getByRole("link", { exact: true, name: "Raw" }),
   ).toHaveAttribute(
     "href",
-    `${seeded.treeRepositoryHref}/raw/main/SECURITY.md`,
+    `${seeded.hrefs.treeRepository}/raw/main/SECURITY.md`,
   );
   await expect(
     page.getByRole("link", { exact: true, name: "History" }),
   ).toHaveAttribute(
     "href",
-    `${seeded.treeRepositoryHref}/commits/main/SECURITY.md`,
+    `${seeded.hrefs.treeRepository}/commits/main/SECURITY.md`,
   );
   await expect(
     page.getByRole("link", { name: "Initial commit" }),
   ).toHaveAttribute("href", /\/commit\/[a-f0-9]+/);
   await expect(page.locator("script", { hasText: "alert" })).toHaveCount(0);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-001-phase3-policy.jpg",
+    path: screenshotPath(testInfo, "code-security-001-phase3-policy"),
   });
 });
 
 test("repository Security policy editor commits changes to file and raw views", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityOverview(seeded.treeRepositoryHref);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seedSecurityRepository(seed);
   await signIn(page, seeded);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/policy/edit`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security/policy/edit`);
   await expect(
     page.getByRole("heading", { name: "Edit security policy" }),
   ).toBeVisible();
@@ -352,13 +309,13 @@ test("repository Security policy editor commits changes to file and raw views", 
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "View file" })).toHaveAttribute(
     "href",
-    `${seeded.treeRepositoryHref}/blob/main/SECURITY.md`,
+    `${seeded.hrefs.treeRepository}/blob/main/SECURITY.md`,
   );
 
   await page.getByRole("link", { name: "Open raw" }).click();
   await expect(page.getByText("triage@example.com")).toBeVisible();
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security/policy`);
   await expect(
     page.getByRole("link", { exact: true, name: "triage" }),
   ).toHaveAttribute("href", "mailto:triage@example.com");
@@ -366,32 +323,34 @@ test("repository Security policy editor commits changes to file and raw views", 
     page.getByRole("link", { name: "Update security policy" }),
   ).toHaveAttribute("href", /\/commit\/[a-f0-9]+/);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-001-phase4-policy-edit.jpg",
+    path: screenshotPath(testInfo, "code-security-001-phase4-policy-edit"),
   });
 });
 
 test("repository Security final smoke covers missing policy and mobile layout", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityOverview(seeded.treeRepositoryHref);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seedSecurityRepository(seed);
   await signIn(page, seeded);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security`);
   await expect(
     page.getByRole("heading", { name: "Security overview" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { exact: true, name: "Security policy" }),
-  ).toHaveAttribute("href", `${seeded.treeRepositoryHref}/security/policy`);
+  ).toHaveAttribute("href", `${seeded.hrefs.treeRepository}/security/policy`);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-001-final-overview.jpg",
+    path: screenshotPath(testInfo, "code-security-001-final-overview"),
   });
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/policy/edit`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security/policy/edit`);
   await page
     .getByLabel("Markdown")
     .fill(
@@ -404,7 +363,7 @@ test("repository Security final smoke covers missing policy and mobile layout", 
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security/policy`);
   await expect(
     page.getByRole("link", { exact: true, name: "mobile triage" }),
   ).toHaveAttribute("href", "mailto:mobile@example.com");
@@ -417,20 +376,22 @@ test("repository Security final smoke covers missing policy and mobile layout", 
   ).toHaveAttribute("aria-current", "page");
   await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-001-final-mobile.jpg",
+    path: screenshotPath(testInfo, "code-security-001-final-mobile"),
   });
 
-  deleteSecurityPolicy(seeded.treeRepositoryHref);
+  deleteSecurityPolicy(seeded.hrefs.treeRepository);
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await page.goto(`${seeded.hrefs.treeRepository}/security/policy`);
   await expect(
     page.getByRole("heading", { name: "No published policy" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Start setup" })).toHaveAttribute(
     "href",
-    `${seeded.treeRepositoryHref}/security/policy/edit`,
+    `${seeded.hrefs.treeRepository}/security/policy/edit`,
   );
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
 });

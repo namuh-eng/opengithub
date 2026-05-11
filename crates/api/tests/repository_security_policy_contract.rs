@@ -503,7 +503,7 @@ async fn repository_security_overview_returns_policy_advisories_privacy_and_sani
         "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND target_id = $2 AND event_type = 'repository.security_policy.upsert'",
     )
     .bind(owner.id)
-    .bind(repository.id.to_string())
+    .bind(repository.id)
     .fetch_one(&pool)
     .await
     .expect("audit count should read");

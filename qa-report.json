@@ -5048,5 +5048,88 @@
     "blockers": [],
     "timestamp": "2026-05-11T15:07:19Z",
     "controller_outcome": "QA_PASS: current origin/main Network/Forks behavior passed fresh doctor/schema/check/DB-contract/component/system-Chrome Playwright evidence on localhost:55433."
+  },
+  {
+    "feature_id": "code-security-001",
+    "attempt": 1,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-11T15:17:10Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Current origin/main renders the repository Security and quality shell, overview policy preview, feature cards, published advisory rows, missing-policy states, policy reader actions/anchors, and maintainer policy editor flow. Focused signed-in Playwright passed with real DB seeding and system Chrome; policy edits updated the real Git tree so blob/raw/policy views reflected SECURITY.md changes."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/security",
+          "GET /api/repos/{owner}/{repo}/security/policy",
+          "POST /{owner}/{repo}/security/policy/actions"
+        ],
+        "notes": "DB-backed repository_security_policy_contract passed 1/1 against localhost:55433 without self-skips, covering policy/advisory overview response shape, private alert count privacy, markdown sanitization, policy file upsert, repository refs, activity, and audit event writes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private_alert_count_hiding",
+          "markdown_xss_sanitization",
+          "maintainer_policy_write_audit",
+          "no_dead_controls"
+        ],
+        "notes": "Focused Rust contract verifies reader privacy and sanitized SECURITY.md rendering; focused Playwright verifies no script execution/reflection, no dead controls, and working concrete hrefs/actions."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser E2E asserts accessible headings/nav/buttons/links, heading anchors, screenshot evidence, and mobile no-horizontal-overflow at 390px."
+      }
+    },
+    "tested_steps": [
+      "Reset isolated worktree to current origin/main 7f312f1e and preserved useful prior focused-test fixes while excluding helper dirt from the commit.",
+      "Ran make doctor: container runtime reachable (podman), opengithub-postgres-test up, Postgres reachable, .env.test present, Cargo target dir writable; .env missing only for live OAuth/AWS dev, not tests.",
+      "Verified DB schema with podman exec opengithub-postgres-test psql: to_regclass('public.repositories') returned repositories.",
+      "Inspected prd.json, qa-report/summary state, RepositorySecurityOverviewPage, RepositorySecurityPolicyPage, RepositorySecurityPolicyEditorPage, RepositorySecurityShell, API/domain security policy implementation, focused Rust contract, focused Playwright coverage, and stale code-security branches.",
+      "Kept existing product behavior unchanged; accepted the harness fixes that move repository-security.spec.ts onto the shared signed-in auth fixture/psql helpers/screenshotPath convention and increase its focused budget to 150s.",
+      "Fixed repository_security_policy_contract audit lookup to bind repository.id as a UUID instead of text so the DB-backed audit assertion exercises the real schema.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_security_policy_contract -- --nocapture: 1/1 passed without self-skip.",
+      "Ran cd web && TEST_DATABASE_URL/DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-security.spec.ts --project=chromium: setup + chromium 5/5 passed in 23.3s.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "medium",
+        "phase": "functional",
+        "description": "The focused repository Security E2E duplicated dashboard seed/sign-in/psql plumbing and literal screenshot paths instead of using the shared auth fixture contract, making the pass easier to self-skip or drift from real DB-backed auth.",
+        "expected": "Focused signed-in E2E should use the shared auth fixture, require the test database, use the committed psql fallback, and write screenshots through screenshotPath(testInfo, label).",
+        "actual": "The spec carried local seed/sign-in helpers and direct psql invocation, plus relative screenshot destinations.",
+        "reproduction": "Run repository-security.spec.ts in a lane without host psql or with fixture contract changes and inspect the screenshot destinations."
+      },
+      {
+        "severity": "medium",
+        "phase": "api_contract",
+        "description": "The Rust security policy contract tried to bind repository.id as text while querying security_audit_events.target_id, which is UUID in the real test schema.",
+        "expected": "The DB-backed contract binds the repository UUID with its native type and reaches the real audit-event assertion.",
+        "actual": "The assertion bound repository.id.to_string(), risking a schema/type mismatch instead of testing the intended audit write.",
+        "reproduction": "Run repository_security_policy_contract against localhost:55433 with TEST_DATABASE_URL set."
+      }
+    ],
+    "fix_description": "Kept product behavior unchanged; fixed the focused Rust/E2E verification harness to exercise the real DB-backed policy/audit/editor flow, then re-verified doctor/schema/check/DB contract/system-Chrome E2E on current origin/main.",
+    "evidence": {
+      "base": "origin/main 7f312f1e",
+      "tests_passed": [
+        "make doctor",
+        "to_regclass('public.repositories') = repositories",
+        "make check",
+        "repository_security_policy_contract 1/1 DB-backed",
+        "repository-security Playwright setup + chromium 5/5"
+      ],
+      "blocked": [],
+      "timestamp": "2026-05-11T15:17:10Z"
+    },
+    "known_gaps": [],
+    "blockers": [],
+    "timestamp": "2026-05-11T15:17:10Z",
+    "controller_outcome": "QA_PASS: current origin/main repository Security overview/policy behavior passed fresh doctor/schema/check/DB-contract/system-Chrome Playwright evidence on localhost:55433."
   }
 ]

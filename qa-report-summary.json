@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 73,
+    "features_passed": 74,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 68,
+      "pass": 69,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 64,
+      "pass": 65,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 65,
+      "pass": 66,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 30,
+      "pass": 31,
       "fail": 0,
       "skip": 39
     }
@@ -2354,10 +2354,40 @@
       "feature_id": "code-security-001",
       "description": "Render repository security overview and SECURITY.md policy viewing/editing.",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Current origin/main renders the repository Security and quality shell, overview policy preview, feature cards, published advisory rows, missing-policy states, policy reader actions/anchors, and maintainer policy editor flow. Focused signed-in Playwright passed with real DB seeding and system Chrome; policy edits updated the real Git tree so blob/raw/policy views reflected SECURITY.md changes."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/security",
+            "GET /api/repos/{owner}/{repo}/security/policy",
+            "POST /{owner}/{repo}/security/policy/actions"
+          ],
+          "notes": "DB-backed repository_security_policy_contract passed 1/1 against localhost:55433 without self-skips, covering policy/advisory overview response shape, private alert count privacy, markdown sanitization, policy file upsert, repository refs, activity, and audit event writes."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "private_alert_count_hiding",
+            "markdown_xss_sanitization",
+            "maintainer_policy_write_audit",
+            "no_dead_controls"
+          ],
+          "notes": "Focused Rust contract verifies reader privacy and sanitized SECURITY.md rendering; focused Playwright verifies no script execution/reflection, no dead controls, and working concrete hrefs/actions."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused browser E2E asserts accessible headings/nav/buttons/links, heading anchors, screenshot evidence, and mobile no-horizontal-overflow at 390px."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "code-security-002",
