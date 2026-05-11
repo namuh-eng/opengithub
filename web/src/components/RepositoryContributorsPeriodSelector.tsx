@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { repositoryContributorsHref } from "@/lib/navigation";
 
@@ -78,7 +77,7 @@ export function RepositoryContributorsPeriodSelector({
           {PERIODS.map((period) => {
             const selected = period.key === active.key;
             return (
-              <Link
+              <a
                 aria-current={selected ? "page" : undefined}
                 className={`btn sm ghost justify-start ${selected ? "active" : ""}`}
                 href={repositoryContributorsHref(owner, repo, {
@@ -87,6 +86,7 @@ export function RepositoryContributorsPeriodSelector({
                   end,
                 })}
                 key={period.key}
+                onClick={() => setOpen(false)}
                 role="menuitem"
                 style={{
                   background: selected ? "var(--surface-2)" : undefined,
@@ -97,7 +97,7 @@ export function RepositoryContributorsPeriodSelector({
                 {selected ? (
                   <span className="chip active ml-auto">Selected</span>
                 ) : null}
-              </Link>
+              </a>
             );
           })}
         </div>

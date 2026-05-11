@@ -4601,66 +4601,62 @@
   },
   {
     "feature_id": "insights-002",
-    "attempt": 2,
-    "status": "passed",
+    "attempt": 3,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-11T14:38:29Z",
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "Fresh controller verification passed contributors component Vitest and focused Chromium E2E with real localhost:55433 test DB."
+        "notes": "Fresh v3 isolated-lane verification passed after rebasing onto origin/main 8543ae99: contributors component Vitest 6/6 and focused signed-in Chromium Playwright contributors flow 2/2 against the real localhost:55433 test DB."
       },
       "api_contract": {
         "status": "pass",
         "endpoints_tested": [
           "GET /api/repos/{owner}/{repo}/graphs/contributors"
         ],
-        "notes": "DB-backed Rust repository_contributors_contract passed against TEST_DATABASE_URL localhost:55433, covering analytics payload, private repo gating, and cache headers."
+        "notes": "DB-backed Rust repository_contributors_contract passed 1/1 against TEST_DATABASE_URL localhost:55433 with no self-skip, covering analytics payload, default branch scope, privacy, and cache behavior."
       },
       "security": {
         "status": "pass",
         "checks": [
           "authenticated route/privacy contract",
           "make check Clippy/Biome/typecheck",
-          "Editorial banned-token hygiene via changed UI review"
+          "shared signed-in E2E fixture",
+          "Editorial token hygiene"
         ],
-        "notes": "No auth bypass or data exposure regression found in the focused DB contract/E2E path."
+        "notes": "No auth/privacy or data-exposure regression found in focused Rust/E2E coverage; make check passed after the period-menu control fix."
       },
       "accessibility": {
         "status": "pass",
         "violations": [],
-        "notes": "Focused Chromium E2E passed dead-control and horizontal-overflow assertions on the contributors analytics flow."
+        "notes": "Focused Chromium E2E passed expectNoDeadControls and expectNoHorizontalOverflow on the contributors analytics flow, including period menu, data-table, CSV, drilldown links, and mobile screenshot path."
       }
     },
     "tested_steps": [
-      "Recovery branch origin/qa-opengithub-insights-002-mainqa-20260509 e28ec5f9 was not ancestor of origin/main 675df7b4; salvaged changes were staged on recovery/insights-002-mainqa.",
-      "make doctor passed: podman runtime reachable, opengithub-postgres-test up, Postgres reachable, .env.test/.env present, per-worktree Cargo target writable.",
-      "make check passed: Cargo check, web typecheck, Clippy, and Biome all green.",
-      "cd web && npm test -- --run repository-contributors-page.test.tsx passed 1 file / 6 tests.",
-      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_contributors_contract -- --nocapture passed 1/1 against localhost:55433 without self-skip.",
-      "Focused Playwright initially exposed real harness issues: missing Playwright browser binary and no host psql. Verification used /usr/bin/google-chrome via a temporary local config and fixed the shared auth fixture to fall back to docker exec psql for the committed localhost:55433 test DB.",
-      "cd web && npx playwright test repository-contributors.spec.ts --project=chromium --reporter=list --config=playwright.local-chrome.config.ts passed setup + Chromium contributors flow, 2/2 in 12.0s."
+      "Started from current origin/main 8543ae99 in isolated Kanban worktree qa/insights-002-v3-t_8b9980a3 and ran make doctor: local verification stack healthy except .env missing, which is not needed for tests.",
+      "Verified DB schema via podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc select to_regclass('public.repositories') => repositories because host psql is absent.",
+      "Inspected PRD, qa-hints, qa-report, contributors UI/API/tests, and stale branch origin/qa/insights-002-visible; prior QA evidence existed but PRD bookkeeping still had qa_pass=false.",
+      "Fixed the Contributors period menu items to use native href anchors with an onClick close handler instead of client Link menuitems, preserving concrete navigation and eliminating the dead-control ambiguity in the menu popup.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npm test -- --run repository-contributors-page.test.tsx: 1 file / 6 tests passed.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_contributors_contract -- --nocapture: 1/1 passed against localhost:55433.",
+      "Killed stale localhost 3015/3016 servers, then ran PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test repository-contributors.spec.ts --project=chromium --reporter=list: setup + Chromium contributors flow passed 2/2 in 10.6s."
     ],
     "bugs_found": [
       {
-        "severity": "major",
-        "phase": "functional",
-        "description": "Contributor weekly bucket dates rendered through the local timezone, shifting UTC midnight API buckets to the previous day in Pacific time.",
-        "expected": "Weekly bucket labels display API bucket dates consistently, e.g. May 1, 2026 through May 7, 2026.",
-        "actual": "Focused Vitest could not find the expected May 1 date range before the UTC formatting fix.",
-        "reproduction": "Run cd web && npm test -- --run repository-contributors-page.test.tsx in a non-UTC timezone before the fix."
-      },
-      {
         "severity": "minor",
-        "phase": "functional",
-        "description": "The repository-contributors Playwright spec bypassed the shared signed-in E2E fixture and assumed host psql existed.",
-        "expected": "Signed-in specs use _fixtures/auth, and DB setup works on the standard podman-backed localhost:55433 test DB even when psql is only inside the container.",
-        "actual": "The spec duplicated seeding/sign-in and failed with spawnSync psql ENOENT during recovery verification.",
-        "reproduction": "Run the focused spec on the standard controller host without host psql before the fixture fallback fix."
+        "phase": "accessibility",
+        "description": "Contributors period menu options were rendered through Next Link as role=menuitem controls inside a popup, which left the menu open until navigation and made the control look actionful rather than a plain URL-backed menu choice.",
+        "expected": "Every visible period menu choice is a concrete href and closes the popup immediately when activated.",
+        "actual": "The prior implementation delegated to next/link and did not close local open state on activation.",
+        "reproduction": "Open /{owner}/{repo}/graphs/contributors, click Period, then activate a period menu item before the fix."
       }
     ],
-    "fix_description": "Fixed contributors UTC date formatting, moved contributors E2E onto the shared auth fixture, and made that fixture seed contributor file changes through host psql or docker exec fallback for the standard test DB.",
+    "fix_description": "Kept the existing Contributors analytics implementation, converted period menu items to native anchors with popup-close behavior, re-ran required check/component/DB contract/browser verification, and marked PRD/QA artifacts honest pass.",
     "blockers": [],
-    "timestamp": "2026-05-10T05:11:19Z",
-    "controller_outcome": "QA_PASS: fresh doctor/check/component/DB-contract/focused Chromium E2E evidence passed on localhost:55433; ready to merge to main."
+    "timestamp": "2026-05-11T14:38:29Z",
+    "controller_outcome": "QA_PASS: fresh doctor/schema/check/component/DB-contract/focused Chromium E2E evidence passed on current origin/main; ready for controller merge to origin/main."
   },
   {
     "feature_id": "insights-003",
