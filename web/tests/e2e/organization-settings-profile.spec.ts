@@ -1,61 +1,11 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededOrganizationProfile = {
-  cookieName: string;
-  cookieValue: string;
-  organizationProfileHref: string;
-};
-
-function seedOrganizationProfile(): SeededOrganizationProfile {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        ORG_PROFILE_E2E: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededOrganizationProfile;
-}
-
-async function signIn(page: Page, seeded: SeededOrganizationProfile) {
-  await page.context().addCookies([
-    {
-      domain: "localhost",
-      httpOnly: true,
-      name: seeded.cookieName,
-      path: "/",
-      sameSite: "Lax",
-      secure: false,
-      value: seeded.cookieValue,
-    },
-  ]);
-}
-
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 function slugFromProfileHref(href: string) {
   const parts = href.split("/").filter(Boolean);
@@ -73,15 +23,19 @@ function slugFromProfileHref(href: string) {
 }
 
 test.skip(
-  !databaseUrl,
+  skipWithoutTestDb(),
   "organization settings profile E2E needs a test database",
 );
 test.setTimeout(60_000);
 
-test("owner opens organization profile settings shell", async ({ page }) => {
-  const seeded = seedOrganizationProfile();
-  await signIn(page, seeded);
-  const slug = slugFromProfileHref(seeded.organizationProfileHref);
+test("owner opens organization profile settings shell", async ({
+  page,
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["orgProfile"] });
+  await signIn(page, seeded, "owner");
+  const slug = slugFromProfileHref(seeded.hrefs.organizationProfile);
 
   await page.goto(`/organizations/${slug}/settings/profile`);
   await expect(
@@ -117,13 +71,14 @@ test("owner opens organization profile settings shell", async ({ page }) => {
     "true",
   );
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-phase2-settings-shell.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-phase2-settings-shell"),
   });
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-final-desktop-shell.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-final-desktop-shell"),
   });
 
   await page.goto(`/orgs/${slug}/settings`);
@@ -132,10 +87,12 @@ test("owner opens organization profile settings shell", async ({ page }) => {
 
 test("owner saves organization profile, contact, and social sections", async ({
   page,
-}) => {
-  const seeded = seedOrganizationProfile();
-  await signIn(page, seeded);
-  const slug = slugFromProfileHref(seeded.organizationProfileHref);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["orgProfile"] });
+  await signIn(page, seeded, "owner");
+  const slug = slugFromProfileHref(seeded.hrefs.organizationProfile);
 
   await page.goto(`/organizations/${slug}/settings/profile`);
   await page
@@ -164,13 +121,14 @@ test("owner saves organization profile, contact, and social sections", async ({
   await page.getByRole("button", { name: "Save social accounts" }).click();
   await expect(page.getByText("Social accounts updated")).toBeVisible();
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-phase3-profile-save.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-phase3-profile-save"),
   });
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-final-profile-form.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-final-profile-form"),
   });
 
   await page.reload();
@@ -191,14 +149,18 @@ test("owner saves organization profile, contact, and social sections", async ({
   ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-final-validation-error.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-final-validation-error"),
   });
 });
 
-test("owner validates rename and typed danger guardrails", async ({ page }) => {
-  const seeded = seedOrganizationProfile();
-  await signIn(page, seeded);
-  const slug = slugFromProfileHref(seeded.organizationProfileHref);
+test("owner validates rename and typed danger guardrails", async ({
+  page,
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["orgProfile"] });
+  await signIn(page, seeded, "owner");
+  const slug = slugFromProfileHref(seeded.hrefs.organizationProfile);
   const nextSlug = `${slug}-renamed`;
 
   await page.goto(`/organizations/${slug}/settings/profile`);
@@ -241,21 +203,17 @@ test("owner validates rename and typed danger guardrails", async ({ page }) => {
   await expectNoDeadControls(page);
 
   await page.setViewportSize({ width: 390, height: 900 });
-  const bodyWidths = await page.locator("body").evaluate((body) => ({
-    clientWidth: body.clientWidth,
-    scrollWidth: body.scrollWidth,
-  }));
-  expect(bodyWidths.scrollWidth).toBeLessThanOrEqual(bodyWidths.clientWidth);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-phase4-danger-zone.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-phase4-danger-zone"),
   });
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-final-danger-zone.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-final-danger-zone"),
   });
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-002-final-mobile.jpg",
+    path: screenshotPath(testInfo, "org-admin-002-final-mobile"),
   });
 });
