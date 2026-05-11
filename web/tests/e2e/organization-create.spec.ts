@@ -1,84 +1,30 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 test.setTimeout(60_000);
 
-type SeededSession = {
-  cookieName: string;
-  cookieValue: string;
-};
-
-function seedSession(): SeededSession {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededSession;
-}
-
-async function signIn(page: Page, seeded: SeededSession) {
-  await page.context().addCookies([
-    {
-      name: seeded.cookieName,
-      value: seeded.cookieValue,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: false,
-    },
-  ]);
-}
-
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
-
-async function expectNoHorizontalOverflow(page: Page) {
-  const metrics = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
-}
-
 test.skip(
-  !databaseUrl,
+  skipWithoutTestDb(),
   "organization create E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
 test("signed-in organization plan picker opens setup and validates slugs", async ({
   page,
-}) => {
-  const seeded = seedSession();
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["empty"] });
   await signIn(page, seeded);
 
   await page.goto("/organizations/new");
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await expect(
     page.getByRole("heading", { name: "Create a new organization" }),
   ).toBeVisible();
@@ -88,7 +34,7 @@ test("signed-in organization plan picker opens setup and validates slugs", async
   ).toBeDisabled();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-final-plan-picker.jpg",
+    path: screenshotPath(testInfo, "org-admin-001-final-plan-picker"),
   });
 
   await page
@@ -109,7 +55,7 @@ test("signed-in organization plan picker opens setup and validates slugs", async
   );
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-final-setup-form.jpg",
+    path: screenshotPath(testInfo, "org-admin-001-final-setup-form"),
   });
 
   await page.getByLabel("Organization name *").fill("settings");
@@ -127,14 +73,19 @@ test("signed-in organization plan picker opens setup and validates slugs", async
     page.getByRole("button", { name: "Create organization" }),
   ).toBeDisabled();
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-final-validation-error.jpg",
+    path: screenshotPath(testInfo, "org-admin-001-final-validation-error"),
   });
 });
 
-test("organization create setup stays usable on mobile", async ({ page }) => {
-  const seeded = seedSession();
+test("organization create setup stays usable on mobile", async ({
+  page,
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["empty"] });
   await signIn(page, seeded);
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -159,14 +110,16 @@ test("organization create setup stays usable on mobile", async ({ page }) => {
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-final-mobile.jpg",
+    path: screenshotPath(testInfo, "org-admin-001-final-mobile"),
   });
 });
 
 test("organization create flow supports keyboard-only plan selection and error recovery", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedSession();
+  const seeded = await seed({ scenes: ["empty"] });
   await signIn(page, seeded);
 
   await page.goto("/organizations/new");
@@ -195,12 +148,15 @@ test("organization create flow supports keyboard-only plan selection and error r
     page.getByRole("button", { name: "Create organization" }),
   ).toBeEnabled();
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
 });
 
 test("signed-in user creates a free organization and sees it in navigation", async ({
   page,
-}) => {
-  const seeded = seedSession();
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["empty"] });
   await signIn(page, seeded);
 
   await page.goto("/organizations/new");
@@ -222,13 +178,14 @@ test("signed-in user creates a free organization and sees it in navigation", asy
 
   await expect(page).toHaveURL(new RegExp(`/orgs/${normalized}(?:$|[/?#])`));
   await expect(page.getByRole("heading", { name: uniqueName })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await page.reload();
   await page.getByRole("button", { name: "Global menu" }).click();
   await expect(page.getByRole("menuitem", { name: uniqueName })).toBeVisible();
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-final-create-redirect.jpg",
+    path: screenshotPath(testInfo, "org-admin-001-final-create-redirect"),
   });
 
   await page.goto("/organizations/new");
