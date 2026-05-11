@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 74,
+    "features_passed": 75,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 69,
+      "pass": 70,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 65,
+      "pass": 66,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 66,
+      "pass": 67,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 31,
+      "pass": 32,
       "fail": 0,
       "skip": 39
     }
@@ -2393,10 +2393,24 @@
       "feature_id": "code-security-002",
       "description": "Render and manage Dependabot vulnerability alerts from dependency manifests.",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass"
+        },
+        "api_contract": {
+          "status": "pass"
+        },
+        "security": {
+          "status": "pass"
+        },
+        "accessibility": {
+          "status": "pass"
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "code-security-003",

@@ -5131,5 +5131,58 @@
     "blockers": [],
     "timestamp": "2026-05-11T15:17:10Z",
     "controller_outcome": "QA_PASS: current origin/main repository Security overview/policy behavior passed fresh doctor/schema/check/DB-contract/system-Chrome Playwright evidence on localhost:55433."
+  },
+  {
+    "feature_id": "code-security-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Current origin/main 8be69f71 verified against the PRD. The Dependabot page renders the Security and quality shell with Dependabot selected, disabled callout/settings link, open/closed tabs, search/filter/sort controls, selectable alert rows, package/advisory/severity/scope/manifest/fixed-version/state metadata, bulk dismiss/security-update flows, and alert detail triage/timeline/reopen/security-update controls."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /{owner}/{repo}/security/dependabot",
+          "GET /{owner}/{repo}/security/dependabot/{alert_id}",
+          "POST /api/repos/{owner}/{repo}/security/dependabot/bulk",
+          "POST /api/repos/{owner}/{repo}/security/dependabot/{alert_id}/dismiss",
+          "POST /api/repos/{owner}/{repo}/security/dependabot/{alert_id}/reopen",
+          "POST /api/repos/{owner}/{repo}/security/dependabot/{alert_id}/assignees",
+          "POST /api/repos/{owner}/{repo}/security/dependabot/{alert_id}/security-update"
+        ],
+        "notes": "DB-backed Playwright exercised the real route/API stack through seeded dependency graph data. make doctor was healthy after setup-local; to_regclass('public.repositories') returned repositories from opengithub-postgres-test."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "signed_in_owner_session",
+          "repository_permission_path",
+          "dismiss_reopen_audit_events",
+          "notification_side_effects",
+          "concrete_links_no_dead_controls"
+        ],
+        "notes": "Triage operations write security alert events/audit state and notification updates through the DB-backed implementation; E2E guardrails verify concrete destinations and no dead controls."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused E2E verifies accessible names for visible buttons, concrete links, and no horizontal overflow on the primary list/detail/mobile states using the shared auth fixture assertions."
+      }
+    },
+    "tested_steps": [
+      "Fetched origin and reset isolated qa/code-security-002-v3 worktree to current origin/main 8be69f71.",
+      "Ran make doctor: Podman reachable, opengithub-postgres-test up/reachable, .env.test present, Cargo target writable; .env warning is dev-only.",
+      "Verified DB schema with DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock docker exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc select to_regclass('public.repositories'): repositories.",
+      "Ran npm test -- repository-dependabot-alerts-page.test.tsx repository-dependabot-alert-detail-page.test.tsx: 8/8 passed.",
+      "Ran DASHBOARD_E2E_SKIP_MIGRATIONS=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test repository-dependabot.spec.ts --project=chromium from web/: setup + signed-in Dependabot E2E passed 2/2.",
+      "Ran CARGO_TARGET_DIR=/tmp/opengithub-t_4f45e8f9-cargo-target make check: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      "The signed-in Dependabot E2E still duplicated seeding/cookie/psql helpers instead of using the shared auth fixture, making it vulnerable to self-skips and host psql absence.",
+      "Filter menu choices used client-routed menuitem links that exposed correct hrefs but did not reliably navigate under Playwright/user-click verification; switched the menu choices to plain anchors for robust query navigation."
+    ],
+    "fix_description": "Standardized the Dependabot E2E on the shared DB-backed auth fixture and screenshot helpers, added no-overflow/dead-control assertions, and made Dependabot filter menu options robust plain anchors while preserving Editorial styling."
   }
 ]

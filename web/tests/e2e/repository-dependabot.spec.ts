@@ -1,63 +1,29 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededDashboard = {
-  cookieName: string;
-  cookieValue: string;
-  treeRepositoryHref: string;
-};
-
-function seedDashboard(): SeededDashboard {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "0",
-        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
-        DASHBOARD_E2E_TREE_REFS: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededDashboard;
-}
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  requireTestDatabase,
+  runPsql,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 function sqlLiteral(value: string) {
-  return `'${value.replaceAll("'", "''")}'`;
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function seedDependabotAlerts(repositoryHref: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
+  const databaseUrl = requireTestDatabase();
   const [, owner, repo] = repositoryHref.split("/");
   const decodedOwner = decodeURIComponent(owner);
   const decodedRepo = decodeURIComponent(repo);
   const suffix = decodedRepo.replace(/^tree-nav-/, "");
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(databaseUrl, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
       WITH target_repo AS (
         SELECT repositories.id
         FROM repositories
@@ -217,24 +183,17 @@ function seedDependabotAlerts(repositoryHref: string) {
                     oid = EXCLUDED.oid,
                     byte_size = EXCLUDED.byte_size;
       `,
-    ],
-    { stdio: "ignore" },
-  );
+  ]);
 }
 
 function disableDependabot(repositoryHref: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
+  const databaseUrl = requireTestDatabase();
   const [, owner, repo] = repositoryHref.split("/");
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(databaseUrl, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
       WITH target_repo AS (
         SELECT repositories.id
         FROM repositories
@@ -262,43 +221,26 @@ function disableDependabot(repositoryHref: string) {
                     private_count = 0,
                     config_href = EXCLUDED.config_href;
       `,
-    ],
-    { stdio: "ignore" },
-  );
-}
-
-async function signIn(page: Page, seeded: SeededDashboard) {
-  await page.context().addCookies([
-    {
-      domain: "localhost",
-      httpOnly: true,
-      name: seeded.cookieName,
-      path: "/",
-      sameSite: "Lax",
-      secure: false,
-      value: seeded.cookieValue,
-    },
   ]);
 }
 
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
-
-test.skip(!databaseUrl, "repository Dependabot smoke needs a database URL");
 test.setTimeout(90_000);
 
 test("repository Dependabot alerts support list filters, triage writes, security updates, disabled state, and final screenshots", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedDependabotAlerts(seeded.treeRepositoryHref);
-  await signIn(page, seeded);
+  seed,
+  signIn,
+}, testInfo) => {
+  test.skip(
+    skipWithoutTestDb(),
+    "repository Dependabot smoke needs a database URL",
+  );
+  const seeded = await seed({ scenes: ["treeRefs", "dependencyGraph"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDependabotAlerts(repositoryHref);
+  await signIn(page, seeded, "owner");
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/dependabot`);
+  await page.goto(`${repositoryHref}/security/dependabot`);
   await expect(
     page.getByRole("heading", { name: "Dependabot alerts" }),
   ).toBeVisible();
@@ -315,18 +257,23 @@ test("repository Dependabot alerts support list filters, triage writes, security
   ).toHaveAttribute("href", /\/security\/dependabot\/\d+/);
   await expect(
     page.getByRole("link", { name: "package.json" }).first(),
-  ).toHaveAttribute(
-    "href",
-    `${seeded.treeRepositoryHref}/blob/main/package.json`,
-  );
+  ).toHaveAttribute("href", `${repositoryHref}/blob/main/package.json`);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-002-final-list.jpg",
+    path: screenshotPath(testInfo, "code-security-002-final-list"),
   });
 
   await page.getByRole("button", { name: "Package: All packages" }).click();
-  await page.getByRole("menuitem", { name: /npm:@playwright\/test/ }).click();
+  const packageFilterLink = page
+    .getByRole("menuitem", { name: /npm:@playwright\/test/ })
+    .first();
+  await expect(packageFilterLink).toHaveAttribute(
+    "href",
+    /package=npm%3A%40playwright%2Ftest/,
+  );
+  await packageFilterLink.click();
   await expect(page).toHaveURL(/package=npm%3A%40playwright%2Ftest/);
   await expect(
     page.getByText("Playwright test runner demo advisory").first(),
@@ -349,10 +296,7 @@ test("repository Dependabot alerts support list filters, triage writes, security
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "package.json" }).first(),
-  ).toHaveAttribute(
-    "href",
-    `${seeded.treeRepositoryHref}/blob/main/package.json`,
-  );
+  ).toHaveAttribute("href", `${repositoryHref}/blob/main/package.json`);
   await page.getByLabel("Dismiss reason").selectOption("not_used");
   await page
     .getByLabel("Optional comment")
@@ -375,12 +319,13 @@ test("repository Dependabot alerts support list filters, triage writes, security
     page.getByRole("list", { name: "Dependabot alert timeline" }),
   ).toContainText("Updated Dependabot alert assignees.");
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-002-phase3-alert-detail.jpg",
+    path: screenshotPath(testInfo, "code-security-002-phase3-alert-detail"),
   });
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/dependabot`);
+  await page.goto(`${repositoryHref}/security/dependabot`);
   await page.getByRole("button", { name: "Package: All packages" }).click();
   await page.getByRole("menuitem", { name: /npm:@playwright\/test/ }).click();
   await page.getByRole("button", { name: "Select all visible" }).click();
@@ -392,28 +337,31 @@ test("repository Dependabot alerts support list filters, triage writes, security
   ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-002-phase4-bulk-security-update.jpg",
+    path: screenshotPath(
+      testInfo,
+      "code-security-002-phase4-bulk-security-update",
+    ),
   });
 
-  disableDependabot(seeded.treeRepositoryHref);
-  await page.goto(`${seeded.treeRepositoryHref}/security/dependabot`);
+  disableDependabot(repositoryHref);
+  await page.goto(`${repositoryHref}/security/dependabot`);
   await expect(
     page.getByRole("heading", { name: "Vulnerability alerts are disabled." }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open vulnerability settings" }),
-  ).toHaveAttribute("href", `${seeded.treeRepositoryHref}/settings/security`);
+  ).toHaveAttribute("href", `${repositoryHref}/settings/security`);
 
-  seedDependabotAlerts(seeded.treeRepositoryHref);
+  seedDependabotAlerts(repositoryHref);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${seeded.treeRepositoryHref}/security/dependabot`);
+  await page.goto(`${repositoryHref}/security/dependabot`);
   await expect(
     page.getByRole("heading", { name: "Dependabot alerts" }),
   ).toBeVisible();
-  await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
   await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-002-final-mobile.jpg",
+    path: screenshotPath(testInfo, "code-security-002-final-mobile"),
   });
 });

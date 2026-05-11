@@ -126,7 +126,7 @@ function FilterMenu({
           {options.map((option) => {
             const active = option.key === selectedKey;
             return (
-              <Link
+              <a
                 aria-current={active ? "page" : undefined}
                 className="btn sm ghost justify-start"
                 href={hrefFor(option.key)}
@@ -146,7 +146,7 @@ function FilterMenu({
                 {active ? (
                   <span className="chip active ml-auto">Selected</span>
                 ) : null}
-              </Link>
+              </a>
             );
           })}
         </div>
