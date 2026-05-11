@@ -1508,9 +1508,9 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false,
-    "qa_status": "QA_BLOCKED",
-    "qa_notes": "2026-05-09T20:47Z controller rerun after infra fix: old Docker/Postgres/GitHub-auth blockers are stale. The branch was refreshed on origin/main 675df7b4, live app answered on http://localhost:3015/login, Postgres is listening on localhost:55433, and prior focused evidence still includes RepositoryTrafficPage Vitest 5/5, web TypeScript/Biome, make check, and a compiled Rust traffic contract. Fresh signed Playwright verification is still blocked on this host because Chromium headless shell exits immediately with SIGTRAP during tests/e2e/auth.setup.ts before repository traffic tests run; retrying with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome did not override the bundled crashing headless shell. QA remains blocked on browser runtime, not DB/app/push infra."
+    "qa_pass": true,
+    "qa_status": "QA_PASS",
+    "qa_notes": "2026-05-11T14:50:17Z fresh v3 isolated-lane QA_PASS on current origin/main 8ae8ea1c: make doctor healthy; to_regclass('public.repositories') returned repositories; make check passed; RepositoryTrafficPage Vitest 5/5 passed; Rust repository_traffic_contract 1/1 passed against localhost:55433; focused signed Playwright repository-traffic.spec.ts passed 3/3 with system Chrome from the web cwd. Verified push-access analytics, 14-day clone/visitor charts with focus/hover exact values, safe external referrer links, repository content links, UTC/cadence copy, 403 traffic_access_required redaction for read-only users, and no horizontal overflow/dead controls."
   },
   {
     "id": "insights-004",
