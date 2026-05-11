@@ -14,6 +14,40 @@ function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+function runPsql(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+
+  try {
+    execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
+      stdio: "ignore",
+    });
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  execFileSync(
+    "podman",
+    [
+      "exec",
+      "-i",
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      "opengithub",
+      "-d",
+      "opengithub_test",
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    { input: sql, stdio: ["pipe", "ignore", "inherit"] },
+  );
+}
+
 function seedDashboard(): SeededDashboard {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
@@ -34,7 +68,6 @@ function seedDashboard(): SeededDashboard {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
-        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
         DASHBOARD_E2E_TREE_REFS: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
@@ -52,14 +85,7 @@ function seedDiscussions(repositoryHref: string) {
   const decodedRepo = decodeURIComponent(repo);
   const suffix = decodedRepo.replace(/^tree-nav-/, "");
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(`
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -122,13 +148,24 @@ function seedDiscussions(repositoryHref: string) {
                       description = EXCLUDED.description
         RETURNING id, repository_id
       ),
-      label_one AS (
+      existing_label_one AS (
+        SELECT labels.id, labels.repository_id
+        FROM labels, target_repo
+        WHERE labels.repository_id = target_repo.id
+          AND lower(labels.name) = lower('help-wanted')
+        LIMIT 1
+      ),
+      inserted_label_one AS (
         INSERT INTO labels (repository_id, name, color, description)
         SELECT target_repo.id, 'help-wanted', 'b85f36', 'Needs community input'
         FROM target_repo
-        ON CONFLICT (repository_id, lower(name))
-        DO UPDATE SET description = EXCLUDED.description
+        WHERE NOT EXISTS (SELECT 1 FROM existing_label_one)
         RETURNING id, repository_id
+      ),
+      label_one AS (
+        SELECT id, repository_id FROM existing_label_one
+        UNION ALL
+        SELECT id, repository_id FROM inserted_label_one
       ),
       discussion_one AS (
         INSERT INTO discussions (
@@ -243,8 +280,12 @@ function seedDiscussions(repositoryHref: string) {
       INSERT INTO discussion_pins (discussion_id, pinned_by_user_id, position)
       SELECT discussion_one.id, target_repo.author_user_id, 1
       FROM discussion_one, target_repo
-      ON CONFLICT (discussion_id)
-      DO UPDATE SET position = EXCLUDED.position;
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM discussion_pins
+        WHERE discussion_pins.discussion_id = discussion_one.id
+          AND discussion_pins.pin_scope = 'global'
+      );
 
       WITH target_repo AS (
         SELECT repositories.id
@@ -263,10 +304,7 @@ function seedDiscussions(repositoryHref: string) {
              1
       FROM target_repo
       ON CONFLICT DO NOTHING;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
+      `);
 }
 
 function seedConvertibleIssue(repositoryHref: string): number {
@@ -278,14 +316,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
   const decodedRepo = decodeURIComponent(repo);
   const issueNumber = 970 + Math.floor(Math.random() * 20);
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(`
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -319,10 +350,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
              issue.author_user_id,
              'Issue comment copied during conversion.'
       FROM issue;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
+      `);
   return issueNumber;
 }
 
@@ -342,7 +370,19 @@ async function signIn(page: Page, seeded: SeededDashboard) {
 
 async function expectNoDeadControls(page: Page) {
   await expect(page.locator('a[href="#"]')).toHaveCount(0);
-  await expect(page.locator("button:not([type])")).toHaveCount(0);
+  await expect(
+    page.locator(
+      'button:not([type]):not([aria-label="Open Next.js Dev Tools"])',
+    ),
+  ).toHaveCount(0);
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const metrics = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
 }
 
 test("repository discussions list filters, rows, category rail, and mobile layout work", async ({
@@ -355,7 +395,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
 
   await page.goto(`${seeded.treeRepositoryHref}/discussions`);
   await expect(
-    page.getByRole("heading", { name: "Discussions" }),
+    page.getByRole("heading", { name: "Discussions", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Discussions" })).toHaveAttribute(
     "aria-current",
@@ -459,7 +499,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     page.getByRole("heading", { name: "Choose a category" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
-  await expect(page.getByText("Answers enabled")).toBeVisible();
+  await expect(page.getByText("Answers enabled").first()).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Get started" }).first(),
   ).toHaveAttribute("href", /\/discussions\/new\?category=general$/);
@@ -477,7 +517,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     .getByRole("textbox", { name: "Title" })
     .fill(`Search syntax ideas ${Date.now()}`);
   await page
-    .getByLabel("Discussion body")
+    .getByRole("textbox", { name: "Discussion body" })
     .fill("Support saved discussion searches with **Markdown** preview.");
   await page.getByRole("tab", { name: "Preview" }).click();
   await expect(page.getByText("Markdown")).toBeVisible();
@@ -511,7 +551,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     .fill("The form should persist category-specific context.");
   await page.getByLabel("Area").selectOption("API");
   await page
-    .getByLabel("Discussion body")
+    .getByRole("textbox", { name: "Discussion body" })
     .fill("Question body stays separate from the template answers.");
   await page
     .getByRole("checkbox", {
@@ -530,12 +570,10 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     `${seeded.treeRepositoryHref}/discussions/new?category=polls`,
   );
   await expect(page.getByText("Poll").first()).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Title" })
-    .fill(`Branch policy poll ${Date.now()}`);
-  await page
-    .getByLabel("Question")
-    .fill("Which branch policy should ship first?");
+  const pollTitle = `Branch policy poll ${Date.now()}`;
+  const pollQuestion = "Which branch policy should ship first?";
+  await page.getByRole("textbox", { name: "Title" }).fill(pollTitle);
+  await page.getByLabel("Question").fill(pollQuestion);
   await page.getByLabel("Poll option 1").fill("Linear history");
   await page.getByLabel("Poll option 2").fill("Required reviews");
   await page
@@ -697,6 +735,158 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-006-final-mobile.jpg",
+  });
+});
+
+test("repository discussion creation chooser, YAML form, and poll flows work", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedDiscussions(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
+  await expect(page.getByText("Answers enabled").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Get started" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=general$/);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase2-chooser.jpg",
+  });
+
+  await page.getByRole("link", { name: "Get started" }).first().click();
+  await expect(page).toHaveURL(/\/discussions\/new\?category=general$/);
+  await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Choose a different category" }),
+  ).toHaveAttribute("href", /\/discussions\/new\/choose$/);
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill(`Search syntax ideas ${Date.now()}`);
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("Support saved discussion searches with **Markdown** preview.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("Markdown")).toBeVisible();
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page.setInputFiles("input#discussion-attachments", {
+    name: "sketch.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("discussion sketch"),
+  });
+  await expect(page.getByText("sketch.txt")).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase3-generic-create.jpg",
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/903$/);
+
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/new?category=q-a`);
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill(`Template answer shape ${Date.now()}`);
+  await page
+    .getByLabel("Context")
+    .fill("The form should persist category-specific context.");
+  await page.getByLabel("Area").selectOption("API");
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("Question body stays separate from the template answers.");
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase4-yaml-form.jpg",
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/904$/);
+
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/new?category=polls`,
+  );
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  const pollTitle = `Branch policy poll ${Date.now()}`;
+  const pollQuestion = "Which branch policy should ship first?";
+  const [, pollOwner, pollRepo] = seeded.treeRepositoryHref.split("/");
+  const decodedPollOwner = decodeURIComponent(pollOwner);
+  const decodedPollRepo = decodeURIComponent(pollRepo);
+  await page.getByRole("textbox", { name: "Title" }).fill(pollTitle);
+  await page.getByLabel("Question").fill(pollQuestion);
+  await page.getByLabel("Poll option 1").fill("Linear history");
+  await page.getByLabel("Poll option 2").fill("Required reviews");
+  await page
+    .getByRole("checkbox", {
+      name: /Allow voters to choose more than one option/i,
+    })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase4-form-poll.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-final-desktop.jpg",
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/905$/);
+  runPsql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM repositories
+        JOIN users ON users.id = repositories.owner_user_id
+        JOIN discussions ON discussions.repository_id = repositories.id
+        JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
+        JOIN discussion_poll_options first_option
+          ON first_option.poll_id = discussion_polls.id
+         AND first_option.label = 'Linear history'
+        JOIN discussion_poll_options second_option
+          ON second_option.poll_id = discussion_polls.id
+         AND second_option.label = 'Required reviews'
+        WHERE users.username = ${sqlLiteral(decodedPollOwner)}
+          AND repositories.name = ${sqlLiteral(decodedPollRepo)}
+          AND discussions.number = 905
+          AND discussions.title = ${sqlLiteral(pollTitle)}
+          AND discussion_polls.question = ${sqlLiteral(pollQuestion)}
+          AND discussion_polls.allows_multiple IS TRUE
+      ) THEN
+        RAISE EXCEPTION 'Expected created poll discussion with persisted options';
+      END IF;
+    END $$;
+  `);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/new?category=polls`,
+  );
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-final-mobile.jpg",
   });
 });
 

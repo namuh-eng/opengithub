@@ -5383,5 +5383,98 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "timestamp": "2026-05-11T17:50:00Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified discussion creation metadata, category chooser, generic Markdown composer, required similar-search acknowledgement, YAML form answers, poll creation, attachment metadata, redirects, and mobile no-overflow with DB-backed Rust contract, focused component/API-doc tests, and a focused signed-cookie Playwright browser scenario against the local test Postgres. The browser scenario also checks poll persistence directly in Postgres after redirect."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/new",
+          "GET /api/repos/{owner}/{repo}/discussions/new/categories/{slug}",
+          "POST /api/repos/{owner}/{repo}/discussions"
+        ],
+        "notes": "DB-backed repository_discussions_contract creation scenario passed, covering private repository privacy, selected-category form metadata, missing acknowledgement validation, form answer persistence, poll row/options persistence, subscriptions, activity, notifications, and no secret leakage."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required",
+          "private_repository_privacy",
+          "validation_envelopes",
+          "data_exposure"
+        ],
+        "notes": "Focused Rust contract verifies outsiders cannot read private creation metadata, readers cannot create discussions, required acknowledgement and poll validation return stable envelopes, and responses do not expose session/OAuth/env secrets."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright scenario used role/label locators for chooser, composer, YAML form, poll controls, and Start discussion. Mobile poll composer had no horizontal overflow."
+      }
+    },
+    "tested_steps": [
+      "Ran required baseline: pwd, git status --short --branch, git rev-parse HEAD origin/main, and make doctor; local stack healthy with .env dev-only warning.",
+      "Verified test DB schema with podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\" => repositories.",
+      "Inspected prd.json, qa-report.json, qa-hints history, .qrspi/discussions-002 structure, RepositoryDiscussionCategoryChooser/CreatePage, API docs, Rust repository_discussions_contract, and salvaged local Playwright diff.",
+      "Fixed the focused Discussions E2E harness for hosts without psql by adding a container psql fallback, idempotent label/pin seeding, exact Discussions heading selection, a dedicated discussions-002 creation scenario, robust body locators, a DB-backed poll persistence assertion after redirect, and Dev Tools exclusion in dead-control checks.",
+      "Ran DB-backed Rust creation contract: set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture (1 passed, no self-skip).",
+      "Ran focused component/API-doc tests: cd web && npm exec -- vitest run tests/repository-discussion-create-page.test.tsx tests/api-docs.test.tsx (13 tests passed).",
+      "Ran focused signed-cookie browser E2E after clearing stale dev servers: cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium --grep \"repository discussion creation chooser\" --reporter=line (2 passed including setup, no self-skip/no-detail pass).",
+      "Ran make check with .env.test and per-worktree CARGO_TARGET_DIR: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/discussions-002-phase2-chooser.jpg",
+        "label": "Category chooser cards"
+      },
+      {
+        "path": "ralph/screenshots/build/discussions-002-phase3-generic-create.jpg",
+        "label": "Generic Markdown composer with attachment and acknowledgement"
+      },
+      {
+        "path": "ralph/screenshots/build/discussions-002-phase4-yaml-form.jpg",
+        "label": "YAML category form creation"
+      },
+      {
+        "path": "ralph/screenshots/build/discussions-002-phase4-form-poll.jpg",
+        "label": "Poll category creation controls"
+      },
+      {
+        "path": "ralph/screenshots/build/discussions-002-final-desktop.jpg",
+        "label": "Final desktop poll composer"
+      },
+      {
+        "path": "ralph/screenshots/build/discussions-002-final-mobile.jpg",
+        "label": "Final mobile poll composer without horizontal overflow"
+      }
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "description": "The reclaimed Discussions E2E harness depended on host psql and non-idempotent seed upserts, so it could not reliably produce real browser evidence on the standard Podman test DB host.",
+        "file": "web/tests/e2e/repository-discussions.spec.ts"
+      },
+      {
+        "severity": "minor",
+        "description": "The broad Discussions E2E used ambiguous accessibility locators that collided with the active tablist and multiple answer-enabled chips under Playwright strict mode.",
+        "file": "web/tests/e2e/repository-discussions.spec.ts"
+      }
+    ],
+    "fix_description": "Standardized the discussions E2E seeding fallback for the local test DB, made seed writes idempotent, added a dedicated discussions-002 browser scenario covering chooser/generic/YAML/poll creation, tightened ambiguous locators, asserted poll persistence in Postgres after redirect, and recorded fresh QA evidence.",
+    "verification_commands": [
+      "make doctor",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\"",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture",
+      "cd web && npm exec -- vitest run tests/repository-discussion-create-page.test.tsx tests/api-docs.test.tsx",
+      "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium --grep \"repository discussion creation chooser\" --reporter=line",
+      "set -a; . ./.env.test; set +a; CARGO_TARGET_DIR=$PWD/.scratch/cargo-target CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 make check"
+    ]
   }
 ]
