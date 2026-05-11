@@ -1680,7 +1680,16 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true,
+    "qa_completed_at": "2026-05-11T18:15:00Z",
+    "qa_notes": "Fresh visible QA verified Discussions list/category/upvote behavior with focused component and DB-backed API tests; fixed SQL/API edges and current E2E harness selectors. Full combined discussions Playwright also covers later feature lanes and still has non-001 admin/template sequencing to address there.",
+    "qa_evidence": [
+      "make doctor",
+      "to_regclass public.repositories = repositories",
+      "make check",
+      "npm --prefix web test -- repository-discussions-page.test.tsx (6/6)",
+      "repository_discussions_return_screen_ready_list_and_category_filters (1/1)"
+    ]
   },
   {
     "id": "discussions-002",

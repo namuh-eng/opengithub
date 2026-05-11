@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use pulldown_cmark::{html, Options, Parser};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -783,7 +784,17 @@ pub struct UpdateDiscussionCategoryRequest {
     pub emoji: Option<String>,
     pub description: Option<String>,
     pub format: Option<DiscussionCategoryFormat>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable_uuid")]
     pub section_id: Option<Option<Uuid>>,
+}
+
+fn deserialize_optional_nullable_uuid<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<Uuid>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<Uuid>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -946,7 +957,16 @@ pub async fn repository_discussions_for_actor_by_owner_name(
 
     let categories =
         load_discussion_categories(pool, &repository, selected_category.as_deref()).await?;
-    let labels = load_discussion_labels(pool, repository.id).await?;
+    let mut labels = load_discussion_labels(pool, repository.id).await?;
+    if let Some(selected_label) = filters.label.as_deref() {
+        labels.sort_by(|left, right| {
+            let left_selected = left.name == selected_label;
+            let right_selected = right.name == selected_label;
+            right_selected
+                .cmp(&left_selected)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+    }
     let items = if policy_enabled {
         load_discussion_rows(
             pool,
@@ -2222,7 +2242,14 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
     let events = load_discussion_detail_events(pool, discussion_id).await?;
     let participants = load_discussion_participants(pool, discussion_id).await?;
     let category_options = load_discussion_category_choices(pool, &repository).await?;
-    let label_options = load_discussion_labels(pool, repository.id).await?;
+    let mut label_options = load_discussion_labels(pool, repository.id).await?;
+    label_options.sort_by(|left, right| {
+        let left_selected = labels.iter().any(|label| label.id == left.id);
+        let right_selected = labels.iter().any(|label| label.id == right.id);
+        right_selected
+            .cmp(&left_selected)
+            .then_with(|| left.name.cmp(&right.name))
+    });
     let total_comments = count_top_level_discussion_comments(pool, discussion_id).await?;
     let subscription = load_discussion_subscription(pool, discussion_id, actor_user_id).await?;
     let form_answers = load_discussion_form_answer_views(pool, discussion_id).await?;
@@ -4472,8 +4499,11 @@ fn normalize_short_text(
 }
 
 fn discussion_body_view(markdown: String) -> DiscussionBodyView {
+    let parser = Parser::new_ext(&markdown, Options::all());
+    let mut rendered = String::new();
+    html::push_html(&mut rendered, parser);
     DiscussionBodyView {
-        html: ammonia::clean(&markdown),
+        html: ammonia::clean(&rendered),
         markdown,
     }
 }
@@ -5027,7 +5057,9 @@ async fn load_discussion_category_sections(
         LEFT JOIN discussion_categories
           ON discussion_categories.section_id = discussion_category_sections.id
         WHERE discussion_category_sections.repository_id = $1
-        GROUP BY discussion_category_sections.id
+        GROUP BY discussion_category_sections.id,
+                 discussion_category_sections.name,
+                 discussion_category_sections.position
         ORDER BY discussion_category_sections.position ASC, discussion_category_sections.name ASC
         "#,
     )
@@ -5073,7 +5105,9 @@ async fn load_discussion_category_admin_items(
           ON discussion_category_sections.id = discussion_categories.section_id
         LEFT JOIN discussions ON discussions.category_id = discussion_categories.id
         WHERE discussion_categories.repository_id = $1
-        GROUP BY discussion_categories.id, discussion_category_sections.name
+        GROUP BY discussion_categories.id,
+                 discussion_category_sections.name,
+                 discussion_category_sections.position
         ORDER BY COALESCE(discussion_category_sections.position, -1) ASC,
                  discussion_categories.position ASC,
                  discussion_categories.name ASC
@@ -6146,7 +6180,7 @@ async fn load_discussion_participants(
 ) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+        SELECT DISTINCT users.id AS author_id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
                users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
         FROM users
         JOIN discussion_comments ON discussion_comments.author_user_id = users.id
@@ -6525,7 +6559,12 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
     let select = if count_only {
         "COUNT(DISTINCT discussions.id)::bigint AS total".to_owned()
     } else {
-        format!("{DISCUSSION_ROW_SELECT} ORDER BY {order} OFFSET $6 LIMIT $7")
+        DISCUSSION_ROW_SELECT.to_owned()
+    };
+    let pagination = if count_only {
+        String::new()
+    } else {
+        format!("ORDER BY {order} OFFSET $6 LIMIT $7")
     };
     format!(
         r#"
@@ -6557,6 +6596,7 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
           {answered_clause}
           {locked_clause}
           {pinned_clause}
+          {pagination}
         "#
     )
 }

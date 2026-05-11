@@ -2474,10 +2474,27 @@
       "feature_id": "discussions-001",
       "description": "Render repository Discussions list with pinned discussions, category rail, searc",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Component coverage verifies list, pinned cards, category rail, filters, empty category CTA, and optimistic upvotes."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "DB-backed repository discussions list/category contract passed on localhost:55433."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Actor-scoped API access and signed-out upvote affordances covered."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Accessible links/buttons/headings and no dead controls covered in focused tests."
+        }
+      }
     },
     {
       "feature_id": "discussions-002",

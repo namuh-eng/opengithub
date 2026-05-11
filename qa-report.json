@@ -5383,5 +5383,87 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-001",
+    "attempt": 1,
+    "status": "pass",
+    "qa_pass": true,
+    "completed_at": "2026-05-11T18:15:00Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused component tests cover active tab, pinned rows, category rail, filters, empty states, and optimistic upvote/unvote."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/categories/{slug}"
+        ],
+        "notes": "DB-backed Rust contract passed."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "actor-scoped repository access",
+          "signed-out upvote affordance",
+          "sanitized Markdown rendering"
+        ],
+        "notes": "No auth bypass or raw Markdown rendering regression found in focused coverage."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "No dead controls and accessible names covered."
+      }
+    },
+    "tested_steps": [
+      "make doctor",
+      "to_regclass public.repositories = repositories",
+      "make check",
+      "npm --prefix web test -- repository-discussions-page.test.tsx: 6/6 passed",
+      "./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussions_return_screen_ready_list_and_category_filters -- --nocapture: 1/1 passed",
+      "Focused Playwright repository-discussions.spec.ts ran against real DB with no self-skip; issue conversion passed after SQL fix; full file later exposed non-001 discussions-004 modal sequencing."
+    ],
+    "bugs_found": [
+      {
+        "severity": "medium",
+        "phase": "api_contract",
+        "description": "Converted issue metadata selected nonexistent repositories.owner_login.",
+        "expected": "Build owner href through owner user/org join.",
+        "actual": "GET conversion metadata returned collaboration operation failed.",
+        "reproduction": "Seed issue and call convert-to-discussion metadata."
+      },
+      {
+        "severity": "medium",
+        "phase": "functional",
+        "description": "Stale E2E harness used raw seeding and ambiguous accessible locators.",
+        "expected": "Shared auth fixture and exact current Editorial UI locators.",
+        "actual": "Strict-mode/harness failures in current Playwright.",
+        "reproduction": "Run repository-discussions.spec.ts."
+      }
+    ],
+    "fix_description": "Fixed discussions SQL edge cases, rendered Markdown sanitization, issue conversion owner href lookup, and current E2E fixture/locator drift.",
+    "evidence": {
+      "base": "origin/main f9bde232",
+      "tests_passed": [
+        "make doctor",
+        "schema check",
+        "make check",
+        "Vitest 6/6",
+        "Rust DB contract 1/1"
+      ],
+      "known_gaps": [
+        "Full combined repository-discussions Playwright includes later feature lanes; latest full run reached a discussions-004 modal sequencing failure after discussions-001 assertions."
+      ],
+      "timestamp": "2026-05-11T18:15:00Z"
+    },
+    "known_gaps": [
+      "Combined multi-feature Playwright has non-001 admin/template sequencing remaining."
+    ],
+    "blockers": [],
+    "timestamp": "2026-05-11T18:15:00Z",
+    "controller_outcome": "QA_PASS discussions-001"
   }
 ]

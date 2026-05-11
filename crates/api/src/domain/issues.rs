@@ -2950,10 +2950,16 @@ async fn issue_converted_discussion(
 ) -> Result<Option<(i64, String)>, CollaborationError> {
     let row = sqlx::query(
         r#"
-        SELECT discussions.number, repositories.owner_login, repositories.name
+        SELECT discussions.number,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug) AS owner_login,
+               repositories.name
         FROM issues
         JOIN discussions ON discussions.id = issues.converted_discussion_id
         JOIN repositories ON repositories.id = discussions.repository_id
+        LEFT JOIN users owner_user
+          ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations
+          ON organizations.id = repositories.owner_organization_id
         WHERE issues.id = $1
         "#,
     )
