@@ -8380,14 +8380,14 @@
     "feature_id": "insights-001",
     "tests_written": [
       "QA pass verified repository_pulse_contract 1/1 against real test Postgres on localhost:55433 with no self-skip.",
-      "Focused RepositoryPulsePage Vitest passed 5/5 after formatting period bounds in UTC.",
-      "Focused Chromium repository-pulse Playwright passed 2/2, covering signed live page, period selector, metrics links, chart/table fallback, activity links, no dead controls, mobile no-overflow, and screenshots."
+      "Focused RepositoryPulsePage Vitest passed 5/5.",
+      "Focused Chromium repository-pulse Playwright passed 2/2 via the shared signed-in auth fixture, covering period selector/query state, metrics links, chart/table fallback, activity links, no dead controls, desktop/mobile no-overflow, and screenshots."
     ],
     "needs_deeper_qa": [
       "Run automated axe if/when the shared QA harness requires it; this lane covered accessibility via component assertions and Playwright semantic/no-dead-control/mobile checks.",
       "Stress larger repositories with many commits, releases, merged/closed issue/PR events, and sparse periods to verify chart/table density and query performance.",
       "Repeat with real OAuth sessions outside deterministic signed-cookie fixtures before production acceptance."
     ],
-    "created_at": "2026-05-09T20:05:00Z"
+    "created_at": "2026-05-11T07:22:00Z"
   }
 ]

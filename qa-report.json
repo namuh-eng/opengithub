@@ -4535,19 +4535,19 @@
   },
   {
     "feature_id": "insights-001",
-    "attempt": 2,
+    "attempt": 3,
     "status": "pass",
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "Fixed Pulse exact date range rendering to format API period boundaries in UTC, preventing May 1, 2026 UTC from displaying as Apr 30 in America/Los_Angeles. Focused RepositoryPulsePage Vitest passed 5/5, and focused Chromium Playwright verified the live Pulse page, period selector, overview metrics, concrete destination links, chart/table fallback, no dead controls, mobile no-overflow, and screenshot capture."
+        "notes": "Pulse page behavior re-verified on current origin/main: period selector updates query state, overview metrics and issue/PR links resolve to concrete destinations, top committers chart/table render, release/PR/issue activity links are live, and desktop/mobile screenshots are refreshed."
       },
       "api_contract": {
         "status": "pass",
         "endpoints_tested": [
           "GET /api/repos/{owner}/{repo}/pulse?period={24h|3d|1w|1m}"
         ],
-        "notes": "DB-backed repository_pulse_contract passed 1/1 against the required test Postgres on localhost:55433 with TEST_DATABASE_URL from .env.test; no self-skip."
+        "notes": "DB-backed repository_pulse_contract passed 1/1 against required localhost:55433 test Postgres with TEST_DATABASE_URL from .env.test; no self-skip."
       },
       "security": {
         "status": "pass",
@@ -4558,45 +4558,46 @@
           "data_exposure",
           "cache_metadata"
         ],
-        "notes": "repository_pulse_contract covers privacy/cache behavior against real Postgres, including private repository access/redaction paths and request validation; focused browser smoke used a signed session and concrete links without leaking internal storage/secrets."
+        "notes": "repository_pulse_contract covers private repository access/redaction, invalid period rejection, cache metadata, and no unauthorized Pulse data exposure."
       },
       "accessibility": {
         "status": "pass",
         "violations": [],
-        "notes": "Focused component tests and Chromium Playwright verify named controls, Insights navigation/menu semantics, accessible chart role plus table fallback, no dead anchors, mobile no-overflow, and keyboard-reachable links/buttons. Automated axe was not separately run for this lane."
+        "notes": "Focused component and Playwright coverage assert named controls, Insights navigation/menu semantics, accessible chart role plus table fallback, no dead anchors/buttons, and no horizontal overflow at desktop/mobile widths."
       }
     },
     "evidence": {
-      "timestamp": "2026-05-09T20:05:00Z",
+      "timestamp": "2026-05-11T07:25:00Z",
       "passed": [
-        "make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable inside container, .env/.env.test present, per-worktree Cargo target writable.",
+        "make doctor: container runtime reachable, postgres-test container up, .env.test present, per-worktree Cargo target writable.",
+        "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\" => repositories.",
         "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test repository_pulse_contract -- --nocapture => 1 passed, no self-skip.",
-        "cd web && npx vitest run tests/repository-pulse-page.test.tsx => 5 tests passed.",
-        "Started make dev with .env.test and Playwright env; ports 3015/3016 listened via Next/API.",
-        "set -a; . ./.env.test; cd web && npx playwright test tests/e2e/repository-pulse.spec.ts --project=chromium --timeout=120000 => 2 passed including live repository Pulse smoke.",
-        "Focused Playwright refreshed ralph/screenshots/build/insights-001-final-desktop.jpg and insights-001-final-mobile.jpg."
+        "cd web && npx vitest run tests/repository-pulse-page.test.tsx => 5 passed.",
+        "make check => Cargo check, Web typecheck, Clippy, Biome passed.",
+        "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-pulse.spec.ts --project=chromium --timeout=120000 => 2 passed, using shared auth fixture."
       ],
       "fixed": [
-        "RepositoryPulsePage date formatting now pins the display timezone to UTC so API UTC period bounds render stable calendar dates across local timezones."
+        "Converted repository-pulse Playwright spec from inline cargo seeding/cookie minting to the shared _fixtures/auth.ts signed-in fixture contract.",
+        "Added focused no-horizontal-overflow assertions and fixture screenshotPath screenshots for desktop/mobile Pulse proof."
       ],
       "known_unrelated_baseline_failures": [
-        "First Playwright attempt timed out after the webServer-managed make dev exited before page.goto; manual make dev startup with the same .env.test/Playwright env proved ports 3015/3016 healthy and the focused spec passed."
+        "Default Playwright browser cache lacked chromium_headless_shell; reran with committed config override PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome.",
+        "psql is not installed on host; schema check used the opengithub-postgres-test container psql fallback."
       ]
     },
     "tested_steps": [
-      "Rebased the local UTC date fix onto current origin/main ed26bb66, preserving newer QA artifact entries.",
-      "Verified local stack with make doctor.",
-      "Ran DB-backed Rust pulse contract against localhost:55433 with .env.test.",
-      "Ran focused Pulse component Vitest.",
-      "Ran focused Chromium Pulse Playwright smoke against live Next/API servers."
+      "Reset isolated Kanban worktree qa/insights-001-t_fc75d27f to current origin/main 333aa7d3, then rebased the QA commit onto that tip before final verification.",
+      "Verified local stack with make doctor and public.repositories via container psql.",
+      "Reviewed PRD, qa-hints, qa-report, Pulse API/page code, tests, and stale insights-001 branch evidence.",
+      "Ran DB-backed Rust pulse contract, focused Pulse component Vitest, make check, and focused Chromium Pulse Playwright against live Next/API servers."
     ],
     "bugs_found": [
       {
-        "description": "Pulse exact date range display used the browser local timezone for UTC API period boundaries, shifting dates one day earlier in negative-offset zones.",
-        "fix": "Set Intl.DateTimeFormat timeZone to UTC in RepositoryPulsePage formatDate."
+        "description": "Pulse E2E spec bypassed the shared signed-in Playwright fixture by invoking the Rust seeder and adding cookies inline, violating the current E2E contract and making future seeder changes brittle.",
+        "fix": "Import test/expect/signIn/seed/expectNoDeadControls/expectNoHorizontalOverflow/screenshotPath from _fixtures/auth.ts and request the treeRefs scene through seed({ scenes: [\"treeRefs\"] })."
       }
     ],
-    "fix_description": "Fixed Pulse UTC boundary date rendering and verified insights-001 with real DB contract, focused component tests, and focused browser E2E."
+    "fix_description": "Standardized the Pulse E2E on the shared auth fixture and re-verified insights-001 against real DB/API/component/browser coverage on current origin/main."
   },
   {
     "feature_id": "insights-002",
