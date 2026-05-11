@@ -5244,5 +5244,72 @@
       "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-code-scanning.spec.ts --reporter=line",
       "make check"
     ]
+  },
+  {
+    "feature_id": "code-security-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed Playwright covers published advisory list/filtering, maintainer-only draft visibility, detail rendering, metadata edits, draft creation, publish lifecycle, and mobile no-overflow/dead-control checks."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/security/advisories",
+          "GET /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}",
+          "PATCH /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}",
+          "POST /api/repos/{owner}/{repo}/security/advisories",
+          "POST /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}/publish"
+        ],
+        "notes": "Existing Rust/Next contracts plus focused E2E exercise signed-cookie proxy calls, validation, state changes, and returned DTOs for list/detail/edit/create/publish."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "draft_privacy",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Draft rows stay out of the published list until maintainer signs in; invalid CVSS/CWE/package/title paths remain covered by existing component/API tests; no raw HTML/dead href regressions found."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright asserts accessible button names, no dead controls, and no horizontal overflow on list/detail/create-publish flows."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy; .env missing only for live OAuth/AWS dev and not tests.",
+      "Verified DB schema via podman exec opengithub-postgres-test psql: to_regclass('public.repositories') returned repositories.",
+      "Freshly inspected PRD, qa-hints, qa-report, stale code-security-005 branches, current implementation, and local v3 worktree diffs on origin/main e0245d64.",
+      "Fixed severity styling/test data drift from medium to moderate and wired publish success state into the detail UI instead of leaving a stale local-only message.",
+      "Standardized the repository security advisories E2E spec onto tests/e2e/_fixtures/auth.ts, runPsql container fallback, screenshotPath, and no-horizontal-overflow checks; removed direct psql/seeder/cookie duplication.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran cd web && npm exec -- vitest run tests/repository-security-advisories-page.test.tsx: 7 tests passed.",
+      "Ran cd web && npm exec -- vitest run tests/api-docs.test.ts tests/navigation.test.ts: api-docs focused suite passed 3 tests; navigation path argument was absorbed by Vitest's configured resolution and did not run separately.",
+      "Ran DB-backed focused Playwright from web with .env.test, per-worktree CARGO_TARGET_DIR, and /usr/bin/google-chrome: repository-security-advisories.spec.ts passed 4/4 including setup, list filters/mobile, detail edit, and create/publish."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "description": "Advisory list/test fixtures used medium severity while the API accepts moderate, causing filtering/styling mismatch.",
+        "file": "web/src/components/RepositorySecurityAdvisoriesPage.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "Publish success updated detail state but did not expose a stable parent status notice for E2E/user feedback.",
+        "file": "web/src/components/RepositorySecurityAdvisoryDetailPage.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "Focused E2E duplicated raw seeder/psql/cookie plumbing and failed on machines without host psql instead of using the shared auth fixture fallback.",
+        "file": "web/tests/e2e/repository-security-advisories.spec.ts"
+      }
+    ],
+    "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
+    "timestamp": "2026-05-11T16:33:07.562349Z"
   }
 ]

@@ -295,7 +295,10 @@ function PublishPanel({
   onPublished,
 }: {
   detail: RepositorySecurityAdvisoryDetail;
-  onPublished: (next: RepositorySecurityAdvisoryDetail) => void;
+  onPublished: (
+    next: RepositorySecurityAdvisoryDetail,
+    message: string,
+  ) => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -333,8 +336,7 @@ function PublishPanel({
         return;
       }
       const next = (await response.json()) as RepositorySecurityAdvisoryDetail;
-      onPublished(next);
-      setMessage("Advisory published.");
+      onPublished(next, "Advisory published.");
     });
   };
 
@@ -389,6 +391,7 @@ function DetailReadyPage({
   repository: RepositoryOverview;
 }) {
   const [current, setCurrent] = useState(detail);
+  const [notice, setNotice] = useState<string | null>(null);
   const metricEntries = useMemo(
     () => Object.entries(current.advisory.cvss?.metrics ?? {}),
     [current.advisory.cvss],
@@ -437,6 +440,12 @@ function DetailReadyPage({
             ) : null}
           </div>
         </section>
+
+        {notice ? (
+          <p className="chip ok w-fit" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
           <article className="card overflow-hidden">
@@ -559,7 +568,13 @@ function DetailReadyPage({
           <AdvisoryEditor detail={current} onSaved={setCurrent} />
         ) : null}
         {current.viewer.canPublish ? (
-          <PublishPanel detail={current} onPublished={setCurrent} />
+          <PublishPanel
+            detail={current}
+            onPublished={(next, message) => {
+              setCurrent(next);
+              setNotice(message);
+            }}
+          />
         ) : null}
       </div>
     </RepositorySecurityShell>

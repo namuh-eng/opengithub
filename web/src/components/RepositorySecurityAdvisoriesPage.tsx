@@ -33,7 +33,7 @@ function formatDate(value: string | null) {
 
 function severityClass(severity: string) {
   if (severity === "critical" || severity === "high") return "chip err";
-  if (severity === "medium") return "chip warn";
+  if (severity === "moderate") return "chip warn";
   if (severity === "low") return "chip info";
   return "chip soft";
 }

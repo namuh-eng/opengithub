@@ -1,64 +1,32 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededDashboard = {
-  cookieName: string;
-  cookieValue: string;
-  treeRepositoryHref: string;
-};
+import type { Page, TestInfo } from "@playwright/test";
+import type { Fixtures } from "./_fixtures/auth";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  requireTestDatabase,
+  runPsql,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 function sqlLiteral(value: string) {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function seedDashboard(): SeededDashboard {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "0",
-        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
-        DASHBOARD_E2E_TREE_REFS: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededDashboard;
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function seedSecurityAdvisories(repositoryHref: string) {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
+  const databaseUrl = requireTestDatabase();
   const [, owner, repo] = repositoryHref.split("/");
   const decodedOwner = decodeURIComponent(owner);
   const decodedRepo = decodeURIComponent(repo);
   const suffix = decodedRepo.replace(/^tree-nav-/, "");
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(databaseUrl, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id, users.username AS author_login, users.avatar_url
         FROM repositories
@@ -154,7 +122,7 @@ function seedSecurityAdvisories(repositoryHref: string) {
       SELECT target_repo.id,
              'GHSA-advisory-${suffix}-two',
              'GHSA-advisory-${suffix}-two',
-             'medium',
+             'moderate',
              'published',
              'Long advisory title wraps across the Editorial list without overflow',
              'Long package metadata stays readable on mobile and desktop.',
@@ -203,43 +171,36 @@ function seedSecurityAdvisories(repositoryHref: string) {
                     status = EXCLUDED.status,
                     updated_at = now();
       `,
-    ],
-    { stdio: "ignore" },
-  );
-}
-
-async function signIn(page: Page, seeded: SeededDashboard) {
-  await page.context().addCookies([
-    {
-      domain: "localhost",
-      httpOnly: true,
-      name: seeded.cookieName,
-      path: "/",
-      sameSite: "Lax",
-      secure: false,
-      value: seeded.cookieValue,
-    },
   ]);
 }
 
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
+const seedTreeSecurityAdvisories = async (
+  seed: Fixtures["seed"],
+  signIn: Fixtures["signIn"],
+  page: Page,
+) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  expect(repositoryHref).toMatch(/^\/[\w.-]+\/[\w.-]+$/);
+  seedSecurityAdvisories(repositoryHref);
+  await signIn(page, seeded, "owner");
+  return repositoryHref;
+};
 
-test.skip(!databaseUrl, "repository advisory smoke needs a database URL");
+test.skip(
+  skipWithoutTestDb(),
+  "repository advisory smoke needs a database URL",
+);
 test.setTimeout(90_000);
 
 test("repository security advisories list filters, links, and mobile layout work", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityAdvisories(seeded.treeRepositoryHref);
-  await signIn(page, seeded);
+  seed,
+  signIn,
+}, testInfo: TestInfo) => {
+  const repositoryHref = await seedTreeSecurityAdvisories(seed, signIn, page);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/advisories`);
+  await page.goto(`${repositoryHref}/security/advisories`);
   await expect(
     page.getByRole("heading", { name: "Security advisories" }),
   ).toBeVisible();
@@ -250,10 +211,7 @@ test("repository security advisories list filters, links, and mobile layout work
   ).toHaveAttribute("aria-current", "page");
   await expect(
     page.getByRole("link", { name: "New draft security advisory" }),
-  ).toHaveAttribute(
-    "href",
-    `${seeded.treeRepositoryHref}/security/advisories/new`,
-  );
+  ).toHaveAttribute("href", `${repositoryHref}/security/advisories/new`);
   await expect(page.getByText("Token scope bypass")).toBeVisible();
   await expect(page.getByText("Private draft advisory")).not.toBeVisible();
   await expect(
@@ -268,6 +226,7 @@ test("repository security advisories list filters, links, and mobile layout work
   await expect(page).toHaveURL(/severity=high/);
   await expect(page.getByText("Token scope bypass")).toBeVisible();
 
+  await page.goto(`${repositoryHref}/security/advisories`);
   await page.getByRole("link", { name: /Draft 1/ }).click();
   await expect(page).toHaveURL(/state=draft/);
   await expect(page.getByText("Private draft advisory")).toBeVisible();
@@ -275,26 +234,27 @@ test("repository security advisories list filters, links, and mobile layout work
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-005-phase2-advisories-list.jpg",
+    path: screenshotPath(testInfo, "code-security-005-phase2-advisories-list"),
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${seeded.treeRepositoryHref}/security/advisories`);
+  await page.goto(`${repositoryHref}/security/advisories`);
   await expect(
     page.getByText("Long advisory title wraps across the Editorial list"),
   ).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
+  await expectNoHorizontalOverflow(page);
   await expectNoDeadControls(page);
 });
 
 test("repository security advisory detail renders and edits metadata", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityAdvisories(seeded.treeRepositoryHref);
-  await signIn(page, seeded);
+  seed,
+  signIn,
+}, testInfo: TestInfo) => {
+  const repositoryHref = await seedTreeSecurityAdvisories(seed, signIn, page);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/advisories`);
+  await page.goto(`${repositoryHref}/security/advisories`);
   await page.getByRole("link", { name: "View advisory" }).first().click();
   await expect(
     page.getByRole("heading", {
@@ -317,22 +277,24 @@ test("repository security advisory detail renders and edits metadata", async ({
   await expect(
     page.getByRole("heading", { name: "Edited advisory title" }),
   ).toBeVisible();
-  await expect(page.getByText("critical")).toBeVisible();
+  await expect(
+    page.locator("span.chip.err").filter({ hasText: "critical" }),
+  ).toBeVisible();
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-005-phase3-advisory-detail.jpg",
+    path: screenshotPath(testInfo, "code-security-005-phase3-advisory-detail"),
   });
 });
 
 test("repository security advisory draft creation and publish flow work", async ({
   page,
-}) => {
-  const seeded = seedDashboard();
-  seedSecurityAdvisories(seeded.treeRepositoryHref);
-  await signIn(page, seeded);
+  seed,
+  signIn,
+}, testInfo: TestInfo) => {
+  const repositoryHref = await seedTreeSecurityAdvisories(seed, signIn, page);
 
-  await page.goto(`${seeded.treeRepositoryHref}/security/advisories/new`);
+  await page.goto(`${repositoryHref}/security/advisories/new`);
   await expect(
     page.getByRole("heading", { name: "New draft security advisory" }),
   ).toBeVisible();
@@ -365,10 +327,12 @@ test("repository security advisory draft creation and publish flow work", async 
   ).toBeVisible();
   await page.getByRole("button", { name: "Publish advisory" }).click();
   await expect(page.getByText("Advisory published.")).toBeVisible();
-  await expect(page.getByText("published")).toBeVisible();
+  await expect(
+    page.locator("span.chip.soft").filter({ hasText: "published" }),
+  ).toBeVisible();
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-005-phase4-create-publish.jpg",
+    path: screenshotPath(testInfo, "code-security-005-phase4-create-publish"),
   });
 });
