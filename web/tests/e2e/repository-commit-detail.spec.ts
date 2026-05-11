@@ -1,55 +1,12 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededSession = {
-  cookieName: string;
-  cookieValue: string;
-  treeRepositoryHref?: string;
-};
-
-function seedSession(extraEnv: Record<string, string> = {}): SeededSession {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "1",
-        SESSION_COOKIE_NAME: "og_session",
-        ...extraEnv,
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededSession;
-}
-
-async function signIn(page: Page, seeded: SeededSession) {
-  await page.context().addCookies([
-    {
-      name: seeded.cookieName,
-      value: seeded.cookieValue,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: false,
-    },
-  ]);
-}
+import type { Page } from "@playwright/test";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 async function waitForApiHealth(page: Page) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -67,15 +24,8 @@ async function waitForApiHealth(page: Page) {
   throw new Error("Rust API did not become healthy for commit detail E2E");
 }
 
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
-
 test.skip(
-  !databaseUrl,
+  skipWithoutTestDb(),
   "repository commit detail E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
@@ -85,11 +35,13 @@ test.beforeEach(async ({ page }) => {
 
 test("signed-in commit detail renders summary controls and unified diff", async ({
   page,
-}) => {
-  const seeded = seedSession({ DASHBOARD_E2E_TREE_REFS: "1" });
-  await signIn(page, seeded);
-  expect(seeded.treeRepositoryHref).toBeTruthy();
-  const repositoryHref = seeded.treeRepositoryHref as string;
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  await signIn(page, seeded, "owner");
+  const repositoryHref = seeded.hrefs.treeRepository;
+  expect(repositoryHref).toBeTruthy();
 
   await page.goto(`${repositoryHref}/commits/main`);
   const commitLink = page.getByRole("link", { name: /Initial commit/ }).first();
@@ -122,6 +74,13 @@ test("signed-in commit detail renders summary controls and unified diff", async 
   ).toBeVisible();
   await expect(page.getByText(/files changed with/)).toBeVisible();
   await expect(page.locator("article.card[id^='diff-']").first()).toBeVisible();
+  await expect(page.getByLabel("Resize diff panes")).toHaveAttribute(
+    "type",
+    "range",
+  );
+  await page.getByLabel("Resize diff panes").fill("340");
+  await expect(page.getByLabel("Resize diff panes")).toHaveValue("340");
+
   const firstCodeLine = (
     (await page
       .locator("article.card[id^='diff-'] code")
@@ -148,6 +107,9 @@ test("signed-in commit detail renders summary controls and unified diff", async 
     .first()
     .click();
   await expect(page.locator("article.card[id^='diff-']").first()).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "More actions" }).first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Expand all lines" }).first().click();
   await expect(
     page.getByRole("button", { name: "Expanded" }).first(),
@@ -170,17 +132,14 @@ test("signed-in commit detail renders summary controls and unified diff", async 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/commits-002-final-expanded-context.jpg",
+    path: screenshotPath(testInfo, "commits-002-final-expanded-context"),
   });
 
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("body")).toBeVisible();
-  const horizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth + 2,
-  );
-  expect(horizontalOverflow).toBe(false);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/commits-002-final-mobile.jpg",
+    path: screenshotPath(testInfo, "commits-002-final-mobile"),
   });
 });

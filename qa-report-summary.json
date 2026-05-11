@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 72,
+    "features_passed": 73,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 67,
+      "pass": 68,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 63,
+      "pass": 64,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 64,
+      "pass": 65,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 29,
+      "pass": 30,
       "fail": 0,
       "skip": 39
     }
@@ -2166,10 +2166,40 @@
       "feature_id": "commits-002",
       "description": "Render commit detail with verification, parent links, checks, file tree, searcha",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Current origin/main refreshed to 81da8b29; commit detail page renders the PRD controls: repository shell, copy full SHA, browse/history links, author/time/status/verification metadata, parent/PR links, file tree, resizable diff pane, filter/search with highlights, per-file more menu, raw/view file links, expand-all context, and bounded binary/large placeholders. Focused Vitest and Chromium E2E passed without dead controls or mobile horizontal overflow."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/commits/{sha}",
+            "GET /api/repos/{owner}/{repo}/commits/{sha}/context?path=...&hunkId=..."
+          ],
+          "notes": "make doctor reported local verification stack healthy; DB schema verified with to_regclass('public.repositories') via opengithub-postgres-test. DB-backed repository_commit_detail_contract passed 1/1 against TEST_DATABASE_URL on localhost:55433, including commit visibility/SHA lookup, summary shape, context expansion, missing hunk error path, and recent_visits write."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "repository_visibility",
+            "sha_existence",
+            "private_data_redaction",
+            "safe_search_highlighting",
+            "concrete_destinations"
+          ],
+          "notes": "Contract coverage verifies private repository outsider denial/not-found behavior and no private data leakage. Component guardrails reject dead hrefs, placeholder handlers, dangerouslySetInnerHTML, Primer/Octicon imports, and banned GitHub visual tokens; code search uses React mark nodes rather than raw HTML injection."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component and Chromium E2E coverage verify accessible copy/filter/search/tree/more/resize/expand controls, file-tree focus behavior, status feedback, no dead controls, and no horizontal overflow at 390px."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "branches-001",

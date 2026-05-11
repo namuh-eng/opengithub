@@ -291,6 +291,8 @@ function RepositoryCommitDiffFile({
   ) => void;
   searchQuery: string;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <article
       aria-label={`Diff for ${file.path}${isActive ? " selected" : ""}`}
@@ -325,6 +327,51 @@ function RepositoryCommitDiffFile({
         <Link className="btn sm" href={file.viewHref}>
           View file
         </Link>
+        <div className="relative">
+          <button
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label="More actions"
+            className="btn ghost sm"
+            onClick={() => setMenuOpen((open) => !open)}
+            title={`More actions for ${file.path}`}
+            type="button"
+          >
+            More
+          </button>
+          {menuOpen ? (
+            <div
+              className="absolute right-0 z-10 mt-2 grid min-w-40 gap-1 rounded-[var(--radius)] border p-2 shadow-sm"
+              role="menu"
+              style={{
+                background: "var(--surface)",
+                borderColor: "var(--line)",
+              }}
+            >
+              <Link
+                className="btn ghost sm justify-start"
+                href={file.rawHref}
+                role="menuitem"
+              >
+                Open raw
+              </Link>
+              <Link
+                className="btn ghost sm justify-start"
+                href={file.viewHref}
+                role="menuitem"
+              >
+                Browse file
+              </Link>
+              <Link
+                className="btn ghost sm justify-start"
+                href={file.href}
+                role="menuitem"
+              >
+                Copy anchor
+              </Link>
+            </div>
+          ) : null}
+        </div>
       </div>
       {file.isBinary || file.isLarge ? (
         <div className="px-4 py-5">
@@ -506,6 +553,7 @@ export function RepositoryCommitDetailPage({
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
     detail.files[0]?.path ?? null,
   );
+  const [treePaneWidth, setTreePaneWidth] = useState(260);
   const [expandedHunks, setExpandedHunks] = useState<
     Record<string, RepositoryCommitDetailLine[]>
   >({});
@@ -710,7 +758,14 @@ export function RepositoryCommitDetailPage({
                 </p>
               ) : null}
             </section>
-            <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+            <div
+              className="grid gap-3 xl:grid-cols-[minmax(180px,var(--tree-pane-width))_18px_minmax(0,1fr)] xl:items-start"
+              style={
+                {
+                  "--tree-pane-width": `${treePaneWidth}px`,
+                } as React.CSSProperties
+              }
+            >
               <aside className="card h-fit p-2" aria-label="Changed file tree">
                 <div
                   className="border-b px-2 py-2 t-label"
@@ -733,6 +788,27 @@ export function RepositoryCommitDetailPage({
                   </p>
                 )}
               </aside>
+              <label
+                className="hidden h-full min-h-64 cursor-ew-resize items-center justify-center rounded-[var(--radius)] border t-label xl:flex"
+                style={{
+                  background: "var(--surface-2)",
+                  borderColor: "var(--line-soft)",
+                  color: "var(--ink-4)",
+                }}
+              >
+                <span className="sr-only">Resize diff panes</span>
+                <input
+                  aria-label="Resize diff panes"
+                  className="h-56 cursor-ew-resize accent-[var(--accent)] [writing-mode:vertical-lr]"
+                  max="380"
+                  min="180"
+                  onChange={(event) =>
+                    setTreePaneWidth(Number(event.currentTarget.value))
+                  }
+                  type="range"
+                  value={treePaneWidth}
+                />
+              </label>
               <div className="min-w-0 space-y-4">
                 {visibleFiles.length ? (
                   visibleFiles.map((file) => (

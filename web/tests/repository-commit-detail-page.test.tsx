@@ -528,6 +528,17 @@ describe("RepositoryCommitDetailPage", () => {
       screen.getByRole("button", { name: "Expand all lines" }),
     ).toBeEnabled();
     expect(
+      screen.getAllByRole("button", { name: "More actions" })[0],
+    ).toBeVisible();
+    expect(screen.getByLabelText("Resize diff panes")).toHaveAttribute(
+      "type",
+      "range",
+    );
+    fireEvent.change(screen.getByLabelText("Resize diff panes"), {
+      target: { value: "340" },
+    });
+    expect(screen.getByLabelText("Resize diff panes")).toHaveValue("340");
+    expect(
       screen.getByRole("article", {
         name: /Diff for crates\/api\/src\/routes\/repositories.rs/,
       }),

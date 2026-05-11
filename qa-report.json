@@ -4928,5 +4928,55 @@
       }
     ],
     "timestamp": "2026-05-11T13:54:41Z"
+  },
+  {
+    "feature_id": "commits-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Current origin/main refreshed to 81da8b29; commit detail page renders the PRD controls: repository shell, copy full SHA, browse/history links, author/time/status/verification metadata, parent/PR links, file tree, resizable diff pane, filter/search with highlights, per-file more menu, raw/view file links, expand-all context, and bounded binary/large placeholders. Focused Vitest and Chromium E2E passed without dead controls or mobile horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/commits/{sha}",
+          "GET /api/repos/{owner}/{repo}/commits/{sha}/context?path=...&hunkId=..."
+        ],
+        "notes": "make doctor reported local verification stack healthy; DB schema verified with to_regclass('public.repositories') via opengithub-postgres-test. DB-backed repository_commit_detail_contract passed 1/1 against TEST_DATABASE_URL on localhost:55433, including commit visibility/SHA lookup, summary shape, context expansion, missing hunk error path, and recent_visits write."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "repository_visibility",
+          "sha_existence",
+          "private_data_redaction",
+          "safe_search_highlighting",
+          "concrete_destinations"
+        ],
+        "notes": "Contract coverage verifies private repository outsider denial/not-found behavior and no private data leakage. Component guardrails reject dead hrefs, placeholder handlers, dangerouslySetInnerHTML, Primer/Octicon imports, and banned GitHub visual tokens; code search uses React mark nodes rather than raw HTML injection."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Chromium E2E coverage verify accessible copy/filter/search/tree/more/resize/expand controls, file-tree focus behavior, status feedback, no dead controls, and no horizontal overflow at 390px."
+      }
+    },
+    "tested_steps": [
+      "Fetched origin and reset the isolated worktree to current origin/main 81da8b29 before applying commits-002 fixes.",
+      "Ran make doctor: Podman reachable, opengithub-postgres-test up/reachable, .env.test present, Cargo target dir writable; only .env missing warning marked dev-only.",
+      "Verified DB schema using podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc select to_regclass('public.repositories'): repositories.",
+      "Ran npm --prefix web test -- repository-commit-detail-page.test.tsx: 9/9 passed.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_commit_detail_contract -- --nocapture: 1/1 passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome all passed.",
+      "Killed stale listeners on 3015/3016, then ran focused Chromium E2E with TEST_DATABASE_URL/DATABASE_URL and system Chrome: repository-commit-detail.spec.ts passed setup + signed-in commit detail test (2/2)."
+    ],
+    "bugs_found": [
+      "Commit detail diff UI lacked the PRD's draggable/resizable pane splitter affordance.",
+      "Per-file diff rows exposed Raw/View file actions but lacked the PRD's per-file more menu.",
+      "The focused signed-in E2E duplicated seeding/cookie helpers instead of using the shared auth fixture, which made it easier to self-skip or drift from real DB-backed auth."
+    ],
+    "fix_description": "Added an Editorial tokenized resizable file-tree/diff pane control and per-file More actions menu, standardized the signed-in E2E on the shared DB-backed auth fixture, and expanded component/E2E coverage for resize/menu behavior."
   }
 ]
