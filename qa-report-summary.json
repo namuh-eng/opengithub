@@ -15,22 +15,22 @@
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 71,
+      "pass": 73,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 67,
+      "pass": 69,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 68,
+      "pass": 70,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 33,
+      "pass": 35,
       "fail": 0,
       "skip": 39
     }
