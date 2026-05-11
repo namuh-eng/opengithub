@@ -4860,5 +4860,73 @@
     "blockers": [],
     "timestamp": "2026-05-09T23:37:00-07:00",
     "controller_outcome": "QA_PASS: fresh doctor/check/DB-contract/focused Chromium E2E evidence passed on localhost:55433; ready to merge to main."
+  },
+  {
+    "feature_id": "commits-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Current origin/main implementation renders authenticated repository commit history grouped by date, preserves branch/tag plus author/date filter state, exposes commit detail/status/tree links, handles empty date-filter result with Clear, and passes mobile overflow checks. Focused Playwright covered default history, branch/tag selector, author filter, date filter, link targets, dead controls, and screenshots."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /{owner}/{repo}/commits/{ref}",
+          "GET /{owner}/{repo}/refs",
+          "GET /api-backed commit history screen data via server-session"
+        ],
+        "notes": "DB-backed Rust contract repository_commit_history_contract passed against TEST_DATABASE_URL and validates grouped commits, resolved refs, author/until filtering, pull request metadata, status summaries, and recent visit writes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required_for_screen_data",
+          "private_data_not_exposed_by_contract",
+          "no_dead_links_or_placeholder_href"
+        ],
+        "notes": "Unauthenticated page path does not load history; DB-backed contract exercises authorized repository visibility and does not leak private data. UI dead-control scan found no href=\"#\" or missing href controls."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright asserts accessible names for visible buttons and verifies no horizontal overflow at 390px mobile viewport. Selector dialogs expose labels for branch/tag, author, and date filters."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local verification stack healthy; .env only missing for live OAuth/AWS dev, not tests.",
+      "Verified DB schema with podman exec opengithub-postgres-test psql: to_regclass('public.repositories') returned repositories.",
+      "Inspected prd.json commits-001, qa-report.json, RepositoryCommitHistoryPage, selector components, server route, and existing E2E coverage.",
+      "Fixed repository-commits Playwright spec to use the mandated shared _fixtures/auth.ts seed/signIn helpers instead of inline execFileSync cookie minting, and switched screenshots to screenshotPath().",
+      "Ran focused Playwright: PLAYWRIGHT_BROWSERS_PATH=/home/jaeyunha/.cache/ms-playwright npx playwright test tests/e2e/repository-commits.spec.ts --reporter=line; 4/4 passed including setup.",
+      "Ran DB-backed Rust contract: ./hack/cargo_locked.sh test -p opengithub-api --test repository_commit_history_contract -- --nocapture; 1/1 passed.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome all passed."
+    ],
+    "bugs_found": [],
+    "fix_description": "standardized commits-001 E2E on shared auth fixture and preserved product behavior; no product code change required",
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/commits-001-phase2-default-history.jpg",
+        "label": "default grouped commit history"
+      },
+      {
+        "path": "ralph/screenshots/build/commits-001-final-default-history.jpg",
+        "label": "final desktop default history"
+      },
+      {
+        "path": "ralph/screenshots/build/commits-001-final-mobile.jpg",
+        "label": "mobile commit history overflow check"
+      },
+      {
+        "path": "ralph/screenshots/build/commits-001-phase3-ref-selector.jpg",
+        "label": "branch/tag selector dialog"
+      },
+      {
+        "path": "ralph/screenshots/build/commits-001-phase4-filtered-history.jpg",
+        "label": "author/date filtered history"
+      }
+    ],
+    "timestamp": "2026-05-11T13:54:41Z"
   }
 ]
