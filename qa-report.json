@@ -5244,5 +5244,77 @@
       "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-code-scanning.spec.ts --reporter=line",
       "make check"
     ]
+  },
+  {
+    "feature_id": "code-security-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Secret scanning list/detail disabled-state browser smoke passed against the local test database with signed-in owner fixture. Verified provider filter, generic tab, detail navigation, redacted evidence, resolve/reopen, assignee update, validity update, mobile no-overflow, no plaintext secret display, and screenshot evidence."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/security/secret-scanning",
+          "GET /api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}",
+          "PATCH /api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}"
+        ],
+        "notes": "Focused Rust repository_secret_scanning_alerts_contract passed 2 DB-backed tests covering enabled/disabled settings, filters, private repository protection, list/detail shape, resolve/reopen/assignment/validity updates, committed-blob materialization, push-protection bypass metadata, timeline/audit/notification writes, and redaction/no plaintext leakage."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_repository_privacy",
+          "redaction",
+          "plaintext_secret_leakage",
+          "audit_event_redaction"
+        ],
+        "notes": "Rust contracts verified private repositories do not expose alert data to outsiders and responses/events store fingerprints/redacted snippets instead of plaintext secrets. Browser smoke asserted a seeded plaintext token never rendered."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright smoke checked visible controls have accessible names and desktop/mobile layouts have no horizontal overflow."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first; local verification stack healthy with podman Postgres test container and .env.test present.",
+      "Verified DB schema via podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\" => repositories.",
+      "Read PRD code-security-004, qa-hints history for phases 1-5, existing Secret scanning API/UI/tests, and current stale local test modifications from the reclaimed run.",
+      "Fixed focused Rust contract SQL assertion by comparing security_audit_events.target_id as text so the DB-backed redaction/update check runs cleanly against the current schema.",
+      "Updated repository-secret-scanning Playwright to use the shared signed-in auth fixture, test DB psql fallback, standardized screenshot paths, and no duplicated seeder/cookie helpers.",
+      "Ran focused Rust DB contracts: ./hack/cargo_locked.sh test -p opengithub-api --test repository_secret_scanning_alerts_contract -- --nocapture (2 passed).",
+      "Ran focused Vitest components: npx vitest run tests/repository-secret-scanning-alerts-page.test.tsx tests/repository-secret-scanning-alert-detail-page.test.tsx (7 passed).",
+      "Ran focused Playwright from web with .env.test and /usr/bin/google-chrome: npx playwright test tests/e2e/repository-secret-scanning.spec.ts --project=chromium (2 passed including setup).",
+      "Ran make check with .env.test and per-worktree CARGO_TARGET_DIR: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/code-security-004-phase2-alerts-list.jpg",
+        "label": "Secret scanning alerts list with filters and redacted rows"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-004-phase3-alert-detail.jpg",
+        "label": "Secret scanning alert detail with redacted evidence and timeline"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-004-phase4-push-protection.jpg",
+        "label": "Push-protection bypass section on alert detail"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-004-final-list.jpg",
+        "label": "Final list state after triage updates"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-004-final-mobile.jpg",
+        "label": "Mobile Secret scanning list without horizontal overflow"
+      }
+    ],
+    "bugs_found": [],
+    "fix_description": "No product behavior gap found on current origin/main; fixed stale QA test harness drift so DB-backed Rust and browser evidence run against the standard local test stack.",
+    "timestamp": "2026-05-11T16:23:54Z"
   }
 ]

@@ -510,7 +510,7 @@ async fn secret_scanning_alerts_redact_filter_and_protect_private_repositories()
             UNION ALL
             SELECT metadata AS payload FROM security_audit_events
             WHERE event_type = 'repository.secret_scanning_alert.update'
-              AND target_id = $2::text
+              AND target_id::text = $2::text
         ) events
         "#,
     )
