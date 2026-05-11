@@ -1524,9 +1524,7 @@ fn patch_text_required(
     Ok(normalized)
 }
 
-fn deserialize_patch_value<'de, D>(
-    deserializer: D,
-) -> Result<Option<serde_json::Value>, D::Error>
+fn deserialize_patch_value<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {

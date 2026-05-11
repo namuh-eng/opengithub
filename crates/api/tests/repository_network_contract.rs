@@ -116,9 +116,10 @@ async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String
 }
 
 async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
-    let mut builder = Request::builder()
-        .uri(uri)
-        .header("x-forwarded-for", format!("198.51.100.{}", 10 + uri.len() % 100));
+    let mut builder = Request::builder().uri(uri).header(
+        "x-forwarded-for",
+        format!("198.51.100.{}", 10 + uri.len() % 100),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }

@@ -255,13 +255,21 @@ pub struct PackageCapabilitySummary {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", tag = "action")]
 pub enum PackageSettingsMutation {
-    UpdateVisibility { visibility: String },
-    GrantAccess { username: String, role: String },
+    UpdateVisibility {
+        visibility: String,
+    },
+    GrantAccess {
+        username: String,
+        role: String,
+    },
     RevokeAccess {
         #[serde(rename = "userId")]
         user_id: Uuid,
     },
-    LinkRepository { owner: String, repo: String },
+    LinkRepository {
+        owner: String,
+        repo: String,
+    },
     UnlinkRepository {
         #[serde(rename = "repositoryId")]
         repository_id: Uuid,

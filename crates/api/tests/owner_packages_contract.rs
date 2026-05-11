@@ -386,8 +386,13 @@ async fn organization_packages_show_internal_to_members_only() {
     )
     .await;
 
-    let (status, _, public_body) =
-        get_json(app.clone(), &format!("/api/orgs/{marker}/packages"), None, &client_ip).await;
+    let (status, _, public_body) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/packages"),
+        None,
+        &client_ip,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{public_body}");
     assert_eq!(public_body["total"], 0);
 

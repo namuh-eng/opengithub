@@ -5383,5 +5383,100 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-001",
+    "attempt": 1,
+    "status": "pass",
+    "timestamp": "2026-05-11T22:12:07Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Repository Discussions list/category/search/filter/sort/upvote behavior passed with real local Postgres data through Rust API contracts, Vitest component coverage, and focused Playwright browser flow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/categories/{slug}",
+          "PUT /api/repos/{owner}/{repo}/discussions/{discussion_number}/vote",
+          "DELETE /api/repos/{owner}/{repo}/discussions/{discussion_number}/vote"
+        ],
+        "notes": "DB-backed repository_discussions_contract passed 7/7 tests covering list/category filters, labels, pinned cards, detail markdown/sidebar, vote/unvote, creation, moderation, category admin, privacy, and error behavior."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private_repository_privacy",
+          "auth_required_for_votes",
+          "sanitized_markdown",
+          "no_secret_error_envelopes"
+        ],
+        "notes": "Contracts verify outsider denial/private redaction and vote auth; discussion body now renders Markdown through sanitizer so script content is stripped while formatting is preserved."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright asserted no dead controls and no horizontal overflow for desktop and mobile discussions list/category states."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md and web/AGENTS.md design/testing rules before editing.",
+      "Ran make doctor; local verification stack was healthy.",
+      "Verified schema explicitly: podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -Atc \"select to_regclass('public.repositories');\" returned repositories.",
+      "Inspected prd.json discussions-001, qa-hints/report history, current Discussions API/UI/tests, and stale discussions branches as evidence.",
+      "Ran DB-backed Rust API contract: ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract -- --nocapture (7 passed, no self-skip).",
+      "Ran focused component test: cd web && npm test -- repository-discussions-page.test.tsx --run (6 passed).",
+      "Ran focused real Playwright flow: cd web && source ../.env.test && CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions-001.spec.ts --reporter=line (2 passed including setup).",
+      "Ran required make check with .env.test and per-worktree CARGO_TARGET_DIR: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran Editorial banned-token scan across web/src outside token CSS: no GitHub/Primer/Octicon hits."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Discussion list SQL placed ORDER BY before FROM for row queries, causing DB-backed list/category endpoints to return 500 instead of screen-ready data.",
+        "file": "crates/api/src/domain/discussions.rs"
+      },
+      {
+        "severity": "major",
+        "description": "Discussion detail participant loading omitted the author_id alias and raw body rendering sanitized Markdown text without converting Markdown first, breaking detail/sidebar contract and formatted content.",
+        "file": "crates/api/src/domain/discussions.rs"
+      },
+      {
+        "severity": "major",
+        "description": "Discussion category settings queries omitted grouped section position columns and update requests could not distinguish explicit sectionId:null from an absent field, preventing section clearing.",
+        "file": "crates/api/src/domain/discussions.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "Selected labels were not prioritized in list/detail label option ordering, so URL-backed label filters did not surface the active filter first.",
+        "file": "crates/api/src/domain/discussions.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "Discussions Playwright seeding duplicated direct cargo/psql plumbing and failed on hosts without psql or expression-index ON CONFLICT support in seed SQL.",
+        "file": "web/tests/e2e/repository-discussions.spec.ts"
+      }
+    ],
+    "fix_description": "Fixed Discussions DB query generation, detail Markdown/participant/category settings behavior, active label ordering, and standardized/added DB-backed Playwright coverage for discussions-001 list/category/search/filter/sort/upvote behavior.",
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/discussions-001-final-desktop.jpg",
+        "label": "Final desktop Discussions list/category flow"
+      },
+      {
+        "path": "ralph/screenshots/build/discussions-001-final-mobile.jpg",
+        "label": "Final mobile Discussions list without horizontal overflow"
+      }
+    ],
+    "verification_commands": [
+      "make doctor",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -Atc \"select to_regclass('public.repositories');\"",
+      "set -a; . ./.env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract -- --nocapture",
+      "cd web && npm test -- repository-discussions-page.test.tsx --run",
+      "cd web && set -a; . ../.env.test; set +a; export CARGO_TARGET_DIR=\"$(pwd)/../.scratch/cargo-target\" PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome; npx playwright test tests/e2e/repository-discussions-001.spec.ts --reporter=line",
+      "set -a; . ./.env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "rg -n --glob 'web/src/**' --glob '!web/src/app/og.css' --glob '!web/src/app/og-themes.css' -e '#0969da|#1f883d|#cf222e|Primer|Octicon|octicon' . || true"
+    ]
   }
 ]
