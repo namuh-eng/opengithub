@@ -4600,66 +4600,50 @@
   },
   {
     "feature_id": "insights-002",
-    "attempt": 2,
-    "status": "passed",
+    "attempt": 3,
+    "status": "pass",
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "Fresh controller verification passed contributors component Vitest and focused Chromium E2E with real localhost:55433 test DB."
+        "notes": "Fresh visible-lane verification passed the contributors component render tests and focused Chromium E2E against the real localhost:55433 test DB. The E2E exercised the contributors route, period menu, range sliders, data table toggle/export/copy controls, contributor/profile/commit-history drilldowns, Insights navigation, screenshots, and mobile no-overflow assertion."
       },
       "api_contract": {
         "status": "pass",
         "endpoints_tested": [
           "GET /api/repos/{owner}/{repo}/graphs/contributors"
         ],
-        "notes": "DB-backed Rust repository_contributors_contract passed against TEST_DATABASE_URL localhost:55433, covering analytics payload, private repo gating, and cache headers."
+        "notes": "DB-backed Rust repository_contributors_contract passed against TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test without self-skip, covering default-branch analytics, merge/empty commit exclusion, privacy, invalid queries, threshold omission, and cache persistence."
       },
       "security": {
         "status": "pass",
         "checks": [
-          "authenticated route/privacy contract",
-          "make check Clippy/Biome/typecheck",
-          "Editorial banned-token hygiene via changed UI review"
+          "auth/privacy contract",
+          "invalid query handling",
+          "no dead controls",
+          "make check Clippy/Biome/typecheck"
         ],
-        "notes": "No auth bypass or data exposure regression found in the focused DB contract/E2E path."
+        "notes": "Focused API contract preserved repository visibility gating and error handling; make check passed Clippy/Biome/typecheck. No new security issues found for insights-002."
       },
       "accessibility": {
         "status": "pass",
         "violations": [],
-        "notes": "Focused Chromium E2E passed dead-control and horizontal-overflow assertions on the contributors analytics flow."
+        "notes": "Component and E2E assertions covered named chart regions, data-table caption, concrete links, no dead controls, and mobile horizontal-overflow guard."
       }
     },
     "tested_steps": [
-      "Recovery branch origin/qa-opengithub-insights-002-mainqa-20260509 e28ec5f9 was not ancestor of origin/main 675df7b4; salvaged changes were staged on recovery/insights-002-mainqa.",
-      "make doctor passed: podman runtime reachable, opengithub-postgres-test up, Postgres reachable, .env.test/.env present, per-worktree Cargo target writable.",
-      "make check passed: Cargo check, web typecheck, Clippy, and Biome all green.",
-      "cd web && npm test -- --run repository-contributors-page.test.tsx passed 1 file / 6 tests.",
-      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_contributors_contract -- --nocapture passed 1/1 against localhost:55433 without self-skip.",
-      "Focused Playwright initially exposed real harness issues: missing Playwright browser binary and no host psql. Verification used /usr/bin/google-chrome via a temporary local config and fixed the shared auth fixture to fall back to docker exec psql for the committed localhost:55433 test DB.",
-      "cd web && npx playwright test repository-contributors.spec.ts --project=chromium --reporter=list --config=playwright.local-chrome.config.ts passed setup + Chromium contributors flow, 2/2 in 12.0s."
+      "After rebasing onto current origin/main, git rev-parse HEAD origin/main confirmed qa/insights-002-visible at 333aa7d33fb4681b88f62e6c40491a05870b3f69 matching origin/main before the QA evidence commit.",
+      "make doctor passed: podman reachable, opengithub-postgres-test up, .env/.env.test present, per-worktree Cargo target writable.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\" returned repositories (host psql is not installed).",
+      "make check passed: Cargo check, web typecheck, Clippy, and Biome green.",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_contributors_contract -- --nocapture passed 1/1.",
+      "cd web && npx vitest run tests/repository-contributors-page.test.tsx passed 1 file / 6 tests.",
+      "After rebase, cd web && TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test npx playwright test tests/e2e/repository-contributors.spec.ts --project=chromium --reporter=line passed setup + Chromium contributors flow, 2/2 in 10.6s with this worktree's make dev server."
     ],
-    "bugs_found": [
-      {
-        "severity": "major",
-        "phase": "functional",
-        "description": "Contributor weekly bucket dates rendered through the local timezone, shifting UTC midnight API buckets to the previous day in Pacific time.",
-        "expected": "Weekly bucket labels display API bucket dates consistently, e.g. May 1, 2026 through May 7, 2026.",
-        "actual": "Focused Vitest could not find the expected May 1 date range before the UTC formatting fix.",
-        "reproduction": "Run cd web && npm test -- --run repository-contributors-page.test.tsx in a non-UTC timezone before the fix."
-      },
-      {
-        "severity": "minor",
-        "phase": "functional",
-        "description": "The repository-contributors Playwright spec bypassed the shared signed-in E2E fixture and assumed host psql existed.",
-        "expected": "Signed-in specs use _fixtures/auth, and DB setup works on the standard podman-backed localhost:55433 test DB even when psql is only inside the container.",
-        "actual": "The spec duplicated seeding/sign-in and failed with spawnSync psql ENOENT during recovery verification.",
-        "reproduction": "Run the focused spec on the standard controller host without host psql before the fixture fallback fix."
-      }
-    ],
-    "fix_description": "Fixed contributors UTC date formatting, moved contributors E2E onto the shared auth fixture, and made that fixture seed contributor file changes through host psql or docker exec fallback for the standard test DB.",
+    "bugs_found": [],
+    "fix_description": "No product code changes were required in this fresh visible lane; current origin/main implementation satisfies insights-002. Updated PRD/QA evidence only.",
     "blockers": [],
-    "timestamp": "2026-05-10T05:11:19Z",
-    "controller_outcome": "QA_PASS: fresh doctor/check/component/DB-contract/focused Chromium E2E evidence passed on localhost:55433; ready to merge to main."
+    "timestamp": "2026-05-11T14:14:00Z",
+    "controller_outcome": "QA_PASS: fresh visible-lane doctor/check/component/DB-contract/focused Chromium E2E evidence passed on localhost:55433; ready for controller inspection."
   },
   {
     "feature_id": "insights-003",
