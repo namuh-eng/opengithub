@@ -26,8 +26,8 @@ pub async fn connect(database_url: &str) -> Result<DbPool> {
 
 pub fn test_pool_options() -> PgPoolOptions {
     PgPoolOptions::new()
-        .max_connections(2)
-        .acquire_timeout(Duration::from_secs(5))
+        .max_connections(8)
+        .acquire_timeout(Duration::from_secs(30))
 }
 
 fn max_connections() -> u32 {

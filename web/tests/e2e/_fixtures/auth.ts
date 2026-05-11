@@ -117,6 +117,7 @@ const runSeeder = (spec: SeedSpec): RawSeedOutput => {
   );
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
     SESSION_COOKIE_NAME: "og_session",
     ...sceneEnv,
   };

@@ -452,7 +452,7 @@ async fn code_scanning_alerts_filter_detail_and_protect_private_repositories() {
     let audit_payloads = sqlx::query_scalar::<_, Value>(
         "SELECT metadata FROM security_audit_events WHERE event_type = 'repository.code_scanning_alert.update' AND target_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
-    .bind(repository.id.to_string())
+    .bind(repository.id)
     .fetch_one(&pool)
     .await
     .expect("audit event should persist");

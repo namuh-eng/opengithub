@@ -5131,5 +5131,65 @@
     "blockers": [],
     "timestamp": "2026-05-11T15:17:10Z",
     "controller_outcome": "QA_PASS: current origin/main repository Security overview/policy behavior passed fresh doctor/schema/check/DB-contract/system-Chrome Playwright evidence on localhost:55433."
+  },
+  {
+    "feature_id": "code-security-003",
+    "attempt": 1,
+    "status": "pass",
+    "timestamp": "2026-05-11T15:53:36Z",
+    "tested_steps": [
+      "Verified current origin/main worktree after make doctor and schema check: to_regclass('public.repositories') returned repositories.",
+      "Exercised DB-backed Rust contract repository_code_scanning_alerts_contract with TEST_DATABASE_URL: enabled/disabled list/detail, privacy, filters, mutations, SARIF ingestion, audit/notification paths passed without self-skip.",
+      "Exercised focused component/API-doc tests: repository-code-scanning-alerts-page, repository-code-scanning-alert-detail-page, and api-docs Vitest suites passed (10 tests).",
+      "Exercised focused real Playwright flow for /{owner}/{repo}/security/code-scanning: seeded DB alerts via shared auth fixture, list filters, row navigation, detail triage mutations, linked issue creation, real SARIF upload, disabled state redaction, desktop/mobile screenshots, and no-dead-controls/no-overflow assertions passed.",
+      "Ran full make check after fixes: Cargo check, web typecheck, Clippy, and Biome passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "The focused Code scanning E2E had drifted from the standardized signed auth fixture and tried direct cargo/psql paths, causing migration reruns and local psql dependency failures instead of real browser coverage.",
+        "expected": "The spec uses the shared auth fixture, skips seeder migrations against the pre-migrated test DB, uses the container psql fallback, and records stable screenshot evidence.",
+        "actual": "Before this QA fix, the lane failed on a dirty migration rerun and depended on host psql/direct seed plumbing.",
+        "file": "web/tests/e2e/repository-code-scanning.spec.ts"
+      },
+      {
+        "severity": "minor",
+        "description": "Focused Rust contract audit assertion bound the repository id as text while the query compares against the persisted UUID target_id.",
+        "expected": "Bind repository.id as UUID so the audit-event verification exercises the real row.",
+        "actual": "The stale assertion bound repository.id.to_string().",
+        "file": "crates/api/tests/repository_code_scanning_alerts_contract.rs"
+      }
+    ],
+    "fix_description": "Standardized Code scanning Playwright coverage on the shared auth fixture with DB fallback and migration-skip seeding, added no-overflow assertions and stable screenshot paths, increased test pool tolerance, fixed UUID audit binding, and verified code-security-003 end-to-end.",
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/code-security-003-phase2-alerts-list.jpg",
+        "label": "Code scanning alert list with filters and rows"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-003-phase3-alert-detail.jpg",
+        "label": "Alert detail triage controls and linked issue action"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-003-phase4-sarif-upload-status.jpg",
+        "label": "List after real SARIF upload showing updated tool version"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-003-final-list.jpg",
+        "label": "Final desktop Code scanning list"
+      },
+      {
+        "path": "ralph/screenshots/build/code-security-003-final-mobile.jpg",
+        "label": "Final mobile Code scanning list"
+      }
+    ],
+    "verification_commands": [
+      "make doctor",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\"",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_code_scanning_alerts_contract -- --nocapture",
+      "npm --prefix web test -- repository-code-scanning-alerts-page repository-code-scanning-alert-detail-page api-docs",
+      "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-code-scanning.spec.ts --reporter=line",
+      "make check"
+    ]
   }
 ]
