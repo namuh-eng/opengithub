@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { repositoryPulseHref } from "@/lib/navigation";
 
@@ -76,7 +75,7 @@ export function RepositoryPulsePeriodSelector({
           {PERIODS.map((period) => {
             const selected = period.key === active.key;
             return (
-              <Link
+              <a
                 aria-current={selected ? "page" : undefined}
                 className={`btn sm ghost justify-start ${selected ? "active" : ""}`}
                 href={repositoryPulseHref(owner, repo, {
@@ -93,7 +92,7 @@ export function RepositoryPulsePeriodSelector({
                 {selected ? (
                   <span className="chip active ml-auto">Selected</span>
                 ) : null}
-              </Link>
+              </a>
             );
           })}
         </div>
