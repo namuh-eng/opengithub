@@ -24,6 +24,7 @@ function formatDate(value: string | null | undefined) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
     year: "numeric",
   }).format(date);
 }

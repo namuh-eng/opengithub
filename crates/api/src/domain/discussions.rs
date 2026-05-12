@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use pulldown_cmark::{html, Options, Parser};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -783,7 +784,26 @@ pub struct UpdateDiscussionCategoryRequest {
     pub emoji: Option<String>,
     pub description: Option<String>,
     pub format: Option<DiscussionCategoryFormat>,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid_patch")]
     pub section_id: Option<Option<Uuid>>,
+}
+
+fn deserialize_optional_uuid_patch<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<Uuid>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(Value::Null) => Ok(Some(None)),
+        Some(Value::String(raw)) => Uuid::parse_str(&raw)
+            .map(|id| Some(Some(id)))
+            .map_err(de::Error::custom),
+        Some(other) => Err(de::Error::custom(format!(
+            "expected UUID string or null for sectionId, got {other}"
+        ))),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2222,7 +2242,7 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
     let events = load_discussion_detail_events(pool, discussion_id).await?;
     let participants = load_discussion_participants(pool, discussion_id).await?;
     let category_options = load_discussion_category_choices(pool, &repository).await?;
-    let label_options = load_discussion_labels(pool, repository.id).await?;
+    let label_options = load_discussion_label_options(pool, repository.id, discussion_id).await?;
     let total_comments = count_top_level_discussion_comments(pool, discussion_id).await?;
     let subscription = load_discussion_subscription(pool, discussion_id, actor_user_id).await?;
     let form_answers = load_discussion_form_answer_views(pool, discussion_id).await?;
@@ -4472,8 +4492,11 @@ fn normalize_short_text(
 }
 
 fn discussion_body_view(markdown: String) -> DiscussionBodyView {
+    let parser = Parser::new_ext(&markdown, Options::all());
+    let mut raw_html = String::new();
+    html::push_html(&mut raw_html, parser);
     DiscussionBodyView {
-        html: ammonia::clean(&markdown),
+        html: ammonia::clean(&raw_html),
         markdown,
     }
 }
@@ -5073,7 +5096,7 @@ async fn load_discussion_category_admin_items(
           ON discussion_category_sections.id = discussion_categories.section_id
         LEFT JOIN discussions ON discussions.category_id = discussion_categories.id
         WHERE discussion_categories.repository_id = $1
-        GROUP BY discussion_categories.id, discussion_category_sections.name
+        GROUP BY discussion_categories.id, discussion_category_sections.name, discussion_category_sections.position
         ORDER BY COALESCE(discussion_category_sections.position, -1) ASC,
                  discussion_categories.position ASC,
                  discussion_categories.name ASC
@@ -5888,6 +5911,44 @@ async fn load_discussion_labels(
         .collect()
 }
 
+async fn load_discussion_label_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+    discussion_id: Uuid,
+) -> Result<Vec<DiscussionLabelSummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT labels.id, labels.name, labels.color, labels.description,
+               COUNT(all_discussion_labels.discussion_id)::bigint AS count,
+               active_discussion_labels.discussion_id IS NOT NULL AS active
+        FROM labels
+        LEFT JOIN discussion_labels all_discussion_labels
+          ON all_discussion_labels.label_id = labels.id
+        LEFT JOIN discussion_labels active_discussion_labels
+          ON active_discussion_labels.label_id = labels.id
+         AND active_discussion_labels.discussion_id = $2
+        WHERE labels.repository_id = $1
+        GROUP BY labels.id, active_discussion_labels.discussion_id
+        ORDER BY active DESC, labels.name ASC
+        "#,
+    )
+    .bind(repository_id)
+    .bind(discussion_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(DiscussionLabelSummary {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                color: row.try_get("color")?,
+                description: row.try_get("description")?,
+                count: row.try_get("count")?,
+            })
+        })
+        .collect()
+}
+
 async fn load_discussion_labels_for_discussion(
     pool: &PgPool,
     discussion_id: Uuid,
@@ -6146,7 +6207,8 @@ async fn load_discussion_participants(
 ) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+        SELECT DISTINCT users.id AS author_id,
+               COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
                users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
         FROM users
         JOIN discussion_comments ON discussion_comments.author_user_id = users.id

@@ -6,9 +6,13 @@ type ProfileContributionGraphProps = {
   summary: ProfileContributionSummary;
 };
 
-const MONTH_LABELS = new Intl.DateTimeFormat("en", { month: "short" });
+const MONTH_LABELS = new Intl.DateTimeFormat("en", {
+  month: "short",
+  timeZone: "UTC",
+});
 const DAY_LABELS = new Intl.DateTimeFormat("en", {
   day: "numeric",
+  timeZone: "UTC",
   month: "long",
   year: "numeric",
 });

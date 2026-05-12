@@ -5383,5 +5383,62 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused discussion creation/list/issue-conversion behavior is green: repository-discussions.spec.ts passed 4/4 using .env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome. Broad make test is now green after fixing deterministic UTC date formatting regressions in unrelated web suites."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/{number}",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/pin",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/lock",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/category",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/metadata",
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/discussions/categories and sections"
+        ],
+        "notes": "Full Rust repository_discussions_contract suite passed 7/7 against postgresql://opengithub:opengithub@localhost:55433/opengithub_test after fixing category settings SQL grouping, category null-section updates, Markdown HTML rendering, participant aliases, active label option ordering, and issue conversion owner lookup."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "reader category admin forbidden",
+          "private discussion outsider forbidden",
+          "moderation permission denial",
+          "locked reaction denial",
+          "no test-session-secret leakage in checked error responses"
+        ],
+        "notes": "Discussion-specific authorization and data-exposure checks are covered by the green Rust contract suite; broad make test and make check also passed."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright used role/label-based interactions and expectNoDeadControls passed on discussion list, creation, and detail flows."
+      }
+    },
+    "evidence": [
+      "make doctor: Local verification stack is healthy",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc \"select to_regclass('public.repositories');\": repositories",
+      "Focused failing date suites after UTC fix: cd web && npx vitest run tests/dashboard-onboarding.test.tsx tests/project-workspace-page.test.tsx tests/repository-wiki-page.test.tsx tests/repository-actions-workflow.test.tsx tests/user-profile-repositories.test.tsx tests/user-profile-page.test.tsx tests/social-list-page.test.tsx tests/user-profile-contributions.test.tsx: 8 files passed, 58 tests passed",
+      "./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract: 7 passed",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright npx playwright test tests/e2e/repository-discussions.spec.ts: 4 passed",
+      "make check: Cargo check, web typecheck, Clippy, and Biome passed",
+      "make test: Cargo tests passed; web tests passed (664 passed)"
+    ],
+    "known_gaps": [],
+    "fix_description": "Salvaged the discussions creation contract fixes and focused E2E assertions from 40ae3a07, then pinned affected UI date formatting to UTC so deterministic fixtures render consistently across local timezones.",
+    "timestamp": "2026-05-12T18:05:00Z",
+    "bugs_found": [
+      "Discussion creation contract regressions from the prior QA lane were still valid on origin/main and were salvaged.",
+      "Timezone-sensitive web date formatting rendered UTC fixture dates one day early under America/Los_Angeles, causing 8 broad Vitest suites to fail."
+    ]
   }
 ]

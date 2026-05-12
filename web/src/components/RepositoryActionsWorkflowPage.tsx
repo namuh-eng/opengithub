@@ -128,6 +128,7 @@ function dateTimeLabel(value: string | null | undefined) {
   return timestamp.toLocaleString("en", {
     day: "numeric",
     hour: "numeric",
+    timeZone: "UTC",
     minute: "2-digit",
     month: "short",
     year: "numeric",
