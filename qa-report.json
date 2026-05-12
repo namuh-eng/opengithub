@@ -5440,5 +5440,90 @@
       "Discussion creation contract regressions from the prior QA lane were still valid on origin/main and were salvaged.",
       "Timezone-sensitive web date formatting rendered UTC fixture dates one day early under America/Los_Angeles, causing 8 broad Vitest suites to fail."
     ]
+  },
+  {
+    "feature_id": "discussions-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Discussion detail page renders title/status, answer summary, Markdown body, form answers, poll, timeline comments, nested replies, sort links, upvote control, subscription controls, sidebar labels/participants/events, and moderator controls. Focused React and Playwright scenarios passed against real app/DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/{number}",
+          "POST /api/repos/{owner}/{repo}/discussions/{number}/comments",
+          "POST /api/repos/{owner}/{repo}/discussions/{number}/comments/{commentId}/replies",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/answer",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/vote",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/reactions",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/comments/{commentId}/reactions",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/subscription",
+          "PUT /api/repos/{owner}/{repo}/discussions/{number}/state",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/metadata",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/category",
+          "PUT/PATCH/DELETE /api/repos/{owner}/{repo}/discussions/{number}/pin",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/lock"
+        ],
+        "notes": "Rust repository_discussions_contract passed 7/7 against the fixed test database, covering detail read shape, timeline/replies, answer metadata, poll votes, moderation, permissions, and no secret leakage."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private repository outsider forbidden",
+          "anonymous poll vote unauthorized",
+          "reader cannot mark answer/moderate",
+          "invalid sort validation",
+          "locked vote/reaction validation",
+          "no test-session-secret leakage"
+        ],
+        "notes": "Discussion-specific auth, permission, validation, and data-exposure paths are covered by the green Rust contract suite; focused Playwright also ran signed-in through the shared fixture."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright coverage uses role/label-based interactions for answer links, sort navigation, upvote/subscription buttons, label/sidebar controls, and expectNoDeadControls on the detail flow."
+      }
+    },
+    "evidence": [
+      "make doctor: Local verification stack is healthy.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -Atc \"select to_regclass('public.repositories'), to_regclass('public.discussions'), to_regclass('public.discussion_comments'), to_regclass('public.discussion_answers');\": repositories|discussions|discussion_comments|discussion_answers; replies are represented by discussion_comments.parent_comment_id in the migrated schema.",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract -- --nocapture: 7 passed, 0 failed.",
+      "cd web && npm test -- repository-discussion-detail-page.test.tsx: 14 passed, 0 failed.",
+      "cd web && TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test repository-discussions.spec.ts --grep \"repository discussions list filters\" --project=chromium: 2 passed including setup and discussion detail assertions.",
+      "make check && make test: Cargo check passed; Web typecheck passed; Clippy passed; Biome passed; Cargo tests passed; Web tests passed (666 passed)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "description": "Discussion detail header exposed only a static vote count, so authenticated readers could not upvote/unupvote from the detail page despite the API existing.",
+        "file": "web/src/components/RepositoryDiscussionDetailPage.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "Answer-enabled open discussions did not distinguish the Unanswered state in the detail status chip.",
+        "file": "web/src/components/RepositoryDiscussionDetailPage.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "The discussion detail E2E seed asserted list behavior only and did not seed/verify answer pointers, nested replies, subscription, or detail upvote behavior.",
+        "file": "web/tests/e2e/repository-discussions.spec.ts"
+      },
+      {
+        "severity": "minor",
+        "description": "Broad category-settings deletion test asserted before the async UI refresh settled, exposing a deterministic state-update timing issue during full Vitest.",
+        "file": "web/tests/repository-discussion-category-settings-page.test.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "Biome broad check flagged reduced-motion !important declarations without explicit lint rationale.",
+        "file": "web/src/app/globals.css"
+      }
+    ],
+    "fix_description": "Added discussion detail upvote/unupvote behavior, Unanswered status rendering for answer-enabled discussions, focused component tests for upvote/subscription/status states, DB-backed Playwright detail assertions for answer card/timeline/replies/sidebar/upvote/subscription, and stabilized broad lint/test blockers without weakening product assertions.",
+    "known_gaps": [],
+    "timestamp": "2026-05-12T19:05:00Z"
   }
 ]

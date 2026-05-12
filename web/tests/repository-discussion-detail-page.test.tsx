@@ -379,6 +379,106 @@ describe("RepositoryDiscussionDetailPage", () => {
     expect(screen.getAllByText("imports").length).toBeGreaterThan(0);
   });
 
+  it("toggles detail upvotes and notification subscriptions", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          discussionId: "discussion-1",
+          discussionNumber: 42,
+          viewerVoted: false,
+          votesCount: 11,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          state: "ignored",
+          reason: "manual",
+          subscribed: false,
+          canChange: true,
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail({
+          subscription: {
+            state: "subscribed",
+            reason: "manual",
+            subscribed: true,
+            canChange: true,
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Remove upvote 12/ }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/vote",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+    expect(await screen.findByText("Upvote removed.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /Upvote 11/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/subscription",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+    expect(await screen.findByText("Unsubscribed.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Subscribe" })).toBeVisible();
+  });
+
+  it("distinguishes unanswered answer-enabled discussions from closed discussions", () => {
+    const unanswered = discussionDetail({
+      answer: null,
+      discussion: {
+        ...discussionDetail().discussion,
+        answered: false,
+      },
+      timeline: discussionDetail().timeline.map((item) =>
+        item.kind === "comment" ? { ...item, answer: false } : item,
+      ),
+    });
+    const { unmount } = render(
+      <RepositoryDiscussionDetailPage
+        detail={unanswered}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getAllByText("Unanswered").length).toBeGreaterThan(0);
+
+    unmount();
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail({
+          answer: null,
+          discussion: {
+            ...discussionDetail().discussion,
+            answered: false,
+            state: "closed",
+          },
+          timeline: unanswered.timeline,
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getAllByText("Closed").length).toBeGreaterThan(0);
+  });
+
   it("submits poll votes and refreshes result bars", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
