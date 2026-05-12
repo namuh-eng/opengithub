@@ -5383,5 +5383,65 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused discussions-002 functional verification passed (chooser -> YAML form -> markdown preview -> submit -> persisted discussion/comment/form answers/subscription/activity/notification rows), but the latest broad make test gate failed in the web Vitest suite. Per QA recovery instruction, prd.json remains qa_pass=false until the broad gate is green or the external failures are resolved."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/new",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "POST /{owner}/{repo}/discussions/new/create",
+          "POST /markdown/preview"
+        ],
+        "notes": "Existing Rust contract test exercises creation metadata, required acknowledgement validation, YAML form answer persistence, attachment metadata, poll validation/persistence, subscriptions, activity, and notifications. Next create route validates malformed/missing payload fields before proxying to the Rust API."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth required through signed test session",
+          "server-side required field validation",
+          "sanitized markdown preview",
+          "bounded attachment metadata"
+        ],
+        "notes": "Focused tests used real authenticated sessions and .env.test database; preview renders through sanitizer without creating a discussion; create payload validation rejects missing category/title/acknowledgement and Rust contract covers invalid poll/form combinations."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and E2E assertions covered accessible headings, form labels, toolbar role, tab controls, named buttons/links, and expectNoDeadControls on the creation flow."
+      }
+    },
+    "tested_steps": [
+      "make doctor: Local verification stack healthy; postgres-test reachable on localhost:55433; .env.test present; CARGO_TARGET_DIR=.scratch/cargo-target writable.",
+      "Inspected discussions creation routes/components/tests: chooser page, new form page, create route, RepositoryDiscussionCategoryChooser, RepositoryDiscussionCreatePage, Rust create_repository_discussion_by_owner_name, existing unit/E2E/contract tests.",
+      "Added focused Playwright coverage in web/tests/e2e/repository-discussions.spec.ts for /discussions/new/choose -> /discussions/new?category=q-a -> preview -> submit using a real seeded repo and test DB assertions.",
+      "cd web && npm run test -- repository-discussion-create-page.test.tsx: 1 file passed, 10 tests passed.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture: passed against test DB.",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts -g \"repository discussion creation chooser submits\" --project=chromium: 2 passed including setup.",
+      "make check: Cargo check, web typecheck, clippy, and Biome passed.",
+      "make test: Cargo tests passed; web Vitest failed with 8 failures across unrelated dashboard/profile/wiki/actions/social tests (dashboard-onboarding.test.tsx, project-workspace-page.test.tsx, repository-wiki-page.test.tsx, repository-actions-workflow.test.tsx, user-profile-repositories.test.tsx, user-profile-page.test.tsx, social-list-page.test.tsx, user-profile-contributions.test.tsx). Example failure: dashboard-onboarding expected \"Updated Apr 30\" while rendered output showed \"Updated Apr 29\"; user-profile-repositories expected \"Starred May 2, 2026\" while rendered output showed \"Starred May 1, 2026\". These files/components were not modified by this branch, whose code change is limited to web/tests/e2e/repository-discussions.spec.ts plus QA artifacts."
+    ],
+    "bugs_found": [],
+    "fix_description": "Added DB-backed focused E2E coverage for the discussions-002 creation path, but left PRD qa_pass=false because the broad make test gate is red outside this feature scope.",
+    "known_gaps": [
+      {
+        "command": "make test",
+        "status": "failed",
+        "blocking": true,
+        "evidence": "Full command output ended with: Test Files 8 failed | 101 passed (109), Tests 8 failed | 656 passed (664), make: *** [Makefile:77: test] Error 1. Failures were in dashboard/profile/wiki/actions/social Vitest tests, not discussions creation tests.",
+        "scope_assessment": "Unrelated/pre-existing relative-date/text expectation drift: this branch changed only the discussions E2E spec and QA metadata, not the failed component test fixtures or rendered components.",
+        "needed_action": "Fix or rebaseline the unrelated broad web Vitest failures, then rerun CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check && CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make test before setting discussions-002 qa_pass true."
+      }
+    ],
+    "qa_pass": false,
+    "blocked_reason": "Broad required gate make test is red in this worktree, so discussions-002 cannot be marked qa_pass even though focused discussions-002 gates passed."
   }
 ]

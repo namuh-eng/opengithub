@@ -281,7 +281,74 @@ function seedDiscussions(repositoryHref: string) {
              1
       FROM target_repo
       ON CONFLICT DO NOTHING;
+
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      reviewer AS (
+        SELECT id
+        FROM users
+        WHERE display_name = 'Profile Action Viewer'
+          AND username LIKE 'profile-viewer-%'
+        ORDER BY created_at DESC
+        LIMIT 1
+      )
+      INSERT INTO repository_permissions (repository_id, user_id, role, source)
+      SELECT target_repo.id, reviewer.id, 'write', 'direct'
+      FROM target_repo, reviewer
+      ON CONFLICT (repository_id, user_id)
+      DO UPDATE SET role = EXCLUDED.role;
       `);
+}
+
+function querySqlValue(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+
+  try {
+    return execFileSync(
+      "psql",
+      [databaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+      {
+        encoding: "utf8",
+      },
+    ).trim();
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const parsed = new URL(databaseUrl);
+  const runtime = existsSync("/usr/bin/podman") ? "podman" : "docker";
+  return execFileSync(
+    runtime,
+    [
+      "exec",
+      "-e",
+      `PGPASSWORD=${decodeURIComponent(parsed.password)}`,
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      decodeURIComponent(parsed.username),
+      "-d",
+      decodeURIComponent(parsed.pathname.slice(1)),
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-At",
+      "-c",
+      sql,
+    ],
+    { encoding: "utf8" },
+  ).trim();
 }
 
 function seedConvertibleIssue(repositoryHref: string): number {
@@ -453,5 +520,96 @@ test("repository issue converts into a discussion from the issue sidebar", async
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg",
   });
+  await expectNoDeadControls(page);
+});
+
+test("repository discussion creation chooser submits a YAML form discussion", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Q&A", exact: true }),
+  ).toBeVisible();
+  const qaCard = page
+    .getByRole("heading", { name: "Q&A", exact: true })
+    .locator("xpath=ancestor::article[1]");
+  await expect(qaCard.getByText("Answers enabled")).toBeVisible();
+  await qaCard.getByRole("link", { name: "Get started" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await expect(page.getByRole("heading", { name: /Q&A/ })).toBeVisible();
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Choose a different category" }),
+  ).toHaveAttribute("href", `${repositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeDisabled();
+
+  await page.getByLabel("Title *").fill("How should discussion search work?");
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute(
+    "href",
+    /\/discussions\?q=is%3Aopen\+How\+should\+discussion\+search\+work%3F$/,
+  );
+  await page.getByLabel("Context *").fill("Users need saved search examples.");
+  await page.getByLabel("Area").selectOption("UI");
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("We should document `is:answered` examples before launch.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("is:answered")).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  const discussionNumber = page.url().match(/\/discussions\/(\d+)$/)?.[1];
+  expect(discussionNumber).toBeTruthy();
+  await expect(
+    page.getByRole("link", { name: "1 unread notifications" }),
+  ).toBeVisible();
+
+  const persistedCounts = querySqlValue(`
+    WITH target AS (
+      SELECT discussions.id
+      FROM discussions
+      JOIN repositories ON repositories.id = discussions.repository_id
+      LEFT JOIN users ON users.id = repositories.owner_user_id
+      LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+      WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(repositoryHref.split("/")[1])}
+        AND repositories.name = ${sqlLiteral(repositoryHref.split("/")[2])}
+        AND discussions.number = ${discussionNumber}
+      LIMIT 1
+    )
+    SELECT concat_ws(
+      ',',
+      (SELECT COUNT(*) FROM discussion_comments WHERE discussion_id = target.id),
+      (SELECT COUNT(*) FROM discussion_form_answers WHERE discussion_id = target.id),
+      (SELECT COUNT(*) FROM discussion_subscriptions WHERE discussion_id = target.id AND state = 'subscribed'),
+      (SELECT COUNT(*) FROM discussion_activity_events WHERE discussion_id = target.id AND event_type = 'created'),
+      (SELECT COUNT(*) FROM notifications WHERE subject_type = 'discussion' AND subject_id = target.id AND reason = 'discussion_created')
+    )
+    FROM target;
+  `);
+  expect(persistedCounts).toBe("1,2,1,1,1");
   await expectNoDeadControls(page);
 });
