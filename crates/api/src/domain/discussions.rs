@@ -4974,7 +4974,7 @@ async fn load_discussion_category_choices(
         r#"
         SELECT discussion_categories.id, discussion_categories.slug, discussion_categories.name,
                discussion_categories.emoji, discussion_categories.description,
-               discussion_categories.accepts_answers,
+               discussion_categories.accepts_answers, discussion_categories.format,
                COUNT(discussions.id)::bigint AS count,
                COUNT(discussions.id) FILTER (WHERE discussions.state = 'open')::bigint AS open_count
         FROM discussion_categories
@@ -5000,7 +5000,9 @@ async fn load_discussion_category_choices(
                     "/{}/{}/discussions/categories/{}",
                     repository.owner_login, repository.name, slug
                 ),
-                is_poll: slug == "polls" || slug == "poll",
+                is_poll: DiscussionCategoryFormat::try_from(
+                    row.try_get::<String, _>("format")?.as_str(),
+                )? == DiscussionCategoryFormat::Poll,
                 slug,
                 name: row.try_get("name")?,
                 emoji: row.try_get("emoji")?,
@@ -6146,7 +6148,7 @@ async fn load_discussion_participants(
 ) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+        SELECT DISTINCT users.id AS author_id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
                users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
         FROM users
         JOIN discussion_comments ON discussion_comments.author_user_id = users.id

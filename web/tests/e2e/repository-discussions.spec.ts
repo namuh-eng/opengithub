@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -14,16 +13,17 @@ function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function runSql(sql: string) {
+function runSqlOutput(sql: string) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
 
   try {
-    execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-      stdio: "ignore",
-    });
-    return;
+    return execFileSync(
+      "psql",
+      [databaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql],
+      { encoding: "utf8" },
+    );
   } catch (error) {
     const nodeError = error as NodeJS.ErrnoException;
     if (nodeError.code !== "ENOENT") {
@@ -33,7 +33,7 @@ function runSql(sql: string) {
 
   const parsed = new URL(databaseUrl);
   const runtime = existsSync("/usr/bin/podman") ? "podman" : "docker";
-  execFileSync(
+  return execFileSync(
     runtime,
     [
       "exec",
@@ -47,11 +47,87 @@ function runSql(sql: string) {
       decodeURIComponent(parsed.pathname.slice(1)),
       "-v",
       "ON_ERROR_STOP=1",
+      "-At",
+      "-F",
+      "\t",
       "-c",
       sql,
     ],
-    { stdio: "ignore" },
+    { encoding: "utf8" },
   );
+}
+
+function runSql(sql: string) {
+  runSqlOutput(sql);
+}
+
+function queryDiscussionCreationEvidence(title: string) {
+  const output = runSqlOutput(`
+      SELECT discussions.id, discussions.number, discussions.title,
+             COUNT(DISTINCT discussion_comments.id)::int AS comment_count,
+             COUNT(DISTINCT discussion_form_answers.id)::int AS answer_count,
+             COUNT(DISTINCT discussion_subscriptions.user_id)::int AS subscription_count,
+             COUNT(DISTINCT notifications.id)::int AS notification_count,
+             COUNT(DISTINCT discussion_activity_events.id)::int AS activity_count
+      FROM discussions
+      LEFT JOIN discussion_comments
+        ON discussion_comments.discussion_id = discussions.id
+      LEFT JOIN discussion_form_answers
+        ON discussion_form_answers.discussion_id = discussions.id
+      LEFT JOIN discussion_subscriptions
+        ON discussion_subscriptions.discussion_id = discussions.id
+       AND discussion_subscriptions.state = 'subscribed'
+      LEFT JOIN notifications
+        ON notifications.subject_type = 'discussion'
+       AND notifications.subject_id = discussions.id
+       AND notifications.reason = 'discussion_created'
+      LEFT JOIN discussion_activity_events
+        ON discussion_activity_events.discussion_id = discussions.id
+       AND discussion_activity_events.event_type = 'created'
+      WHERE discussions.title = ${sqlLiteral(title)}
+      GROUP BY discussions.id, discussions.number, discussions.title
+      ORDER BY discussions.created_at DESC
+      LIMIT 1;
+      `).trim();
+  if (!output) return null;
+  const [
+    id,
+    number,
+    discussionTitle,
+    comments,
+    answers,
+    subscriptions,
+    notifications,
+    activity,
+  ] = output.split("\t");
+  return {
+    id,
+    number: Number(number),
+    title: discussionTitle,
+    comments: Number(comments),
+    answers: Number(answers),
+    subscriptions: Number(subscriptions),
+    notifications: Number(notifications),
+    activity: Number(activity),
+  };
+}
+
+function queryPollCreationEvidence(title: string) {
+  const output = runSqlOutput(`
+      SELECT COUNT(DISTINCT discussion_polls.id)::int,
+             COUNT(DISTINCT discussion_poll_options.id)::int,
+             bool_or(discussion_polls.allows_multiple)::text
+      FROM discussions
+      JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
+      JOIN discussion_poll_options ON discussion_poll_options.poll_id = discussion_polls.id
+      WHERE discussions.title = ${sqlLiteral(title)};
+      `).trim();
+  const [polls, options, allowsMultiple] = output.split("\t");
+  return {
+    polls: Number(polls),
+    options: Number(options),
+    allowsMultiple: allowsMultiple === "true",
+  };
 }
 
 async function expectApiSessionReady(cookieName: string, cookieValue: string) {
@@ -129,15 +205,17 @@ function seedDiscussions(repositoryHref: string) {
       ),
       polls AS (
         INSERT INTO discussion_categories (
-          repository_id, slug, name, emoji, description, position
+          repository_id, slug, name, emoji, description, position, accepts_answers, format
         )
         SELECT target_repo.id, 'polls', 'Polls', '📊',
-               'Collect structured feedback.', 4
+               'Collect structured feedback.', 4, false, 'poll'
         FROM target_repo
         ON CONFLICT (repository_id, slug)
         DO UPDATE SET name = EXCLUDED.name,
                       emoji = EXCLUDED.emoji,
-                      description = EXCLUDED.description
+                      description = EXCLUDED.description,
+                      accepts_answers = false,
+                      format = 'poll'
         RETURNING id, repository_id
       ),
       label_one AS (
@@ -281,6 +359,27 @@ function seedDiscussions(repositoryHref: string) {
              1
       FROM target_repo
       ON CONFLICT DO NOTHING;
+
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      maintainer AS (
+        SELECT users.id
+        FROM users
+        WHERE users.username = ${sqlLiteral(`profile-viewer-${suffix}`)}
+        LIMIT 1
+      )
+      INSERT INTO repository_permissions (repository_id, user_id, role, source)
+      SELECT target_repo.id, maintainer.id, 'write', 'direct'
+      FROM target_repo, maintainer
+      ON CONFLICT (repository_id, user_id)
+      DO UPDATE SET role = EXCLUDED.role, source = EXCLUDED.source;
       `);
 }
 
@@ -291,7 +390,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
   const [, owner, repo] = repositoryHref.split("/");
   const decodedOwner = decodeURIComponent(owner);
   const decodedRepo = decodeURIComponent(repo);
-  const issueNumber = 970 + Math.floor(Math.random() * 20);
+  const issueNumber = 970_000 + Math.floor(Date.now() % 1_000_000);
 
   runSql(`
       WITH target_repo AS (
@@ -320,6 +419,11 @@ function seedConvertibleIssue(repositoryHref: string): number {
                       converted_to_discussion_at = NULL,
                       converted_to_discussion_by_user_id = NULL
         RETURNING id, repository_id, author_user_id
+      ),
+      reset_comments AS (
+        DELETE FROM comments
+        USING issue
+        WHERE comments.issue_id = issue.id
       )
       INSERT INTO comments (repository_id, issue_id, author_user_id, body)
       SELECT issue.repository_id,
@@ -441,6 +545,9 @@ test("repository issue converts into a discussion from the issue sidebar", async
   ).toBeVisible();
   await page.getByRole("button", { name: "Convert to discussion" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Discussion category")).toBeEnabled({
+    timeout: 15_000,
+  });
   await expect(page.getByText(/1 issue comments will be copied/)).toBeVisible();
   await page.getByLabel("Discussion category").selectOption("general");
   await page.getByRole("button", { name: "Convert issue" }).click();
@@ -454,4 +561,154 @@ test("repository issue converts into a discussion from the issue sidebar", async
     path: "../ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg",
   });
   await expectNoDeadControls(page);
+});
+
+test("repository discussion creation flow renders chooser, validates form, previews markdown, and persists discussion rows", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  const title = `Discussion create E2E ${Date.now()}`;
+  await page.goto(`${repositoryHref}/discussions/new`);
+  await expect(page).toHaveURL(/\/discussions\/new\/choose$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  const qaCard = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Q&A" }) });
+  await expect(qaCard.getByText("Answers enabled")).toBeVisible();
+  await expect(
+    page
+      .locator("article")
+      .filter({ has: page.getByRole("heading", { name: "Polls" }) })
+      .getByText("Poll", { exact: true }),
+  ).toBeVisible();
+
+  await qaCard.getByRole("link", { name: "Get started" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await expect(page.getByRole("heading", { name: /🙏 Q&A/ })).toBeVisible();
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await expect(page.getByLabel("Context *")).toBeVisible();
+  await expect(page.getByLabel("Area")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Discussion body" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Attachments")).toBeAttached();
+  await expect(
+    page.getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    }),
+  ).toBeVisible();
+
+  await page.getByLabel("Title *").fill(title);
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute(
+    "href",
+    new RegExp(`/discussions\\?q=is%3Aopen\\+${title.replaceAll(" ", "\\+")}`),
+  );
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeDisabled();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByText("Similar-search acknowledgement is required."),
+  ).toBeVisible();
+
+  await page
+    .getByLabel("Context *")
+    .fill("Users need examples before adopting this feature.");
+  await page.getByLabel("Area").selectOption("API");
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("**Preview this** before creating anything.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("Preview this")).toBeVisible();
+  expect(queryDiscussionCreationEvidence(title)).toBeNull();
+
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(
+    page.getByText("Users need examples before adopting this feature."),
+  ).toBeVisible();
+
+  const evidence = queryDiscussionCreationEvidence(title);
+  expect(evidence).toMatchObject({
+    title,
+    comments: 1,
+    answers: 2,
+    subscriptions: 1,
+    activity: 1,
+  });
+  expect(evidence?.notifications).toBeGreaterThanOrEqual(1);
+  await expectNoDeadControls(page);
+});
+
+test("repository discussion poll category creates poll options instead of form answers", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  const title = `Poll create E2E ${Date.now()}`;
+  await page.goto(`${repositoryHref}/discussions/new?category=polls`);
+  await expect(page.getByRole("heading", { name: /📊 Polls/ })).toBeVisible();
+  await expect(page.getByText("Poll", { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel("Question *")).toBeVisible();
+  await expect(page.getByLabel("Poll option 1")).toBeVisible();
+  await expect(page.getByText("Category form")).toHaveCount(0);
+
+  await page.getByLabel("Title *").fill(title);
+  await page
+    .getByLabel("Question *")
+    .fill("Which roadmap item should ship first?");
+  await page.getByLabel("Poll option 1").fill("Discussion forms");
+  await page.getByLabel("Poll option 2").fill("Poll analytics");
+  await page
+    .getByRole("checkbox", {
+      name: /Allow voters to choose more than one option/i,
+    })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+  expect(queryPollCreationEvidence(title)).toEqual({
+    polls: 1,
+    options: 2,
+    allowsMultiple: true,
+  });
 });

@@ -1701,7 +1701,13 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true,
+    "qa_evidence": {
+      "doctor": "make doctor passed; schema verified discussions/discussion_comments/discussion_categories with to_regclass",
+      "focused": "vitest repository-discussion-create-page 10 passed; cargo repository_discussion_creation_returns_forms_and_persists_normal_discussion passed; Playwright repository discussion creation flow and poll category focused scenarios passed; full repository-discussions spec relevant discussions-002 scenarios passed",
+      "gates": "make check passed; TZ=UTC make test passed (cargo tests, web tests 664 passed)",
+      "note": "Plain make test without TZ exposed unrelated date-sensitive web expectations; rerun with TZ=UTC passed the same suite."
+    }
   },
   {
     "id": "discussions-003",

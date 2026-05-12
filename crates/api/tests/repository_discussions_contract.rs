@@ -7,6 +7,9 @@ use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::{
+        discussions::{
+            repository_discussion_detail_for_actor_by_owner_name, RepositoryDiscussionDetailQuery,
+        },
         identity::{upsert_session, upsert_user_by_email, User},
         permissions::RepositoryRole,
         repositories::{
@@ -991,8 +994,8 @@ async fn repository_discussion_creation_returns_forms_and_persists_normal_discus
     .expect("ideas category should insert");
     let polls_id: Uuid = sqlx::query_scalar(
         r#"
-        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers)
-        VALUES ($1, 'polls', 'Polls', '📊', 'Vote on options.', 2, false)
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers, format)
+        VALUES ($1, 'polls', 'Polls', '📊', 'Vote on options.', 2, false, 'poll')
         RETURNING id
         "#,
     )
@@ -1297,6 +1300,47 @@ body:
     .await
     .expect("poll options should count");
     assert_eq!(poll_option_count, 3);
+
+    let poll_number = poll_body["discussionNumber"]
+        .as_i64()
+        .expect("poll number should exist");
+    let direct_poll_detail = repository_discussion_detail_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        owner_login,
+        &repository.name,
+        poll_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+    .expect("poll detail domain should load")
+    .expect("poll detail should exist");
+    assert_eq!(
+        direct_poll_detail.discussion.title,
+        "Choose a default branch policy"
+    );
+    let (poll_detail_status, poll_detail_body) = get_json(
+        app.clone(),
+        &format!("{base}/{poll_number}"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(poll_detail_status, StatusCode::OK, "{poll_detail_body}");
+    assert_eq!(
+        poll_detail_body["discussion"]["title"],
+        "Choose a default branch policy"
+    );
+    assert_eq!(
+        poll_detail_body["poll"]["options"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
 }
 
 fn app_config() -> AppConfig {

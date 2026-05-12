@@ -5383,5 +5383,64 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified category chooser, YAML category form, markdown preview without creation, required similar-search acknowledgement, create redirect/detail, DB discussion/comment/form answer/subscription/notification/activity writes, and poll option path using focused Playwright backed by real test Postgres."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/new",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/{number}"
+        ],
+        "notes": "Rust contract test covers creation metadata, missing acknowledgement validation, form answers, normal discussion writes, poll validation/creation, and poll detail load."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required_by_existing route/domain coverage",
+          "permission_denied for reader create",
+          "sanitized template/preview content"
+        ],
+        "notes": "Contract test verifies reader cannot create and template script content is not reflected; create route requires authenticated cookie path and similar-search acknowledgement."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright exercised accessible roles/labels for chooser cards, category fields, markdown tabs, body textbox, attachment input, acknowledgement checkbox, and poll controls; expectNoDeadControls passed on created discussion detail."
+      }
+    },
+    "tested_steps": [
+      "make doctor",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -c \"select to_regclass('public.discussions'), to_regclass('public.discussion_comments'), to_regclass('public.discussion_categories');\"",
+      "cd web && npx vitest run tests/repository-discussion-create-page.test.tsx (10 passed)",
+      "./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture (1 passed)",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts -g \"repository discussion creation flow|repository discussion poll category\" --project=chromium (3 passed incl setup)",
+      "make check (cargo check, web typecheck, clippy, biome passed)",
+      "TZ=UTC make test (cargo tests passed; web tests 664 passed)"
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Discussion category choices treated slug poll/polls as poll regardless of category format, allowing malformed poll categories and detail inconsistencies."
+      },
+      {
+        "severity": "major",
+        "description": "Discussion detail participant loader selected users.id without author_id alias, causing created poll detail loads to fail with Sqlx ColumnNotFound(author_id)."
+      },
+      {
+        "severity": "minor",
+        "description": "Repository discussions E2E seed marked poll fixture categories with default question_and_answer format and no write maintainer for notification evidence."
+      }
+    ],
+    "fix_description": "Poll category detection now uses discussion_categories.format; discussion participant rows alias users.id as author_id; discussions E2E seed creates a real poll category and maintainer permission; added end-to-end creation and poll Playwright coverage with DB evidence.",
+    "timestamp": "2026-05-12T04:00:00Z"
   }
 ]
