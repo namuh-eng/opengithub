@@ -243,7 +243,7 @@ function seedDiscussions(repositoryHref: string) {
       INSERT INTO discussion_pins (discussion_id, pinned_by_user_id, position)
       SELECT discussion_one.id, target_repo.author_user_id, 1
       FROM discussion_one, target_repo
-      ON CONFLICT (discussion_id)
+      ON CONFLICT (discussion_id) WHERE pin_scope = 'global'
       DO UPDATE SET position = EXCLUDED.position;
 
       WITH target_repo AS (
@@ -344,6 +344,90 @@ async function expectNoDeadControls(page: Page) {
   await expect(page.locator('a[href="#"]')).toHaveCount(0);
   await expect(page.locator("button:not([type])")).toHaveCount(0);
 }
+
+test("discussions-001 list acceptance works", async ({ page }) => {
+  const seeded = seedDashboard();
+  seedDiscussions(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/discussions`);
+  await expect(
+    page.getByRole("heading", { name: "Discussions" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Discussions" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByLabel("discussion-query")).toHaveValue("is:open");
+  await expect(
+    page.getByRole("region", { name: "Pinned discussions" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /repository import previews/i }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Most helpful")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Code of conduct" }),
+  ).toHaveAttribute("href", /\/community\/code-of-conduct$/);
+  await expect(
+    page.getByRole("link", { name: "New discussion" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\/choose$/);
+
+  await page.getByLabel("discussion-query").fill("manifest");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/\/discussions\?q=manifest/);
+  await expect(
+    page.getByRole("link", { name: /repository import previews/i }).first(),
+  ).toBeVisible();
+
+  await page.getByText("Sort: Latest activity").click();
+  await page.getByRole("link", { name: "Top" }).click();
+  await expect(page).toHaveURL(/sort=top/);
+
+  await page.getByText("Label: Any").click();
+  await page.getByRole("link", { name: "help-wanted 1" }).click();
+  await expect(page).toHaveURL(/label=help-wanted/);
+  await expect(page.getByText("help-wanted").first()).toBeVisible();
+
+  await page.getByText("Filter: Any").click();
+  await page.getByRole("link", { name: "Pinned" }).click();
+  await expect(page).toHaveURL(/pinned=true/);
+  await expect(page.getByText("Pinned").first()).toBeVisible();
+
+  await page
+    .getByRole("link", { name: /General/ })
+    .last()
+    .click();
+  await expect(page).toHaveURL(/\/discussions\/categories\/general/);
+  await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
+  await expect(page.getByText("category:general")).toBeVisible();
+
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,
+  );
+  await expect(
+    page.getByText("No Ideas discussions match this view."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "New discussion" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=ideas$/);
+
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/categories/general`,
+  );
+  const upvote = page.locator(
+    'button[aria-pressed][aria-label*="discussion 901"]',
+  );
+  await upvote.click();
+  await expect(upvote).toHaveAttribute("aria-pressed", "true");
+  await upvote.click();
+  await expect(upvote).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator('a[href="#"]')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/qa/discussions-001-qa-pass.jpg",
+  });
+});
 
 test("repository discussions list filters, rows, category rail, and mobile layout work", async ({
   page,

@@ -2067,7 +2067,12 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
     );
     assert_eq!(reader_body["items"][0]["viewerVoted"], true);
     assert_eq!(reader_body["pinned"].as_array().expect("pins").len(), 1);
-    assert_eq!(reader_body["labels"][0]["name"], "roadmap");
+    let labels = reader_body["labels"].as_array().expect("labels");
+    let roadmap_label = labels
+        .iter()
+        .find(|label| label["name"] == "roadmap")
+        .expect("roadmap label should be present");
+    assert_eq!(roadmap_label["count"], 1);
     assert_eq!(reader_body["categories"][0]["slug"], "general");
     assert_eq!(reader_body["helpfulContributors"][0]["commentsCount"], 2);
     assert_eq!(reader_body["communityLinks"][0]["label"], "Code of conduct");
