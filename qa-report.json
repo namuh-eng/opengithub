@@ -5383,5 +5383,59 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Focused discussion creation/list/issue-conversion behavior is green: repository-discussions.spec.ts passed 4/4 using .env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome after a cold-start timeout rerun. Overall QA remains blocked because broad make test failed in web Vitest."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/{number}",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/pin",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/lock",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/category",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/metadata",
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/discussions/categories and sections"
+        ],
+        "notes": "Full Rust repository_discussions_contract suite passed 7/7 against postgresql://opengithub:opengithub@localhost:55433/opengithub_test after fixing category settings SQL grouping, category null-section updates, Markdown HTML rendering, participant aliases, active label option ordering, and issue conversion owner lookup."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "reader category admin forbidden",
+          "private discussion outsider forbidden",
+          "moderation permission denial",
+          "locked reaction denial",
+          "no test-session-secret leakage in checked error responses"
+        ],
+        "notes": "Discussion-specific security checks are covered by the green Rust contract suite, but overall QA is blocked by broad make test failure."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused Playwright used role/label-based interactions and expectNoDeadControls passed on discussion list and creation/detail flows, but overall QA is blocked by broad make test failure."
+      }
+    },
+    "evidence": [
+      "make doctor: Local verification stack is healthy",
+      "make check: Cargo check, web typecheck, Clippy, and Biome passed",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract -- --nocapture --test-threads=1: 7 passed",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium with .env.test: 4 passed on rerun",
+      "make test: Cargo tests passed; web Vitest failed 8 suites (dashboard-onboarding, project-workspace-page, repository-wiki-page, repository-actions-workflow, user-profile-repositories, user-profile-page, social-list-page, user-profile-contributions); Makefile:77 returned nonzero"
+    ],
+    "blocker": "make test web Vitest red",
+    "known_gaps": [
+      "Broad make test is red; discussions-002 cannot be marked qa_pass=true until make test is fixed/rerun green or controller accepts a narrower gate."
+    ],
+    "fix_description": "Fixed discussion-specific contract regressions and focused E2E coverage, but left QA blocked because broad make test failed in unrelated web Vitest date-expectation suites.",
+    "timestamp": "2026-05-12T17:30:00Z"
   }
 ]
