@@ -514,7 +514,7 @@ test("repository issue converts into a discussion from the issue sidebar", async
   await expect(
     page.getByRole("heading", { name: /Convert this issue into a discussion/ }),
   ).toBeVisible();
-  await expect(page.getByText(/converted from issue/i)).toBeVisible();
+  await expect(page.getByText(/converted from issue/i).first()).toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg",

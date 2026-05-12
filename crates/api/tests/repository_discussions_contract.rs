@@ -1313,6 +1313,88 @@ fn app_config() -> AppConfig {
     }
 }
 
+#[tokio::test]
+async fn repository_issue_conversion_metadata_counts_comments() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping issue conversion scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-convert-owner").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("discussion-convert-{}", Uuid::new_v4().simple()),
+            description: Some("Discussion conversion contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+
+    sqlx::query(
+        "INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, format) VALUES ($1, 'general', 'General', '💬', 'General discussion.', 1, 'open_ended')",
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("category should insert");
+
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 42, 'Convert me', 'Issue body.', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+    sqlx::query(
+        "INSERT INTO comments (repository_id, issue_id, author_user_id, body) VALUES ($1, $2, $3, 'Copy me')",
+    )
+    .bind(repository.id)
+    .bind(issue_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("issue comment should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let path = format!(
+        "/api/repos/{owner_login}/{}/issues/42/convert-to-discussion",
+        repository.name
+    );
+    let (status, body) = get_json(app.clone(), &path, Some(&owner_cookie)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["commentCount"], 1);
+
+    let (convert_status, convert_body) = post_json(
+        app.clone(),
+        &path,
+        Some(&owner_cookie),
+        json!({ "categorySlug": "general" }),
+    )
+    .await;
+    assert_eq!(convert_status, StatusCode::OK, "{convert_body}");
+    let discussion_number = convert_body["discussionNumber"].as_i64().expect("discussion number");
+    let detail_path = format!(
+        "/api/repos/{owner_login}/{}/discussions/{discussion_number}",
+        repository.name
+    );
+    let (detail_status, detail_body) = get_json(app.clone(), &detail_path, Some(&owner_cookie)).await;
+    assert_eq!(detail_status, StatusCode::OK, "{detail_body}");
+    assert_eq!(detail_body["discussion"]["title"], "Convert me");
+}
+
 async fn create_user(pool: &PgPool, label: &str) -> User {
     let suffix = Uuid::new_v4().simple();
     let user = upsert_user_by_email(

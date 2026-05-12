@@ -5455,5 +5455,88 @@
       "web/test-results/* error-context/trace artifacts from failed full make test-e2e (uncommitted)"
     ],
     "updated_at": "2026-05-12T06:58:00-07:00"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 3,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "All focused repository-discussions Playwright tests are now green, including the issue-conversion path that previously failed to load conversion metadata and then hit a strict duplicate text assertion. qa_pass remains false only because full make test-e2e is still red in unrelated broad suites."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/issues/{number}/convert-to-discussion",
+          "POST /api/repos/{owner}/{repo}/issues/{number}/convert-to-discussion",
+          "GET /api/repos/{owner}/{repo}/discussions/{number}",
+          "POST /{owner}/{repo}/discussions/new/create",
+          "Rust repository_issue_conversion_metadata_counts_comments contract",
+          "Rust repository_discussion_creation_returns_forms_and_persists_normal_discussion contract"
+        ],
+        "notes": "Fixed converted-discussion owner href lookup and discussion detail participant row aliasing; Rust contract proves conversion metadata commentCount=1, POST conversion, and converted discussion detail can be read."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth-backed conversion and creation",
+          "server-side category/ack validation",
+          "real DB persistence checks",
+          "no helper credentials committed"
+        ],
+        "notes": "Focused browser/Rust checks use signed test sessions and the fixed test DB URL; helper dirt remains untracked."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused discussions spec covers accessible headings/dialog/form controls and expectNoDeadControls across list, conversion, and creation paths."
+      }
+    },
+    "tested_steps": [
+      "make doctor: Local verification stack healthy; postgres-test reachable; .env.test present; CARGO_TARGET_DIR writable.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test: verified 263 public tables and discussion schema present.",
+      "Inspected failing artifact web/test-results/repository-discussions-rep-c4add-sion-from-the-issue-sidebar-chromium/error-context.md: initial GET /issues/{number}/convert-to-discussion returned 500, so the dialog never showed '1 issue comments will be copied'.",
+      "Root cause fixed: issue_converted_discussion selected nonexistent repositories.owner_login; replaced with owner user/org COALESCE. Secondary detail-page bug fixed: load_discussion_participants selected users.id without author_id alias expected by author_from_row. Also narrowed duplicate converted-from-issue text assertion in Playwright.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_issue_conversion_metadata_counts_comments -- --nocapture: passed, 1 passed/0 failed.",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium --workers=1: passed, 4 passed including setup/list/conversion/creation.",
+      "CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check && CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make test: passed Cargo check, web typecheck, clippy, Biome, Cargo tests, and Web tests (664 passed).",
+      "Previous full command CARGO_TARGET_DIR=$PWD/.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make test-e2e remains the broad blocker: 141 passed / 18 failed. After the focused fix, repository-discussions.spec.ts is green; remaining full-suite failures are classified as unrelated broad E2E issues."
+    ],
+    "bugs_found": [
+      {
+        "scope": "discussions issue conversion",
+        "description": "Conversion metadata for unconverted issues called issue_converted_discussion, whose query selected nonexistent repositories.owner_login and returned a 500 before the dialog copy summary could render.",
+        "fix": "Join owner users/organizations and compute owner_login with COALESCE in issue_converted_discussion."
+      },
+      {
+        "scope": "discussion detail after conversion",
+        "description": "Converted discussion detail returned 500 because participant rows selected users.id but author_from_row expects author_id.",
+        "fix": "Alias users.id AS author_id in load_discussion_participants."
+      },
+      {
+        "scope": "focused E2E assertion",
+        "description": "Converted discussion page had two valid converted-from-issue text nodes, causing Playwright strict-mode ambiguity.",
+        "fix": "Assert the first converted-from-issue text node is visible."
+      }
+    ],
+    "fix_description": "Repaired the discussions-specific issue-conversion path and added Rust/API coverage. Focused repository-discussions Playwright is now green; make check and make test are green; qa_pass remains false because full make test-e2e is still red outside discussions-002.",
+    "known_gaps": [
+      {
+        "command": "CARGO_TARGET_DIR=$PWD/.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make test-e2e",
+        "status": "failed",
+        "blocking": true,
+        "evidence": "Earlier full suite result in this lane: 141 passed, 18 failed. The discussions-specific repository-discussions conversion failure has since been fixed and focused repository-discussions.spec.ts passes 4/4. Remaining examples include projects smoke failures, actions runners/job-log failures, repository create/milestones/releases/wiki strictness/status mismatches, search-modal expected type=repositories but got type=all, and repository-labels spawnSync psql ENOENT.",
+        "scope_assessment": "Remaining broad E2E failures are not caused by the discussions-002 creation/conversion diff. repository-labels is a verification-stack/test harness issue because that spec shells directly to psql, which is unavailable on host; this lane uses podman psql fallback where added.",
+        "needed_action": "Stabilize unrelated broad E2E suites and replace direct host psql usage in repository-labels with a podman/docker fallback, then rerun make test-e2e before setting discussions-002 qa_pass true."
+      }
+    ],
+    "artifacts": [
+      "qa-report.json",
+      "crates/api/tests/repository_discussions_contract.rs",
+      "web/tests/e2e/repository-discussions.spec.ts",
+      "web/test-results/* traces from failed full make test-e2e (uncommitted)"
+    ],
+    "updated_at": "2026-05-12T07:37:00-07:00"
   }
 ]

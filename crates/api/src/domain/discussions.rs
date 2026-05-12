@@ -5945,7 +5945,7 @@ async fn load_discussion_detail_comments(
         LEFT JOIN discussion_reactions ON discussion_reactions.comment_id = discussion_comments.id
         WHERE discussion_comments.discussion_id = $1
           AND discussion_comments.parent_comment_id IS NULL
-        GROUP BY discussion_comments.id, author.id
+        GROUP BY discussion_comments.id, author.id, author.username, author.email, author.display_name, author.avatar_url
         ORDER BY {order}
         OFFSET $2 LIMIT $3
         "#
@@ -6146,7 +6146,7 @@ async fn load_discussion_participants(
 ) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+        SELECT DISTINCT users.id AS author_id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
                users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
         FROM users
         JOIN discussion_comments ON discussion_comments.author_user_id = users.id
