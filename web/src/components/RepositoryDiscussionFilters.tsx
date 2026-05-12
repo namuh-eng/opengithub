@@ -80,7 +80,7 @@ export function RepositoryDiscussionFilters({
             aria-label="discussion-query"
             defaultValue={filters.query || "is:open"}
             id="discussion-q"
-            name="q"
+            name="discussions_q"
             placeholder="is:open label:help-wanted"
           />
         </label>

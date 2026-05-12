@@ -2170,6 +2170,7 @@ struct SecurityAdvisoriesQueryParams {
 #[derive(Debug, Deserialize)]
 struct DiscussionsQueryParams {
     q: Option<String>,
+    discussions_q: Option<String>,
     label: Option<String>,
     state: Option<String>,
     answered: Option<String>,
@@ -3246,7 +3247,7 @@ async fn repository_discussions_response(
         &repo,
         category_slug.as_deref(),
         RepositoryDiscussionsQuery {
-            q: query.q.as_deref(),
+            q: query.discussions_q.as_deref().or(query.q.as_deref()),
             label: query.label.as_deref(),
             state: query.state.as_deref(),
             answered: query.answered.as_deref(),

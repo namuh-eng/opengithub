@@ -11,6 +11,7 @@ type RepositoryDiscussionCategoryPageProps = {
   params: Promise<{ owner: string; repo: string; slug: string }>;
   searchParams: Promise<{
     q?: string;
+    discussions_q?: string;
     label?: string;
     state?: string;
     answered?: string;
@@ -40,7 +41,7 @@ export default async function RepositoryDiscussionCategoryPage({
   const page = Number.parseInt(query.page ?? "1", 10);
   const pageSize = Number.parseInt(query.page_size ?? "30", 10);
   const discussionQuery = {
-    q: query.q,
+    q: query.discussions_q ?? query.q,
     label: query.label,
     state: query.state,
     answered: booleanParam(query.answered),

@@ -14,6 +14,47 @@ function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+function runDiscussionSql(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+
+  try {
+    execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
+      stdio: "ignore",
+    });
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const parsed = new URL(databaseUrl);
+  const user = decodeURIComponent(parsed.username || "opengithub");
+  const dbName = parsed.pathname.replace(/^\//, "") || "opengithub_test";
+  const container =
+    process.env.OPENGITHUB_TEST_DB_CONTAINER ?? "opengithub-postgres-test";
+  execFileSync(
+    process.env.CONTAINER_RUNTIME ?? "podman",
+    [
+      "exec",
+      container,
+      "psql",
+      "-U",
+      user,
+      "-d",
+      dbName,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      sql,
+    ],
+    { stdio: "pipe" },
+  );
+}
+
 function seedDashboard(): SeededDashboard {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
@@ -52,14 +93,7 @@ function seedDiscussions(repositoryHref: string) {
   const decodedRepo = decodeURIComponent(repo);
   const suffix = decodedRepo.replace(/^tree-nav-/, "");
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runDiscussionSql(`
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -239,12 +273,15 @@ function seedDiscussions(repositoryHref: string) {
         WHERE discussions.repository_id = target_repo.id
           AND discussions.number = 901
         LIMIT 1
+      ),
+      cleared_pin AS (
+        DELETE FROM discussion_pins
+        USING discussion_one
+        WHERE discussion_pins.discussion_id = discussion_one.id
       )
       INSERT INTO discussion_pins (discussion_id, pinned_by_user_id, position)
       SELECT discussion_one.id, target_repo.author_user_id, 1
-      FROM discussion_one, target_repo
-      ON CONFLICT (discussion_id)
-      DO UPDATE SET position = EXCLUDED.position;
+      FROM discussion_one, target_repo;
 
       WITH target_repo AS (
         SELECT repositories.id
@@ -263,10 +300,7 @@ function seedDiscussions(repositoryHref: string) {
              1
       FROM target_repo
       ON CONFLICT DO NOTHING;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
+      `);
 }
 
 function seedConvertibleIssue(repositoryHref: string): number {
@@ -278,14 +312,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
   const decodedRepo = decodeURIComponent(repo);
   const issueNumber = 970 + Math.floor(Math.random() * 20);
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runDiscussionSql(`
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -319,10 +346,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
              issue.author_user_id,
              'Issue comment copied during conversion.'
       FROM issue;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
+      `);
   return issueNumber;
 }
 
@@ -344,6 +368,75 @@ async function expectNoDeadControls(page: Page) {
   await expect(page.locator('a[href="#"]')).toHaveCount(0);
   await expect(page.locator("button:not([type])")).toHaveCount(0);
 }
+
+test("discussions-001 list search category filters and upvotes work", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedDiscussions(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/discussions`);
+  await expect(
+    page.getByRole("heading", { name: "Discussions" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Pinned discussions" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("discussion-query")).toHaveValue("is:open");
+  await page.getByText("Sort: Latest activity").click();
+  await expect(page.getByRole("link", { name: "Newest" })).toHaveAttribute(
+    "href",
+    /sort=newest/,
+  );
+  await expect(page.getByRole("link", { name: "help-wanted" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Code of conduct/ }),
+  ).toBeVisible();
+
+  await page.getByLabel("discussion-query").fill("manifest");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/\/discussions\?discussions_q=manifest/);
+  await expect(
+    page.getByRole("link", { name: /repository import previews/i }).first(),
+  ).toBeVisible();
+
+  await page
+    .getByRole("link", { name: /General/ })
+    .last()
+    .click();
+  await expect(page).toHaveURL(/\/discussions\/categories\/general/);
+  await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
+  await expect(page.getByText("category:general")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /General.*active category/ }),
+  ).toHaveAttribute("aria-current", "page");
+
+  const upvote = page.getByRole("button", { name: /discussion 901/ });
+  const initiallyPressed =
+    (await upvote.getAttribute("aria-pressed")) === "true";
+  await upvote.click();
+  await expect(upvote).toHaveAttribute(
+    "aria-pressed",
+    initiallyPressed ? "false" : "true",
+  );
+  await upvote.click();
+  await expect(upvote).toHaveAttribute(
+    "aria-pressed",
+    initiallyPressed ? "true" : "false",
+  );
+
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/categories/ideas?discussions_q=no-match`,
+  );
+  await expect(page.getByRole("heading", { name: "💡 Ideas" })).toBeVisible();
+  await expect(
+    page.getByText("No Ideas discussions match this view."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "New discussion" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=ideas$/);
+});
 
 test("repository discussions list filters, rows, category rail, and mobile layout work", async ({
   page,
@@ -441,7 +534,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await page.goto(`${seeded.treeRepositoryHref}/discussions`);
   await page.getByLabel("discussion-query").fill("manifest");
   await page.getByRole("button", { name: "Search" }).click();
-  await expect(page).toHaveURL(/\/discussions\?q=manifest/);
+  await expect(page).toHaveURL(/\/discussions\?discussions_q=manifest/);
 
   await page
     .getByRole("link", { name: /General/ })
@@ -581,9 +674,9 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   });
 
   await page.goto(
-    `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,
+    `${seeded.treeRepositoryHref}/discussions/categories/ideas?discussions_q=no-match`,
   );
-  await expect(page.getByRole("heading", { name: /Ideas/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "💡 Ideas" })).toBeVisible();
   await expect(
     page.getByText("No Ideas discussions match this view."),
   ).toBeVisible();

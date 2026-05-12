@@ -6525,7 +6525,12 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
     let select = if count_only {
         "COUNT(DISTINCT discussions.id)::bigint AS total".to_owned()
     } else {
-        format!("{DISCUSSION_ROW_SELECT} ORDER BY {order} OFFSET $6 LIMIT $7")
+        DISCUSSION_ROW_SELECT.to_owned()
+    };
+    let pagination = if count_only {
+        String::new()
+    } else {
+        format!("ORDER BY {order} OFFSET $6 LIMIT $7")
     };
     format!(
         r#"
@@ -6557,6 +6562,7 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
           {answered_clause}
           {locked_clause}
           {pinned_clause}
+          {pagination}
         "#
     )
 }

@@ -2203,7 +2203,7 @@ function appendDiscussionParams(
   params: URLSearchParams,
   query: RepositoryDiscussionHrefQuery,
 ) {
-  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.q?.trim()) params.set("discussions_q", query.q.trim());
   if (query.label?.trim()) params.set("label", query.label.trim());
   if (query.state?.trim() && query.state !== "open") {
     params.set("state", query.state.trim());

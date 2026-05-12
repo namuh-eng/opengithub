@@ -249,7 +249,7 @@ describe("RepositoryDiscussionsPage", () => {
 
     expect(screen.getByRole("link", { name: /General2/ })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/discussions/categories/general?q=is%3Aopen",
+      "/namuh-eng/opengithub/discussions/categories/general?discussions_q=is%3Aopen",
     );
     expect(screen.getByText("Most helpful")).toBeVisible();
     expect(
@@ -410,7 +410,7 @@ describe("RepositoryDiscussionsPage", () => {
       screen.getByRole("link", { name: "View all discussions" }),
     ).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/discussions?q=is%3Aopen&label=help-wanted&answered=false&sort=top",
+      "/namuh-eng/opengithub/discussions?discussions_q=is%3Aopen&label=help-wanted&answered=false&sort=top",
     );
     expect(
       screen.getByRole("link", { name: /Ideas1active category/ }),
@@ -426,13 +426,13 @@ describe("RepositoryDiscussionsPage", () => {
     );
     expect(screen.getByRole("link", { name: "Any label" })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/discussions/categories/ideas?q=is%3Aopen&answered=false&sort=top",
+      "/namuh-eng/opengithub/discussions/categories/ideas?discussions_q=is%3Aopen&answered=false&sort=top",
     );
     expect(
       screen.getByRole("link", { name: "Most commented" }),
     ).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/discussions/categories/ideas?q=is%3Aopen&label=help-wanted&answered=false&sort=most_commented",
+      "/namuh-eng/opengithub/discussions/categories/ideas?discussions_q=is%3Aopen&label=help-wanted&answered=false&sort=most_commented",
     );
     expect(screen.getByRole("link", { name: "Clear" })).toHaveAttribute(
       "href",

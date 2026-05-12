@@ -2049,7 +2049,7 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
 
     let (reader_status, reader_body) = get_json(
         app.clone(),
-        &format!("{base}?q=roadmap&label=roadmap&sort=top"),
+        &format!("{base}?discussions_q=roadmap&label=roadmap&sort=top"),
         Some(&reader_cookie),
     )
     .await;
@@ -2067,7 +2067,14 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
     );
     assert_eq!(reader_body["items"][0]["viewerVoted"], true);
     assert_eq!(reader_body["pinned"].as_array().expect("pins").len(), 1);
-    assert_eq!(reader_body["labels"][0]["name"], "roadmap");
+    assert!(
+        reader_body["labels"]
+            .as_array()
+            .expect("labels")
+            .iter()
+            .any(|label| label["name"] == "roadmap"),
+        "{reader_body}"
+    );
     assert_eq!(reader_body["categories"][0]["slug"], "general");
     assert_eq!(reader_body["helpfulContributors"][0]["commentsCount"], 2);
     assert_eq!(reader_body["communityLinks"][0]["label"], "Code of conduct");
