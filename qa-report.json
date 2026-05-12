@@ -5383,5 +5383,58 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified discussion creation chooser/forms/polls, list filters/upvotes, and issue conversion via focused Playwright repository-discussions.spec.ts (4/4) using .env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome. First Playwright run hit a cold-start timeout while the backend compiled; rerun with warm build cache passed all focused discussion tests."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/{number}",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/pin",
+          "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/lock",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/category",
+          "PATCH /api/repos/{owner}/{repo}/discussions/{number}/metadata",
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/discussions/categories and sections"
+        ],
+        "notes": "Full Rust repository_discussions_contract suite passed 7/7 against postgresql://opengithub:opengithub@localhost:55433/opengithub_test after fixing category settings SQL grouping, category null-section updates, Markdown HTML rendering, participant aliases, active label option ordering, and issue conversion owner lookup."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "reader category admin forbidden",
+          "private discussion outsider forbidden",
+          "moderation permission denial",
+          "locked reaction denial",
+          "no test-session-secret leakage in checked error responses"
+        ],
+        "notes": "Covered by the full repository_discussions_contract suite; no new secret exposure or auth bypass observed in focused contracts."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright uses role/label-based interactions for chooser cards, form fields, Markdown preview tab, acknowledgement checkbox, poll controls, discussion filters, upvote button, and issue conversion controls; expectNoDeadControls passed on discussion list and creation/detail flows."
+      }
+    },
+    "evidence": [
+      "make doctor: Local verification stack is healthy",
+      "make check: Cargo check, web typecheck, Clippy, and Biome passed",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract -- --nocapture --test-threads=1: 7 passed",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium with .env.test: 4 passed on rerun",
+      "make test: Cargo tests passed; web Vitest had 8 unrelated date-expectation failures outside discussions-002"
+    ],
+    "known_gaps": [
+      "make test broad gate remains red in unrelated Vitest suites with date expectation drift (dashboard-onboarding, project-workspace-page, repository-wiki-page, repository-actions-workflow, user-profile-repositories, user-profile-page, social-list-page, user-profile-contributions). Discussions-specific Rust contract and Playwright gates are green."
+    ],
+    "fix_description": "Fixed discussions-002 contract regressions across category settings, detail Markdown/sidebar data, moderation label option ordering, and issue conversion ownership; added focused discussion creation Playwright coverage from the prior rejected branch while preserving this fresh origin/main lane.",
+    "timestamp": "2026-05-12T17:28:00Z"
   }
 ]
