@@ -5383,5 +5383,65 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused unit and DB-backed Playwright coverage verifies chooser cards/Get started flow, YAML category fields and required validation, Markdown write/preview without create, similar-search acknowledgement gating, poll question/options flow, submit persistence, and redirect to discussion detail."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/new",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "POST /{owner}/{repo}/discussions/new/create",
+          "POST /markdown/preview"
+        ],
+        "notes": "Focused Rust discussion creation contract passed against localhost:55433 and checks similarSearchAcknowledged validation plus persisted discussions, body comment, form answers, attachments, poll/options, subscription, notification, and activity rows. Playwright submit path exercises the Next create proxy and Rust API through signed cookies."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_boundary",
+          "required_acknowledgement",
+          "markdown_preview_no_create",
+          "data_persistence_shape"
+        ],
+        "notes": "Creation remains signed-session gated through shared auth fixtures. Missing similar-search acknowledgement is blocked before submit and by the Rust contract. Markdown preview calls the sanitizer path and does not create a discussion. No dead controls found on created detail pages."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright uses accessible roles/labels for chooser links, title/body/form fields, poll controls, acknowledgement checkbox, and Start discussion, then runs expectNoDeadControls after redirect."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local verification stack healthy; postgres-test container up; .env.test present; per-worktree Cargo target writable.",
+      "Verified test DB schema on localhost:55433 via docker exec psql: information_schema public table count returned 263 (no self-skip).",
+      "Ran cd web && npm test -- repository-discussion-create-page.test.tsx --run: 10 tests passed.",
+      "Ran DB-backed focused Playwright with .env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome: repository discussion creation grep passed 3/3 including setup, YAML creation, and poll creation.",
+      "Ran focused Rust contract: ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture: 1 passed, 6 filtered out.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Broader cd web && npx vitest run was attempted and failed in 8 unrelated date-sensitive/profile/wiki/action tests; the discussions-002 focused Vitest still passed.",
+      "Broader repository_discussions_contract was attempted and existing non-discussions-002 cases failed; the focused discussions creation contract passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Discussion detail participants query selected users.id without the author_id alias expected by the shared author row mapper, causing created discussions to redirect to a detail route that rendered the repository-unavailable fallback after submit.",
+        "file": "crates/api/src/domain/discussions.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "Discussion creation E2E coverage did not exercise the real chooser-to-submit YAML and poll creation flows against the DB; poll seed rows also omitted the poll format value used by current category metadata.",
+        "file": "web/tests/e2e/repository-discussions.spec.ts"
+      }
+    ],
+    "fix_description": "Fixed created-discussion detail participant loading by aliasing participant ids as author_id, added DB-backed creation E2E coverage for YAML form and poll flows, and aligned the poll test seed with current category format metadata.",
+    "timestamp": "2026-05-12T04:35:52Z"
   }
 ]
