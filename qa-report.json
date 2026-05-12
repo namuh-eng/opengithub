@@ -5387,7 +5387,7 @@
   {
     "feature_id": "discussions-002",
     "attempt": 1,
-    "status": "pass",
+    "status": "blocked",
     "sub_phases": {
       "functional": {
         "status": "pass",
@@ -5428,7 +5428,8 @@
       "Ran focused DB-backed Playwright with .env.test and /usr/bin/google-chrome: cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium -g 'repository discussion creation' (2 passed including setup).",
       "Ran make check with per-worktree CARGO_TARGET_DIR after clearing a corrupt generated Next .next/dev/types cache: Cargo check, web typecheck, Clippy, and Biome passed.",
       "Ran Editorial banned-value scan: rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css' returned no matches.",
-      "Attempted full make test; unrelated projects_workspace_contract tests failed with pre-existing project workspace data/expectation issues after all preceding suites passed, so focused discussions-002 evidence is used for QA pass."
+      "Attempted full make test; unrelated projects_workspace_contract tests failed with pre-existing project workspace data/expectation issues after all preceding suites passed, so discussions-002 remains QA_BLOCKED despite focused evidence passing.",
+      "Controller correction on 2026-05-12: qa_pass reset to false because broad `make test` remained red in projects_workspace_contract and no later green broad test exists."
     ],
     "screenshots": [
       {
@@ -5454,8 +5455,10 @@
     ],
     "fix_description": "Aliased discussion participants as author_id for detail rendering, added a Rust regression asserting newly-created detail retrieval, and generated a Markdown opening body from YAML form answers when the composer is empty so category-form submissions create and redirect successfully.",
     "known_limitations": [
-      "Full make test currently fails in unrelated projects_workspace_contract tests (duplicate org membership and stale project expectation failures); focused discussions-002 Rust/component/E2E checks pass."
+      "Full `make test` fails in projects_workspace_contract (duplicate organization_memberships unique constraint and stale project workspace expectation failures). Required intervention: fix/rerun broad test green before marking discussions-002 QA pass."
     ],
-    "timestamp": "2026-05-12T07:52:57Z"
+    "timestamp": "2026-05-12T08:15:43Z",
+    "blocked_reason": "Focused discussions-002 Rust/component/E2E evidence passes, but required broad `make test` is red in unrelated projects_workspace_contract tests and there is no later green broad test. Acceptance rules do not allow qa_pass=true while broad tests are red.",
+    "qa_pass": false
   }
 ]
