@@ -6525,7 +6525,12 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
     let select = if count_only {
         "COUNT(DISTINCT discussions.id)::bigint AS total".to_owned()
     } else {
-        format!("{DISCUSSION_ROW_SELECT} ORDER BY {order} OFFSET $6 LIMIT $7")
+        DISCUSSION_ROW_SELECT.to_owned()
+    };
+    let order_clause = if count_only {
+        String::new()
+    } else {
+        format!("ORDER BY {order} OFFSET $6 LIMIT $7")
     };
     format!(
         r#"
@@ -6536,6 +6541,7 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
         LEFT JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
         LEFT JOIN users author ON author.id = discussions.author_user_id
         WHERE discussions.repository_id = $1
+          AND ($2::uuid IS NULL OR $2::uuid IS NOT NULL)
           AND discussions.deleted_at IS NULL
           AND (
               $3::text IS NULL
@@ -6557,6 +6563,7 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
           {answered_clause}
           {locked_clause}
           {pinned_clause}
+          {order_clause}
         "#
     )
 }
