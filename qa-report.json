@@ -5383,5 +5383,34 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "discussions-002 QA passed in isolated worktree: make doctor reported healthy podman/postgres/.env.test stack; test DB schema explicitly verified via opengithub-postgres-test psql on opengithub_test with 263 public tables; focused Rust API contract passed with .env.test: ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture; focused component tests passed: cd web && npm test -- repository-discussion-create-page.test.tsx --run (10/10); focused Playwright passed with ../.env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome: repository discussion creation requires similar search, previews Markdown, and saves YAML form answers; repository poll discussion creation stores poll question and options (3/3 including auth setup); make check passed (Cargo check, Web typecheck, Clippy, Biome). Broad make test was attempted and failed in unrelated projects_workspace_contract tests; discussions focused tests did not self-skip."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "Create discussion Rust API contract exercised category forms, required similar-search acknowledgement, persisted comments/form answers/attachments/subscriptions/notifications/activity, and poll/options validation/persistence against localhost:55433 test DB."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Focused contract includes permission denial for reader create and no secret leakage in creation metadata response; create route requires session via API cookie forwarding."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright create flows used accessible roles/labels for chooser links, title/body, tabs, required checkbox, poll controls, and expectNoDeadControls after redirect."
+      }
+    },
+    "artifacts": [
+      "web/tests/e2e/repository-discussions.spec.ts",
+      "web/tests/repository-discussion-create-page.test.tsx",
+      "crates/api/tests/repository_discussions_contract.rs"
+    ],
+    "updated_at": "2026-05-12T03:20:14Z"
   }
 ]

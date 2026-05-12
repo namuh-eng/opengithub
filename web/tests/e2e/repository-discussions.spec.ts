@@ -423,6 +423,143 @@ test("repository discussions list filters, category rail, empty state, and upvot
   ).toHaveAttribute("aria-pressed", "false");
   await expectNoDeadControls(page);
 });
+
+test("repository discussion creation requires similar search, previews Markdown, and saves YAML form answers", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  const title = `E2E YAML form discussion ${Date.now()}`;
+  await page.goto(`${repositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Get started" }).nth(2),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=q-a$/);
+  await page.getByRole("link", { name: "Get started" }).nth(2).click();
+
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await page.getByLabel("Title *").fill(title);
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("This **preview** should render before creation.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.locator(".markdown-body strong")).toHaveText("preview");
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+
+  await page.getByRole("tab", { name: "Write" }).click();
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute(
+    "href",
+    new RegExp(`q=is%3Aopen\\+${title.replaceAll(" ", "\\+")}`),
+  );
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeDisabled();
+
+  await page
+    .getByLabel("Context *")
+    .fill("The category-specific YAML form answer should be stored.");
+  await page.getByLabel("Area").selectOption("API");
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  runSql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM discussions
+        JOIN discussion_form_answers ON discussion_form_answers.discussion_id = discussions.id
+        JOIN repositories ON repositories.id = discussions.repository_id
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(repositoryHref.split("/")[1]))}
+          AND repositories.name = ${sqlLiteral(decodeURIComponent(repositoryHref.split("/")[2]))}
+          AND discussions.title = ${sqlLiteral(title)}
+          AND discussion_form_answers.field_id = 'context'
+          AND discussion_form_answers.value = 'The category-specific YAML form answer should be stored.'
+      ) THEN
+        RAISE EXCEPTION 'discussion form answer was not persisted for ${title}';
+      END IF;
+    END $$;
+  `);
+  await expectNoDeadControls(page);
+});
+
+test("repository poll discussion creation stores poll question and options", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  const title = `E2E poll discussion ${Date.now()}`;
+  await page.goto(`${repositoryHref}/discussions/new?category=polls`);
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await page.getByLabel("Title *").fill(title);
+  await page
+    .getByLabel("Question *")
+    .fill("Which roadmap item should ship first?");
+  await page.getByLabel("Poll option 1").fill("Category forms");
+  await page.getByLabel("Poll option 2").fill("Markdown previews");
+  await page
+    .getByRole("checkbox", {
+      name: /Allow voters to choose more than one option/i,
+    })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  runSql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM discussions
+        JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
+        JOIN discussion_poll_options ON discussion_poll_options.poll_id = discussion_polls.id
+        JOIN repositories ON repositories.id = discussions.repository_id
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodeURIComponent(repositoryHref.split("/")[1]))}
+          AND repositories.name = ${sqlLiteral(decodeURIComponent(repositoryHref.split("/")[2]))}
+          AND discussions.title = ${sqlLiteral(title)}
+          AND discussion_polls.question = 'Which roadmap item should ship first?'
+          AND discussion_polls.allows_multiple = true
+        GROUP BY discussions.id
+        HAVING COUNT(DISTINCT discussion_poll_options.label) = 2
+      ) THEN
+        RAISE EXCEPTION 'discussion poll was not persisted for ${title}';
+      END IF;
+    END $$;
+  `);
+  await expectNoDeadControls(page);
+});
+
 test("repository issue converts into a discussion from the issue sidebar", async ({
   page,
   seed,

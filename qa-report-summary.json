@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 76,
+    "features_passed": 77,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 73,
+      "pass": 74,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 69,
+      "pass": 70,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 70,
+      "pass": 71,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 39
     }
@@ -2483,10 +2483,27 @@
       "feature_id": "discussions-002",
       "description": "Create discussions through category chooser, category-specific forms, Markdown c",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "discussions-002 QA passed: make doctor healthy; test DB schema verified on localhost:55433/opengithub_test (263 public tables); focused Rust API creation contract passed with .env.test; focused component test passed 10/10; focused Playwright creation/poll flows passed 3/3 with google-chrome; make check passed. Broad make test was attempted and failed only in unrelated projects_workspace_contract tests."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "Rust API contract verified category form, required acknowledgement, normal discussion persistence, poll/options persistence, notifications/subscriptions/activity/attachments."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Contract denies reader create and metadata response did not leak session secret; creation requires authenticated session."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Playwright flow used accessible roles/labels for chooser, composer tabs, required checkbox, and poll controls; expectNoDeadControls passed."
+        }
+      }
     },
     {
       "feature_id": "discussions-003",
