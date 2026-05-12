@@ -2484,9 +2484,28 @@
       "description": "Create discussions through category chooser, category-specific forms, Markdown c",
       "category": "crud",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "blocked",
+          "notes": "Focused discussions-002 browser flow passed, but full make test-e2e failed with 138 passed / 21 failed; qa_pass remains false."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "Focused Rust repository_discussions_contract creation scenario passed, including metadata, validation, form answers, attachments, subscriptions, notifications, detail load after redirect, and poll/options persistence."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Focused API contract covered outsider/private access denial, reader create denial, no session-secret leakage in metadata/error bodies, and required acknowledgement validation."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused Playwright creation flow completed with expectNoDeadControls on the created poll detail; component tests cover accessible labels for title, body, form fields, poll controls, attachment input, and acknowledgement."
+        }
+      },
+      "overall_status": "blocked",
+      "blocker": "make test-e2e red: 138 passed, 21 failed, Makefile:90 Error 1"
     },
     {
       "feature_id": "discussions-003",

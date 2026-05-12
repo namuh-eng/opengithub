@@ -5383,5 +5383,60 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "blocked",
+    "timestamp": "2026-05-12T08:55:00Z",
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, BUILD_GUIDE.md, and prd.json discussions-002 entry; confirmed Editorial design constraints.",
+      "Ran make doctor with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; local Postgres test container and .env.test were healthy on port 55433.",
+      "Focused discussions-002 Vitest create-page coverage passed.",
+      "Focused Rust repository_discussions_contract creation scenario passed: creation metadata, required acknowledgement validation, normal discussion persistence, form answers, attachments, subscriptions, notifications, detail load after redirect, and poll/options persistence.",
+      "Focused Playwright real DB/browser scenario passed: chooser -> Q&A YAML form preview/ack/submit -> detail and chooser -> Polls form/submit -> detail.",
+      "make check passed: Cargo check, web typecheck, Clippy, and Biome green.",
+      "make test passed: Cargo tests and 664 web tests green after setting Vitest TZ=UTC for deterministic fixture dates.",
+      "make test-e2e was run with healthy DB/browser and failed: 138 passed, 21 failed, Makefile:90 Error 1. Therefore discussions-002 remains qa_pass=false until full E2E is green or controller accepts scoped failure classification."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Newly created discussions redirected to a detail page that returned a generic unavailable state because participant loading selected users.id without the author_id alias expected by the shared discussion author mapper.",
+        "expected": "After creation, /{owner}/{repo}/discussions/{number} loads the created discussion detail with form answers and poll UI when applicable.",
+        "actual": "The detail API returned internal_error due to Sqlx ColumnNotFound(\"author_id\"), so the browser showed repository metadata unavailable after redirect.",
+        "file": "crates/api/src/domain/discussions.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "The discussions browser suite lacked real end-to-end coverage for the discussions-002 creation path.",
+        "expected": "Playwright covers chooser, category-specific YAML form, Markdown preview without creation, acknowledgement, submit redirect, and poll creation.",
+        "actual": "Existing E2E covered list/category/vote and issue conversion, but not new discussion creation.",
+        "file": "web/tests/e2e/repository-discussions.spec.ts"
+      },
+      {
+        "severity": "minor",
+        "description": "Web unit tests rendered UTC-midnight fixtures differently under local non-UTC timezones, causing unrelated full make test failures in the LA test process.",
+        "expected": "Repo test commands are deterministic regardless of the operator timezone.",
+        "actual": "Vitest date assertions expected UTC calendar dates but the process default timezone shifted midnight timestamps to the previous day.",
+        "file": "Makefile"
+      }
+    ],
+    "fix_description": "Aliased discussion participant user ids as author_id for detail rendering, added API detail regression assertions after create, added real Playwright creation coverage for YAML forms and polls, and made the web unit test command use UTC for deterministic fixture dates. QA remains blocked because full make test-e2e is red.",
+    "screenshots": [],
+    "verification_commands": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor => green",
+      "cd web && npm run test -- repository-discussion-create-page.test.tsx => 10 passed",
+      "set -a; source .env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture => 1 passed",
+      "set -a; source ../.env.test 2>/dev/null || source .env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome; cd web && npm run test:e2e -- repository-discussions.spec.ts -g \"repository discussion creation supports\" => 2 passed",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check => passed",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make test => Cargo tests passed; Web tests passed (664 passed)",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome; make test-e2e => failed: 138 passed, 21 failed, Makefile:90 Error 1"
+    ],
+    "known_issues": [
+      "BLOCKER: Full make test-e2e is red with 138 passed and 21 failed. Remaining failures are outside the focused discussions-002 creation scenario but block QA_PASS under controller policy. Failure classes observed: projects suite failures, repository actions runners/job log, repository create, issue conversion/labels/milestones/releases/security/wiki/traffic, and search-modal URL expectation."
+    ],
+    "blocker": "make test-e2e red",
+    "need": "Fix or otherwise resolve the remaining full-suite E2E failures, then rerun make test-e2e green before setting discussions-002 qa_pass=true."
   }
 ]

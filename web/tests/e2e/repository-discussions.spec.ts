@@ -423,6 +423,98 @@ test("repository discussions list filters, category rail, empty state, and upvot
   ).toHaveAttribute("aria-pressed", "false");
   await expectNoDeadControls(page);
 });
+
+test("repository discussion creation supports chooser forms preview acknowledgement and polls", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  const qaCard = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Q&A" }) });
+  await expect(qaCard.getByText("Answers enabled")).toBeVisible();
+  await qaCard.getByRole("link", { name: "Get started" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await expect(
+    page.getByRole("link", { name: "Choose a different category" }),
+  ).toHaveAttribute("href", `${repositoryHref}/discussions/new/choose`);
+  await page.getByLabel("Title *").fill("How should saved searches work?");
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute(
+    "href",
+    /\/discussions\?q=is%3Aopen\+How\+should\+saved\+searches\+work%3F/,
+  );
+  await page
+    .getByLabel("Context *")
+    .fill("Saved searches should remember discussion filters.");
+  await page.getByLabel("Area").selectOption("UI");
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("Preview this **discussion** body before submit.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText(/Preview this/)).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", { name: "How should saved searches work?" }),
+  ).toBeVisible();
+  await expect(page.getByText("Saved searches should remember")).toBeVisible();
+  await expect(page.getByText("Context")).toBeVisible();
+
+  await page.goto(`${repositoryHref}/discussions/new/choose`);
+  const pollCard = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Polls" }) });
+  await expect(pollCard.getByText("Poll", { exact: true })).toBeVisible();
+  await pollCard.getByRole("link", { name: "Get started" }).click();
+
+  await expect(page).toHaveURL(/\/discussions\/new\?category=polls$/);
+  await expect(page.getByLabel("Context *")).toHaveCount(0);
+  await page.getByLabel("Title *").fill("Which discussion view ships first?");
+  await page
+    .getByLabel("Question *")
+    .fill("Which discussion view should ship first?");
+  await page.getByLabel("Poll option 1").fill("Saved searches");
+  await page.getByLabel("Poll option 2").fill("Category digests");
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", {
+      name: "Which discussion view ships first?",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Which discussion view should ship first?",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Saved searches")).toBeVisible();
+  await expect(page.getByText("Category digests")).toBeVisible();
+  await expectNoDeadControls(page);
+});
+
 test("repository issue converts into a discussion from the issue sidebar", async ({
   page,
   seed,
