@@ -49,6 +49,7 @@ function displayName(profile: PublicUserProfile) {
 function compactDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
+    timeZone: "UTC",
     year: "numeric",
   }).format(new Date(value));
 }

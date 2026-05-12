@@ -45,6 +45,7 @@ function formatDate(value: string) {
   return `Updated ${new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
     year: "numeric",
   }).format(date)}`;
 }
@@ -61,6 +62,7 @@ function formatStarredDate(value: string | null | undefined) {
   return `Starred ${new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
     year: "numeric",
   }).format(date)}`;
 }

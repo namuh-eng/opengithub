@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 76,
+    "features_passed": 77,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 73,
+      "pass": 74,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 69,
+      "pass": 70,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 70,
+      "pass": 71,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 39
     }
@@ -2483,10 +2483,46 @@
       "feature_id": "discussions-002",
       "description": "Create discussions through category chooser, category-specific forms, Markdown c",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused discussion creation/list/issue-conversion behavior is green: repository-discussions.spec.ts passed 4/4 using .env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome. Broad make test is now green after fixing deterministic UTC date formatting regressions in unrelated web suites."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/discussions",
+            "GET /api/repos/{owner}/{repo}/discussions/{number}",
+            "POST /api/repos/{owner}/{repo}/discussions",
+            "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/pin",
+            "PUT/DELETE /api/repos/{owner}/{repo}/discussions/{number}/lock",
+            "PATCH /api/repos/{owner}/{repo}/discussions/{number}/category",
+            "PATCH /api/repos/{owner}/{repo}/discussions/{number}/metadata",
+            "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/discussions/categories and sections"
+          ],
+          "notes": "Full Rust repository_discussions_contract suite passed 7/7 against postgresql://opengithub:opengithub@localhost:55433/opengithub_test after fixing category settings SQL grouping, category null-section updates, Markdown HTML rendering, participant aliases, active label option ordering, and issue conversion owner lookup."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "reader category admin forbidden",
+            "private discussion outsider forbidden",
+            "moderation permission denial",
+            "locked reaction denial",
+            "no test-session-secret leakage in checked error responses"
+          ],
+          "notes": "Discussion-specific authorization and data-exposure checks are covered by the green Rust contract suite; broad make test and make check also passed."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright used role/label-based interactions and expectNoDeadControls passed on discussion list, creation, and detail flows."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "discussions-003",
