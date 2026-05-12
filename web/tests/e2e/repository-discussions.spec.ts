@@ -114,29 +114,47 @@ function seedDiscussions(repositoryHref: string) {
       ),
       qa AS (
         INSERT INTO discussion_categories (
-          repository_id, slug, name, emoji, description, position, accepts_answers
+          repository_id, slug, name, emoji, description, position, format, accepts_answers
         )
         SELECT target_repo.id, 'q-a', 'Q&A', '🙏',
-               'Ask an answerable question.', 3, true
+               'Ask an answerable question.', 3, 'question_and_answer', true
         FROM target_repo
         ON CONFLICT (repository_id, slug)
         DO UPDATE SET name = EXCLUDED.name,
                       emoji = EXCLUDED.emoji,
                       description = EXCLUDED.description,
+                      format = 'question_and_answer',
                       accepts_answers = true
         RETURNING id, repository_id
       ),
       polls AS (
         INSERT INTO discussion_categories (
-          repository_id, slug, name, emoji, description, position
+          repository_id, slug, name, emoji, description, position, format, accepts_answers
         )
         SELECT target_repo.id, 'polls', 'Polls', '📊',
-               'Collect structured feedback.', 4
+               'Collect structured feedback.', 4, 'poll', false
         FROM target_repo
         ON CONFLICT (repository_id, slug)
         DO UPDATE SET name = EXCLUDED.name,
                       emoji = EXCLUDED.emoji,
-                      description = EXCLUDED.description
+                      description = EXCLUDED.description,
+                      format = 'poll',
+                      accepts_answers = false
+        RETURNING id, repository_id
+      ),
+      feedback_poll AS (
+        INSERT INTO discussion_categories (
+          repository_id, slug, name, emoji, description, position, format, accepts_answers
+        )
+        SELECT target_repo.id, 'feedback-round', 'Feedback round', '🧭',
+               'Poll category with a custom slug.', 5, 'poll', false
+        FROM target_repo
+        ON CONFLICT (repository_id, slug)
+        DO UPDATE SET name = EXCLUDED.name,
+                      emoji = EXCLUDED.emoji,
+                      description = EXCLUDED.description,
+                      format = 'poll',
+                      accepts_answers = false
         RETURNING id, repository_id
       ),
       label_one AS (
@@ -646,6 +664,80 @@ test("repository discussion creation supports chooser forms preview acknowledgem
   ).toBeVisible();
   await expect(page.getByText("Saved searches")).toBeVisible();
   await expect(page.getByText("Category digests")).toBeVisible();
+
+  await page.goto(`${repositoryHref}/discussions/new/choose`);
+  const customPollCard = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Feedback round" }) });
+  await expect(customPollCard.getByText("Poll", { exact: true })).toBeVisible();
+  await customPollCard.getByRole("link", { name: "Get started" }).click();
+  await expect(page).toHaveURL(/\/discussions\/new\?category=feedback-round$/);
+  await expect(page.getByLabel("Question *")).toBeVisible();
+  await expect(page.getByLabel("Context *")).toHaveCount(0);
+  await expectNoDeadControls(page);
+});
+
+test("repository discussion category settings manage categories sections and formats", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/categories/edit`);
+  await expect(
+    page.getByRole("heading", { name: "Discussion categories" }),
+  ).toBeVisible();
+  await expect(page.getByText("Can manage")).toBeVisible();
+
+  await page.getByRole("button", { name: "New section" }).click();
+  await page.getByLabel("Section name").fill("Maintainer desk");
+  await page.getByRole("button", { name: "Create section" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Maintainer desk" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "New category" }).click();
+  await page.getByLabel("Category emoji").fill("🧪");
+  await page.getByLabel("Category name").fill("Release lab");
+  await page
+    .getByLabel("Category description")
+    .fill("Release readiness polls and experiments.");
+  await page.getByLabel("Category format").selectOption("poll");
+  await page
+    .getByLabel("Category section")
+    .selectOption({ label: "Maintainer desk" });
+  await page.getByRole("button", { name: "Create category" }).click();
+
+  const releaseRow = page
+    .locator(".list-row")
+    .filter({ has: page.getByRole("link", { name: "Release lab" }) });
+  await expect(releaseRow.getByText("Poll", { exact: true })).toBeVisible();
+  await expect(releaseRow.getByText("Release readiness polls")).toBeVisible();
+  await releaseRow.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Category name").fill("Release lab updated");
+  await page.getByLabel("Category format").selectOption("announcement");
+  await page.getByRole("button", { name: "Save category" }).click();
+
+  const updatedRow = page
+    .locator(".list-row")
+    .filter({ has: page.getByRole("link", { name: "Release lab updated" }) });
+  await expect(updatedRow.getByText("Announcement")).toBeVisible();
+  await updatedRow
+    .getByRole("combobox", { name: "Move Release lab updated to section" })
+    .selectOption("");
+  await expect(
+    page.getByText("Category section assignment saved."),
+  ).toBeVisible();
+  await updatedRow.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete and move" }).click();
+  await expect(
+    page.getByRole("link", { name: "Release lab updated" }),
+  ).toHaveCount(0);
   await expectNoDeadControls(page);
 });
 

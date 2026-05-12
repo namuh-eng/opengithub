@@ -4997,6 +4997,7 @@ async fn load_discussion_category_choices(
         r#"
         SELECT discussion_categories.id, discussion_categories.slug, discussion_categories.name,
                discussion_categories.emoji, discussion_categories.description,
+               discussion_categories.format,
                discussion_categories.accepts_answers,
                COUNT(discussions.id)::bigint AS count,
                COUNT(discussions.id) FILTER (WHERE discussions.state = 'open')::bigint AS open_count
@@ -5013,6 +5014,8 @@ async fn load_discussion_category_choices(
     rows.into_iter()
         .map(|row| {
             let slug: String = row.try_get("slug")?;
+            let format =
+                DiscussionCategoryFormat::try_from(row.try_get::<String, _>("format")?.as_str())?;
             Ok(DiscussionCategoryChoice {
                 id: row.try_get("id")?,
                 form_href: format!(
@@ -5023,7 +5026,7 @@ async fn load_discussion_category_choices(
                     "/{}/{}/discussions/categories/{}",
                     repository.owner_login, repository.name, slug
                 ),
-                is_poll: slug == "polls" || slug == "poll",
+                is_poll: format == DiscussionCategoryFormat::Poll,
                 slug,
                 name: row.try_get("name")?,
                 emoji: row.try_get("emoji")?,
