@@ -114,6 +114,14 @@ function projectInsightsHref(project: ProjectRow) {
   return project.workspaceHref.replace(/\/views\/\d+.*$/, "/insights");
 }
 
+function newProjectHref(list: ProjectList) {
+  const [basePath, baseQuery = ""] = list.scope.href.split("?");
+  if (!baseQuery) {
+    return `${basePath}/new`;
+  }
+  return `${basePath}/new?${baseQuery}`;
+}
+
 function ProjectsTabs({ list }: { list: ProjectList }) {
   const projectActive = list.filters.tab !== "templates";
   return (
@@ -320,22 +328,33 @@ function ProjectRowView({
         <Link className="btn sm ghost" href={project.workspaceHref}>
           Open
         </Link>
-        <button
-          className="btn sm"
-          disabled={!project.viewerCanCopy}
-          onClick={() =>
-            onCopy({
-              id: project.id,
-              title: project.title,
-              kind: "project",
-              viewerCanCopy: project.viewerCanCopy,
-            })
-          }
-          title="Copy this project"
-          type="button"
-        >
-          Copy
-        </button>
+        <details className="relative">
+          <summary className="btn sm cursor-pointer list-none">
+            More project options
+          </summary>
+          <div
+            className="card absolute right-0 z-10 mt-2 grid min-w-48 gap-1 p-2"
+            role="menu"
+          >
+            <button
+              className="btn sm ghost justify-start"
+              disabled={!project.viewerCanCopy}
+              onClick={() =>
+                onCopy({
+                  id: project.id,
+                  title: project.title,
+                  kind: "project",
+                  viewerCanCopy: project.viewerCanCopy,
+                })
+              }
+              role="menuitem"
+              title="Copy this project"
+              type="button"
+            >
+              Copy project
+            </button>
+          </div>
+        </details>
       </div>
     </article>
   );
@@ -505,6 +524,7 @@ export function ProjectsListPage({
   scopeLabel = list.scope.login,
 }: ProjectsListPageProps) {
   const [copyTarget, setCopyTarget] = useState<CopyTarget | null>(null);
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const showingTemplates = list.filters.tab === "templates";
   const rows = showingTemplates ? list.templates.items : list.items;
   const unavailable = list.unavailableReason;
@@ -527,7 +547,7 @@ export function ProjectsListPage({
           </p>
         </div>
         {list.viewerPermissions.canCreate ? (
-          <Link className="btn primary" href={`${list.scope.href}/new`}>
+          <Link className="btn primary" href={newProjectHref(list)}>
             New project
           </Link>
         ) : (
@@ -537,22 +557,34 @@ export function ProjectsListPage({
         )}
       </div>
 
-      <div className="card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="t-label" style={{ color: "var(--ink-3)" }}>
-              Welcome to Projects
-            </p>
-            <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
-              Build planning views from issues, pull requests, and draft work
-              while keeping repository links visible.
-            </p>
+      {!welcomeDismissed ? (
+        <div className="card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="t-label" style={{ color: "var(--ink-3)" }}>
+                Welcome to Projects
+              </p>
+              <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
+                Build planning views from issues, pull requests, and draft work
+                while keeping repository links visible.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="chip soft">
+                {list.viewerPermissions.viewerRole ?? "viewer"}
+              </span>
+              <button
+                aria-label="Dismiss Welcome to Projects banner"
+                className="btn sm ghost"
+                onClick={() => setWelcomeDismissed(true)}
+                type="button"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
-          <span className="chip soft">
-            {list.viewerPermissions.viewerRole ?? "viewer"}
-          </span>
         </div>
-      </div>
+      ) : null}
 
       {unavailable ? (
         <div className="card p-5" role="status">

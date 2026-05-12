@@ -147,6 +147,7 @@ describe("ProjectsListPage", () => {
       "href",
       "/orgs/namuh/projects/12/insights",
     );
+    expect(screen.getByText("More project options")).toBeInTheDocument();
   });
 
   it("renders the templates tab and disables unavailable copy actions", () => {
@@ -180,6 +181,32 @@ describe("ProjectsListPage", () => {
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
   });
 
+  it("dismisses the welcome banner and preserves user New project URLs", () => {
+    render(
+      <ProjectsListPage
+        list={projectList({
+          scope: {
+            kind: "user",
+            login: "mona",
+            repository: null,
+            href: "/mona?tab=projects",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "New project" })).toHaveAttribute(
+      "href",
+      "/mona/new?tab=projects",
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Dismiss Welcome to Projects banner",
+      }),
+    );
+    expect(screen.queryByText("Welcome to Projects")).not.toBeInTheDocument();
+  });
+
   it("submits the copy dialog through the same-origin proxy and redirects", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
@@ -200,7 +227,8 @@ describe("ProjectsListPage", () => {
     );
     render(<ProjectsListPage list={projectList()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    fireEvent.click(screen.getByText("More project options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy project" }));
     expect(
       screen.getByRole("dialog", { name: "Roadmap planning" }),
     ).toBeInTheDocument();
@@ -239,7 +267,8 @@ describe("ProjectsListPage", () => {
     );
     render(<ProjectsListPage list={projectList()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    fireEvent.click(screen.getByText("More project options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy project" }));
     fireEvent.click(
       screen.getByRole("checkbox", { name: /Include draft issues/ }),
     );

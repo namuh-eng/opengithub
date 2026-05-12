@@ -5368,7 +5368,16 @@ pub async fn organization_projects(
 
     let membership_role: Option<String> = row.try_get("viewer_role")?;
     let base_role: Option<String> = row.try_get("projects_base_permission")?;
-    let viewer_role = membership_role.or(base_role.filter(|role| role != "none"));
+    let base_role = base_role.filter(|role| role != "none");
+    let viewer_role = match (membership_role, base_role) {
+        (Some(role), Some(base_role))
+            if !can_write_project_role(&role) && can_write_project_role(&base_role) =>
+        {
+            Some(base_role)
+        }
+        (Some(role), _) => Some(role),
+        (None, base_role) => base_role,
+    };
     let projects_enabled: bool = row.try_get("projects_enabled")?;
     let scope = ProjectScope::Organization {
         id: row.try_get("id")?,
@@ -5422,20 +5431,20 @@ async fn projects_for_scope(
     query: ProjectListQuery<'_>,
 ) -> Result<ProjectList, ProjectsError> {
     let filters = normalize_project_filters(query)?;
-    let rows = visible_project_rows(pool, &scope, viewer_user_id).await?;
-    let mut projects = rows;
-    apply_project_filters(&mut projects, &filters);
+    let permissions = permissions_for_scope(&scope, viewer_user_id);
+    let mut projects = visible_project_rows(pool, &scope, viewer_user_id).await?;
+    if permissions.can_copy {
+        for project in &mut projects {
+            project.viewer_can_copy = true;
+            if project.viewer_role.is_none() {
+                project.viewer_role = permissions.viewer_role.clone();
+            }
+        }
+    }
+    apply_project_search_filter(&mut projects, &filters);
     sort_projects(&mut projects, &filters.sort);
 
     let counts = project_counts(&projects);
-    let total = if filters.tab == "templates" {
-        projects
-            .iter()
-            .filter(|project| project.is_template)
-            .count() as i64
-    } else {
-        projects.len() as i64
-    };
     let offset = ((filters.page - 1) * filters.page_size) as usize;
     let limit = filters.page_size as usize;
     let items = if filters.tab == "templates" {
@@ -5449,6 +5458,17 @@ async fn projects_for_scope(
             .cloned()
             .collect()
     };
+    let total = if filters.tab == "templates" {
+        projects
+            .iter()
+            .filter(|project| project.is_template)
+            .count() as i64
+    } else {
+        projects
+            .iter()
+            .filter(|project| project.state == filters.state)
+            .count() as i64
+    };
     let templates_all = template_rows(&projects);
     let templates = templates_all
         .into_iter()
@@ -5459,8 +5479,6 @@ async fn projects_for_scope(
         .iter()
         .filter(|project| project.is_template)
         .count() as i64;
-    let permissions = permissions_for_scope(&scope, viewer_user_id);
-
     Ok(ProjectList {
         envelope: ListEnvelope {
             items,
@@ -11969,7 +11987,7 @@ fn counted_field_values(
     counts.into_iter().collect()
 }
 
-fn apply_project_filters(projects: &mut Vec<ProjectRow>, filters: &ProjectListFilters) {
+fn apply_project_search_filter(projects: &mut Vec<ProjectRow>, filters: &ProjectListFilters) {
     if let Some(query) = &filters.query {
         let normalized = query.to_ascii_lowercase();
         let terms = normalized
@@ -12007,9 +12025,6 @@ fn apply_project_filters(projects: &mut Vec<ProjectRow>, filters: &ProjectListFi
                             .is_some_and(|status| status.label.to_ascii_lowercase().contains(term))
                 })
         });
-    }
-    if filters.tab != "templates" {
-        projects.retain(|project| project.state == filters.state);
     }
 }
 

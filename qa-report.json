@@ -5719,5 +5719,62 @@
       "qa-report.json",
       "qa-report-summary.json"
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh QA/fix pass on 2026-05-12 verified user, organization, and repository Projects v2 list surfaces. Fixed dismissible Welcome banner, More project options copy menu, user New project URL preservation, URL-backed list controls, and scoped copy permissions. Focused Vitest passed 9/9 and focused Chromium Playwright projects-list scenario passed 2/2 against localhost:55433 with real DB seeding, covering search, sort, open/closed/templates scopes, org/user/repo pages, copy dialog, copy submit redirect, no dead controls, and no horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/projects",
+          "GET /api/users/{username}/projects",
+          "GET /api/repos/{owner}/{repo}/projects",
+          "POST /api/projects/{project_id}/copies"
+        ],
+        "notes": "DB-backed Rust projects_list_contract passed 1/1 against TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test with no self-skip. It verifies project rows, templates, repository-linked lists, status badges, search/state/sort/pagination counts, private non-leakage, invalid filter envelope, successful copy clone counts, audit_events, project_recent_visits, and forbidden copy denial."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_boundaries",
+          "private_data_non_leakage",
+          "error_envelopes"
+        ],
+        "notes": "Focused contract covers outsider inability to see private closed projects, forbidden copy denial for an unauthorized viewer, and validation_failed envelope for invalid sort. make check passed Cargo check, TypeScript, Clippy, and Biome after the fixes."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright scenario passed expectNoDeadControls and expectNoHorizontalOverflow on the Projects list flow; component coverage verifies labeled search/sort/title controls and dismissible Welcome banner."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local Postgres test container healthy on localhost:55433; CARGO_TARGET_DIR set to .scratch/cargo-target for Rust gates.",
+      "Inspected prd.json, qa-hints.json history, qa-report artifacts, ProjectsListPage, Projects API/domain code, page routes, and existing projects-list tests.",
+      "Fixed project list counts to preserve open/closed counts across search while paginating current state, propagated scoped write/base permissions to row copy controls, added dismissible Welcome banner, fixed user New project URLs, and added More project options menu for row copy.",
+      "Added/updated focused Rust contract, component Vitest, and DB-backed Playwright coverage for projects-001."
+    ],
+    "evidence": [
+      "make doctor",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test projects_list_contract -- --nocapture (1 passed, no self-skip)",
+      "cd web && npm test -- --run tests/projects-list-page.test.tsx (9 passed)",
+      "cd web && npx playwright test tests/e2e/projects-list.spec.ts --project=chromium --reporter=list (2 passed, setup + Chromium, no no-detail/self-skip)",
+      "make check && make test (Cargo check, Web typecheck, Clippy, Biome, Cargo tests, Web tests 667 passed)"
+    ],
+    "artifacts": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json",
+      "web/tests/e2e/projects-list.spec.ts",
+      "ralph/screenshots/build/projects-001-final-list-pages.jpg"
+    ],
+    "overall_status": "pass"
   }
 ]

@@ -319,10 +319,12 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     assert_json(&headers);
     assert_eq!(body["scope"]["kind"], "organization");
     assert_eq!(body["counts"]["open"], 1);
+    assert_eq!(body["counts"]["closed"], 0);
     assert_eq!(body["items"][0]["title"], "Platform roadmap");
     assert_eq!(body["items"][0]["status"]["label"], "On track");
     assert_eq!(body["items"][0]["counts"]["draft"], 1);
     assert_eq!(body["items"][0]["defaultRepository"]["name"], repo.name);
+    assert_eq!(body["items"][0]["viewerCanCopy"], true);
 
     let repo_uri = format!("/api/repos/{marker}/{}/projects", repo.name);
     let (status, _, body) = get_json(app.clone(), &repo_uri, Some(&member_cookie)).await;
@@ -404,6 +406,8 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["page"], 1);
     assert_eq!(body["pageSize"], 1);
+    assert_eq!(body["counts"]["open"], 3);
+    assert_eq!(body["counts"]["closed"], 1);
     assert_eq!(body["total"], 3);
     assert_eq!(body["items"].as_array().expect("items").len(), 1);
     assert_eq!(body["items"][0]["title"], "Platform roadmap");

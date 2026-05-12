@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 81,
+    "features_passed": 82,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 78,
+      "pass": 79,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 74,
+      "pass": 75,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 75,
+      "pass": 76,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 40,
+      "pass": 41,
       "fail": 0,
       "skip": 39
     }
@@ -2693,10 +2693,41 @@
       "feature_id": "projects-001",
       "description": "Implement user, organization, and repository Projects v2 list pages with search,",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh QA/fix pass on 2026-05-12 verified user, organization, and repository Projects v2 list surfaces. Fixed dismissible Welcome banner, More project options copy menu, user New project URL preservation, URL-backed list controls, and scoped copy permissions. Focused Vitest passed 9/9 and focused Chromium Playwright projects-list scenario passed 2/2 against localhost:55433 with real DB seeding, covering search, sort, open/closed/templates scopes, org/user/repo pages, copy dialog, copy submit redirect, no dead controls, and no horizontal overflow."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/orgs/{org}/projects",
+            "GET /api/users/{username}/projects",
+            "GET /api/repos/{owner}/{repo}/projects",
+            "POST /api/projects/{project_id}/copies"
+          ],
+          "notes": "DB-backed Rust projects_list_contract passed 1/1 against TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test with no self-skip. It verifies project rows, templates, repository-linked lists, status badges, search/state/sort/pagination counts, private non-leakage, invalid filter envelope, successful copy clone counts, audit_events, project_recent_visits, and forbidden copy denial."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "permission_boundaries",
+            "private_data_non_leakage",
+            "error_envelopes"
+          ],
+          "notes": "Focused contract covers outsider inability to see private closed projects, forbidden copy denial for an unauthorized viewer, and validation_failed envelope for invalid sort. make check passed Cargo check, TypeScript, Clippy, and Biome after the fixes."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright scenario passed expectNoDeadControls and expectNoHorizontalOverflow on the Projects list flow; component coverage verifies labeled search/sort/title controls and dismissible Welcome banner."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "projects-002",
