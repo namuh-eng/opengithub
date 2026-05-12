@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import {
   expect,
   expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
   skipWithoutTestDb,
   test,
 } from "./_fixtures/auth";
@@ -423,6 +425,102 @@ test("repository discussions list filters, category rail, empty state, and upvot
   ).toHaveAttribute("aria-pressed", "false");
   await expectNoDeadControls(page);
 });
+
+test("repository discussion creation covers chooser, YAML forms, generic preview, and polls", async ({
+  page,
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
+  await expect(page.getByText("Answers enabled").first()).toBeVisible();
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Get started" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=general$/);
+  await page.screenshot({
+    fullPage: true,
+    path: screenshotPath(testInfo, "discussions-002-chooser"),
+  });
+
+  await page.getByRole("link", { name: "Get started" }).first().click();
+  await expect(page).toHaveURL(/\/discussions\/new\?category=general$/);
+  await page
+    .getByLabel("Title *")
+    .fill("Generic creation smoke from Playwright");
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("**bold** <script>alert('x')</script>");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("bold")).toBeVisible();
+  await expect(
+    page.getByRole("tabpanel", { name: "Preview" }).locator("script"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute("href", /Generic\+creation\+smoke\+from\+Playwright/);
+  await page.getByLabel(/I have done a search/).check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", {
+      name: /Generic creation smoke from Playwright/,
+    }),
+  ).toBeVisible();
+
+  await page.goto(`${repositoryHref}/discussions/new?category=q-a`);
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await page.getByLabel("Title *").fill("YAML category creation smoke");
+  await expect(page.getByText("Context is required.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeDisabled();
+  await page
+    .getByLabel(/Context/)
+    .fill("The UI should preserve required template answers.");
+  await page.getByLabel("Area").selectOption("UI");
+  await page.getByLabel(/I have done a search/).check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", { name: /YAML category creation smoke/ }),
+  ).toBeVisible();
+
+  await page.goto(`${repositoryHref}/discussions/new?category=polls`);
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await page.getByLabel("Title *").fill("Poll creation smoke");
+  await page
+    .getByLabel("Question *")
+    .fill("Which branch policy should we use?");
+  await page.getByLabel("Poll option 1").fill("Stable");
+  await page.getByLabel("Poll option 2").fill("Preview");
+  await page.getByLabel(/I have done a search/).check();
+  await page.screenshot({
+    fullPage: true,
+    path: screenshotPath(testInfo, "discussions-002-form-poll"),
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", { name: /Poll creation smoke/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Which branch policy should we use?"),
+  ).toBeVisible();
+  await expect(page.getByText("Stable")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectNoDeadControls(page);
+});
+
 test("repository issue converts into a discussion from the issue sidebar", async ({
   page,
   seed,

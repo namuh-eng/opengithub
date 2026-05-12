@@ -534,6 +534,7 @@ describe("RepositoryDiscussionCreatePage", () => {
           },
           { fieldId: "area", value: "API" },
         ]);
+        expect(body.body).toBe("I can help write the first draft.");
         expect(body.poll).toBeNull();
         return new Response(
           JSON.stringify({
@@ -580,6 +581,63 @@ describe("RepositoryDiscussionCreatePage", () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith(
         "/namuh-eng/opengithub/discussions/43",
+      ),
+    );
+  });
+
+  it("submits YAML form answers as the opening body when the composer is empty", async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign },
+    });
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.body).toBe(
+          "### Context\n\nThe current docs are missing examples.\n\n### Area\n\nAPI",
+        );
+        return new Response(
+          JSON.stringify({
+            discussionId: "discussion-4",
+            discussionNumber: 45,
+            href: "/namuh-eng/opengithub/discussions/45",
+            title: "How should generated bodies work?",
+            category: yamlFormView().selectedCategory,
+          }),
+          { status: 201 },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={yamlFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Title *"), {
+      target: { value: "How should generated bodies work?" },
+    });
+    fireEvent.change(screen.getByLabelText("Context *"), {
+      target: { value: "The current docs are missing examples." },
+    });
+    fireEvent.change(screen.getByLabelText("Area"), {
+      target: { value: "API" },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I have done a search for similar discussions/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start discussion" }));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/45",
       ),
     );
   });

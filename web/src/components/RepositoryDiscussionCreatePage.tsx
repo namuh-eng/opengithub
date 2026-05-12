@@ -148,6 +148,19 @@ function fieldInputId(field: DiscussionFormField) {
   return `discussion-form-${field.id}`;
 }
 
+function buildBodyFromFormAnswers(
+  fields: DiscussionFormField[],
+  answers: Record<string, string>,
+) {
+  return fields
+    .map((field) => {
+      const value = answers[field.id]?.trim();
+      return value ? `### ${field.label}\n\n${value}` : null;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function DiscussionFormFieldControl({
   field,
   onChange,
@@ -397,12 +410,10 @@ export function RepositoryDiscussionCreatePage({
         body: JSON.stringify({
           categorySlug: selected.slug,
           title: title.trim(),
-          body: isPollCategory
-            ? body.trim()
-              ? body
-              : null
-            : body.trim()
-              ? body
+          body: body.trim()
+            ? body
+            : hasYamlFields
+              ? buildBodyFromFormAnswers(creation.form.fields, formAnswers)
               : null,
           similarSearchAcknowledged: acknowledged,
           formAnswers: hasYamlFields
