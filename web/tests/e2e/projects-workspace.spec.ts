@@ -70,8 +70,13 @@ async function openFirstProjectWorkspace(page: Page) {
     .locator('a[href*="/projects/"][href*="/views/"]')
     .first();
   await expect(workspaceLink).toBeVisible();
-  await workspaceLink.click();
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await Promise.all([
+    page.waitForURL(/\/projects\/\d+\/views\/\d+/),
+    workspaceLink.click(),
+  ]);
+  await expect(
+    page.getByRole("heading", { level: 1, name: /workspace/i }),
+  ).toBeVisible();
 }
 
 test.skip(

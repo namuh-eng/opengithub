@@ -15,10 +15,12 @@ import type {
 } from "@/lib/api";
 import {
   organizationProjectInsightsHref,
+  organizationProjectSettingsHref,
   organizationProjectWorkspaceHref,
   projectArchivedItemsHref,
   projectItemHref,
   userProjectInsightsHref,
+  userProjectSettingsHref,
   userProjectWorkspaceHref,
 } from "@/lib/navigation";
 
@@ -64,6 +66,16 @@ function insightsHref(
   return scope === "organization"
     ? organizationProjectInsightsHref(owner, projectNumber)
     : userProjectInsightsHref(owner, projectNumber);
+}
+
+function settingsHref(
+  scope: "user" | "organization",
+  owner: string,
+  projectNumber: number,
+) {
+  return scope === "organization"
+    ? organizationProjectSettingsHref(owner, projectNumber)
+    : userProjectSettingsHref(owner, projectNumber);
 }
 
 function fieldValue(
@@ -750,14 +762,12 @@ export function ProjectWorkspacePage({
           >
             Insights
           </Link>
-          <button
+          <Link
             className="btn sm"
-            disabled
-            title="Project settings are outside this feature phase."
-            type="button"
+            href={settingsHref(scope, owner, workspace.project.number)}
           >
             Settings
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -839,10 +849,11 @@ export function ProjectWorkspacePage({
               onSubmit={submitFilter}
             >
               <input
-                aria-label="Filter project items"
+                aria-label="Filter items"
                 name="q"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="is:open assignee:@me label:backend"
+                type="search"
                 value={query}
               />
               <button className="btn sm ghost" type="submit">
@@ -887,15 +898,15 @@ export function ProjectWorkspacePage({
               }
               type="button"
             >
-              View menu
+              View configuration
             </button>
           </div>
 
           {configOpen ? (
-            <section aria-label="View menu" className="card mb-3 p-4">
+            <section aria-label="View configuration" className="card mb-3 p-4">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="t-h3">View menu</h2>
+                  <h2 className="t-h3">View configuration</h2>
                   <p className="t-xs mt-1">
                     Save layout, filters, sorting, grouping, slicing, and
                     visible fields for this project view.
@@ -981,7 +992,7 @@ export function ProjectWorkspacePage({
                   </div>
                 ))}
               </div>
-              <form aria-label="View configuration" onSubmit={saveViewState}>
+              <form aria-label="Saved view state" onSubmit={saveViewState}>
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                   <h3 className="t-h3">Table state</h3>
                   {workspace.unsavedView.active ? (
@@ -1797,14 +1808,16 @@ export function ProjectWorkspacePage({
                                         disabled={fieldSaving}
                                         type="submit"
                                       >
-                                        {fieldSaving ? "Saving..." : "Save"}
+                                        {fieldSaving
+                                          ? "Saving..."
+                                          : "Save field"}
                                       </button>
                                       <button
                                         className="btn sm"
                                         onClick={() => setEditingCell(null)}
                                         type="button"
                                       >
-                                        Cancel
+                                        Cancel field
                                       </button>
                                     </form>
                                   ) : value ? (
@@ -1831,6 +1844,7 @@ export function ProjectWorkspacePage({
                                           !workspace.viewerPermissions
                                             .canEdit || !field.editable
                                         }
+                                        aria-label={`Edit ${field.name} field for ${item.title}`}
                                         onClick={() =>
                                           openFieldEditor(item, field, value)
                                         }
@@ -1851,6 +1865,7 @@ export function ProjectWorkspacePage({
                                         !workspace.viewerPermissions.canEdit ||
                                         !field.editable
                                       }
+                                      aria-label={`Edit ${field.name} field for ${item.title}`}
                                       onClick={() =>
                                         openFieldEditor(item, field, value)
                                       }
@@ -1944,7 +1959,7 @@ export function ProjectWorkspacePage({
                   }
                   type="button"
                 >
-                  Add item
+                  Add linked item
                 </button>
                 <span className="t-xs">
                   Paste issue or pull request URLs, create drafts, or bulk add

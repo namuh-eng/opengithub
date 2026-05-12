@@ -795,6 +795,10 @@ async fn main() -> anyhow::Result<()> {
             (String::new(), String::new())
         };
 
+    if !seed_empty_dashboard() {
+        seed_projects_workspace_fixture(&pool, user.id, &suffix).await?;
+    }
+
     let output = SeedOutput {
         cookie_name: config.session_cookie_name,
         cookie_value: cookie_value.to_owned(),
@@ -818,6 +822,187 @@ async fn main() -> anyhow::Result<()> {
         repository_wiki_href,
     };
     println!("{}", serde_json::to_string(&output)?);
+    Ok(())
+}
+
+async fn seed_projects_workspace_fixture(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    suffix: &str,
+) -> anyhow::Result<()> {
+    let organization_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO organizations (slug, display_name, description, owner_user_id)
+        VALUES ('namuh', 'Namuh', 'Seeded organization for Projects workspace smoke tests.', $1)
+        ON CONFLICT (lower(slug))
+        DO UPDATE SET display_name = EXCLUDED.display_name,
+                      description = EXCLUDED.description
+        RETURNING id
+        "#,
+    )
+    .bind(actor_user_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role)
+        VALUES ($1, $2, 'owner')
+        ON CONFLICT (organization_id, user_id)
+        DO UPDATE SET role = EXCLUDED.role
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    let repository = create_repository(
+        pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization {
+                id: organization_id,
+            },
+            name: format!("projects-workspace-{}", &suffix[..12]),
+            description: Some("Seeded Projects v2 workspace source repository.".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: actor_user_id,
+        },
+    )
+    .await?;
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 1, 'Wire the table shell', 'Seeded issue for Projects v2 workspace QA.', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .fetch_one(pool)
+    .await?;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (
+          owner_organization_id, number, title, short_description, visibility,
+          default_repository_id, created_by_user_id
+        )
+        VALUES ($1, 1, 'Editorial table workspace', 'Projects v2 saved views and editable table.', 'private', $2, $3)
+        ON CONFLICT (owner_organization_id, number) WHERE owner_organization_id IS NOT NULL
+        DO UPDATE SET title = EXCLUDED.title,
+                      short_description = EXCLUDED.short_description,
+                      visibility = EXCLUDED.visibility,
+                      default_repository_id = EXCLUDED.default_repository_id,
+                      updated_at = now()
+        RETURNING id
+        "#,
+    )
+    .bind(organization_id)
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_permissions (project_id, user_id, role, source)
+        VALUES ($1, $2, 'admin', 'direct')
+        ON CONFLICT (project_id, user_id)
+        DO UPDATE SET role = EXCLUDED.role
+        "#,
+    )
+    .bind(project_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_repositories (project_id, repository_id, link_type)
+        VALUES ($1, $2, 'default')
+        ON CONFLICT (project_id, repository_id) DO NOTHING
+        "#,
+    )
+    .bind(project_id)
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query("DELETE FROM project_items WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM project_fields WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM project_views WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO project_views (project_id, name, layout, position, configuration)
+        VALUES ($1, 'Table', 'table', 1, '{"sort":"manual"}'),
+               ($1, 'Bugs', 'table', 2, '{"query":"label:bug"}')
+        "#,
+    )
+    .bind(project_id)
+    .execute(pool)
+    .await?;
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'single_select', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let priority_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Priority', 'single_select', 2) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let target_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Target date', 'date', 3) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let issue_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 1) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(issue_id)
+    .fetch_one(pool)
+    .await?;
+    let draft_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, body, position) VALUES ($1, 'draft_issue', 'Draft launch notes', 'Project-only draft for add-row and editor smoke.', 2) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    for (item_id, status, priority, target) in [
+        (issue_item_id, "In progress", "P1", "2026-05-20"),
+        (draft_item_id, "Backlog", "P2", "2026-06-01"),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id)
+            VALUES ($1, $2, $3, $5), ($1, $4, $6, $5), ($1, $7, $8, $5)
+            "#,
+        )
+        .bind(item_id)
+        .bind(status_field)
+        .bind(serde_json::json!(status))
+        .bind(priority_field)
+        .bind(actor_user_id)
+        .bind(serde_json::json!(priority))
+        .bind(target_field)
+        .bind(serde_json::json!(target))
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
 

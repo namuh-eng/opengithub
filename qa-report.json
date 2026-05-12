@@ -5771,5 +5771,88 @@
       "Template rows returned projectHref without the workspace /views/1 target."
     ],
     "fix_description": "Updated ProjectsListPage menu/banner interactions and Rust project list filtering/count/template href logic; extended focused UI and DB contract tests."
+  },
+  {
+    "feature_id": "projects-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified Projects v2 table workspace renders saved view tabs, filter/search bar, slices, unsaved state, high-density table rows, inline field editor, and add-row panel in component and Chromium E2E coverage."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workspace",
+          "PATCH /api/projects/:project_id/items/:item_id/fields/:field_id",
+          "POST /api/projects/:project_id/items",
+          "POST /api/projects/:project_id/items/bulk",
+          "PATCH /api/projects/:project_id/items/:item_id/position",
+          "DELETE /api/projects/:project_id/items/:item_id",
+          "PATCH /api/projects/:project_id/views/:view_id/state",
+          "PATCH /api/projects/:project_id/views/:view_id/layout",
+          "PATCH /api/projects/:project_id/views/:view_id/roadmap-settings"
+        ],
+        "notes": "DB-backed projects_workspace_contract covers workspace reads, private guards, field edits, native issue title sync, audit events, add/reorder/remove, board grouped moves, saved view/layout/roadmap state, validation errors, and settings repository visibility."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private_project_forbidden_for_authenticated_outsider",
+          "anonymous_private_project_not_found",
+          "private_repository_link_non_leakage",
+          "org_base_permission_requires_membership"
+        ],
+        "notes": "Fixed org projects base permission so non-members do not inherit private project read access; settings repository links now dedupe and hide unreadable private repositories."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component/E2E checks assert labeled searchbox, accessible visible buttons, navigation landmarks, form/group names, and no dead links on the workspace scenario."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy with postgres-test up and .scratch/cargo-target writable.",
+      "Verified test schema on localhost:55433 via podman exec psql: 25 public project* tables present.",
+      "Read web/AGENTS.md Editorial design guidance and inspected ProjectWorkspacePage, org/user workspace routes, projects API/domain contracts, projects_workspace_contract.rs, project-workspace-page.test.tsx, projects-workspace.spec.ts, prd.json, qa-report files, and projects-001 report context.",
+      "Ran cd web && npm test -- --run tests/project-workspace-page.test.tsx: 19 tests passed.",
+      "Ran TEST_DATABASE_URL/DATABASE_URL from .env.test with ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture: 15 DB-backed tests passed without self-skip.",
+      "Ran cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workspace.spec.ts: 2 passed including auth setup, real app/API/test DB, and final screenshots.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran make test: Cargo tests passed and Web tests passed (667 passed)."
+    ],
+    "bugs_found": [
+      "The canonical /orgs/:org/projects/:number and /:owner/projects/:number workspace pages were missing, leaving only /views/:view routes.",
+      "Workspace controls had accessibility/API drift from the PRD/E2E contract: Settings was a disabled button despite implemented settings pages, View configuration and filter controls had inconsistent accessible names/roles, and inline edit/add-row buttons lacked specific accessible names.",
+      "Organization project links generated user-style /:owner/projects/:number URLs, so org project rows navigated to an unavailable workspace.",
+      "Workspace table fields included the built-in Title field as a duplicate column instead of keeping title in the item cell.",
+      "Project visibility role resolution granted organization projects_base_permission to non-members, exposing private project settings to authenticated outsiders.",
+      "Project settings repository links could duplicate a default repository and leak unreadable private linked repositories under org base repository permissions.",
+      "Dashboard E2E seed did not create a Projects v2 workspace for /orgs/namuh/projects, so browser coverage could not exercise projects-002 against real seeded data."
+    ],
+    "fix_description": "Added canonical org/user project workspace pages, corrected org project href generation, tightened project role and repository-link visibility/deduping, hid built-in Title from workspace field columns, aligned workspace control labels/roles with accessible E2E coverage, and seeded a real namuh Projects v2 workspace for browser tests.",
+    "commands": [
+      "make doctor: passed; local verification stack healthy.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -c \"select count(*) as project_tables from information_schema.tables where table_schema='public' and table_name like 'project%';\": project_tables=25.",
+      "cd web && npm test -- --run tests/project-workspace-page.test.tsx: 1 file / 19 tests passed.",
+      "set -a; source .env.test; set +a; CARGO_TARGET_DIR=$PWD/.scratch/cargo-target ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture: 15 tests passed.",
+      "cd web && set -a; source ../.env.test; set +a; CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workspace.spec.ts: 2 passed.",
+      "make check: passed.",
+      "make test: passed; Web tests 667 passed."
+    ],
+    "artifacts": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json",
+      "crates/api/src/domain/projects.rs",
+      "crates/api/tests/projects_workspace_contract.rs",
+      "crates/api/examples/dashboard_e2e_seed.rs",
+      "web/src/components/ProjectWorkspacePage.tsx",
+      "web/src/app/orgs/[org]/projects/[number]/page.tsx",
+      "web/src/app/[owner]/projects/[number]/page.tsx",
+      "web/tests/project-workspace-page.test.tsx",
+      "web/tests/e2e/projects-workspace.spec.ts"
+    ]
   }
 ]
