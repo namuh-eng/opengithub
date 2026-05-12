@@ -349,7 +349,7 @@ test("repository discussions list filters, category rail, empty state, and upvot
 
   await page.goto(`${repositoryHref}/discussions`);
   await expect(
-    page.getByRole("heading", { name: "Discussions" }),
+    page.getByRole("heading", { name: "Discussions", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Discussions" })).toHaveAttribute(
     "aria-current",
