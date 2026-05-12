@@ -331,6 +331,57 @@ function seedConvertibleIssue(repositoryHref: string): number {
   return issueNumber;
 }
 
+function assertDiscussionCreationRows(repositoryHref: string) {
+  const [, owner, repo] = repositoryHref.split("/");
+  const decodedOwner = decodeURIComponent(owner);
+  const decodedRepo = decodeURIComponent(repo);
+
+  runSql(`
+    DO $$
+    DECLARE
+      yaml_count bigint;
+      poll_count bigint;
+    BEGIN
+      SELECT COUNT(*) INTO yaml_count
+      FROM discussions
+      JOIN repositories ON repositories.id = discussions.repository_id
+      LEFT JOIN users ON users.id = repositories.owner_user_id
+      LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+      JOIN discussion_comments ON discussion_comments.discussion_id = discussions.id
+      JOIN discussion_form_answers ON discussion_form_answers.discussion_id = discussions.id
+      JOIN discussion_attachments ON discussion_attachments.discussion_id = discussions.id
+      JOIN discussion_subscriptions ON discussion_subscriptions.discussion_id = discussions.id
+      WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+        AND repositories.name = ${sqlLiteral(decodedRepo)}
+        AND discussions.title = 'How should QA prove discussions?'
+        AND discussions.body LIKE '%Preview%'
+        AND discussion_form_answers.field_id = 'context'
+        AND discussion_attachments.file_name = 'qa-notes.txt';
+
+      SELECT COUNT(*) INTO poll_count
+      FROM discussions
+      JOIN repositories ON repositories.id = discussions.repository_id
+      LEFT JOIN users ON users.id = repositories.owner_user_id
+      LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+      JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
+      JOIN discussion_poll_options ON discussion_poll_options.poll_id = discussion_polls.id
+      WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+        AND repositories.name = ${sqlLiteral(decodedRepo)}
+        AND discussions.title = 'Which discussion path should ship?'
+        AND discussion_polls.question = 'Which discussion path should ship first?'
+        AND discussion_polls.allows_multiple = true
+        AND discussion_poll_options.label IN ('YAML forms', 'Poll creation');
+
+      IF yaml_count < 1 THEN
+        RAISE EXCEPTION 'missing YAML discussion creation rows';
+      END IF;
+      IF poll_count < 2 THEN
+        RAISE EXCEPTION 'missing poll discussion creation rows';
+      END IF;
+    END $$;
+  `);
+}
+
 test.skip(
   skipWithoutTestDb(),
   "repository discussions smoke needs a database URL",
@@ -423,6 +474,94 @@ test("repository discussions list filters, category rail, empty state, and upvot
   ).toHaveAttribute("aria-pressed", "false");
   await expectNoDeadControls(page);
 });
+
+test("repository discussion creation chooser, YAML form, preview, attachment, and poll paths work", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/new`);
+  await expect(page).toHaveURL(/\/discussions\/new\/choose$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Q&A" })).toBeVisible();
+  await expect(page.getByText("Answers enabled").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Polls" })).toBeVisible();
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Get started" }).nth(2),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=q-a$/);
+
+  await page.goto(`${repositoryHref}/discussions/new?category=q-a`);
+  await expect(page.getByRole("heading", { name: /Q&A/ })).toBeVisible();
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await expect(page.getByText("First time here?")).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Attachment dropzone" }),
+  ).toBeVisible();
+  await page.getByLabel("Title *").fill("How should QA prove discussions?");
+  await page
+    .getByLabel("Context *")
+    .fill("We need browser evidence for discussion creation.");
+  await page.getByLabel("Area").selectOption("UI");
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("**Preview** this body before creating the discussion.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("Preview this body")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute("href", /q=is%3Aopen\+How\+should\+QA\+prove/);
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeDisabled();
+  await page.locator("#discussion-attachments").setInputFiles({
+    name: "qa-notes.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("focused discussion create evidence"),
+  });
+  await expect(page.getByText("qa-notes.txt")).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+
+  await page.goto(`${repositoryHref}/discussions/new?category=polls`);
+  await expect(page.getByRole("heading", { name: /Polls/ })).toBeVisible();
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await expect(page.getByLabel("Context *")).toHaveCount(0);
+  await page.getByLabel("Title *").fill("Which discussion path should ship?");
+  await page
+    .getByLabel("Question *")
+    .fill("Which discussion path should ship first?");
+  await page.getByLabel("Poll option 1").fill("YAML forms");
+  await page.getByLabel("Poll option 2").fill("Poll creation");
+  await page
+    .getByRole("checkbox", {
+      name: /Allow voters to choose more than one option/i,
+    })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  assertDiscussionCreationRows(repositoryHref);
+  await expectNoDeadControls(page);
+});
+
 test("repository issue converts into a discussion from the issue sidebar", async ({
   page,
   seed,

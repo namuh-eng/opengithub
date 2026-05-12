@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { KeyboardEvent } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import type {
@@ -450,6 +450,16 @@ export function RepositoryDiscussionCreatePage({
     }
   }
 
+  function addFiles(files: File[]) {
+    if (!files.length) return;
+    setAttachments((current) => [...current, ...files.map(attachmentFromFile)]);
+  }
+
+  function handleAttachmentDrop(event: DragEvent<HTMLFieldSetElement>) {
+    event.preventDefault();
+    addFiles(Array.from(event.dataTransfer.files));
+  }
+
   if (!selected) {
     return (
       <section className="card p-6">
@@ -798,34 +808,42 @@ export function RepositoryDiscussionCreatePage({
         </section>
 
         <section className="card p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <label className="t-label" htmlFor="discussion-attachments">
-                Attachments
+          <fieldset
+            className="rounded-[var(--radius-lg)] border border-dashed p-4"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleAttachmentDrop}
+            style={{ borderColor: "var(--line-strong)" }}
+          >
+            <legend className="sr-only">Attachment dropzone</legend>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <label className="t-label" htmlFor="discussion-attachments">
+                  Attachments
+                </label>
+                <p className="mt-2 t-sm" style={{ color: "var(--ink-3)" }}>
+                  Drag screenshots or logs here, or choose files. Files are
+                  recorded as bounded draft metadata for the Rust API to attach
+                  to the opening comment.
+                </p>
+              </div>
+              <label className="btn sm" htmlFor="discussion-attachments">
+                Add files
               </label>
-              <p className="mt-2 t-sm" style={{ color: "var(--ink-3)" }}>
-                Add screenshots or logs. Files are recorded as bounded draft
-                metadata for the Rust API to attach to the opening comment.
-              </p>
             </div>
-            <label className="btn sm" htmlFor="discussion-attachments">
-              Add files
-            </label>
-            <input
-              className="sr-only"
-              id="discussion-attachments"
-              multiple
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                setAttachments((current) => [
-                  ...current,
-                  ...files.map(attachmentFromFile),
-                ]);
-                event.currentTarget.value = "";
-              }}
-              type="file"
-            />
-          </div>
+            <p className="mt-3 t-xs" style={{ color: "var(--ink-3)" }}>
+              Up to 10 files, 25 MiB each.
+            </p>
+          </fieldset>
+          <input
+            className="sr-only"
+            id="discussion-attachments"
+            multiple
+            onChange={(event) => {
+              addFiles(Array.from(event.target.files ?? []));
+              event.currentTarget.value = "";
+            }}
+            type="file"
+          />
           {attachments.length ? (
             <ul
               className="mt-4 divide-y"
@@ -940,6 +958,17 @@ export function RepositoryDiscussionCreatePage({
       </main>
 
       <aside className="space-y-4">
+        <section className="card p-4">
+          <p className="t-label" style={{ color: "var(--accent)" }}>
+            First time here?
+          </p>
+          <h2 className="t-h3 mt-1">Help the community help you.</h2>
+          <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+            Share context, prior attempts, and a clear next step. Maintainers
+            can answer faster when the opening post is focused.
+          </p>
+        </section>
+
         <section className="card p-4">
           <h2 className="t-h3">Similar discussions</h2>
           <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>

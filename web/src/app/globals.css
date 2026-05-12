@@ -78,9 +78,13 @@ body.og-app.font-size-large {
   *,
   *::before,
   *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion user preference must override component animation rules. */
     animation-duration: 0.001ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion user preference must override component animation rules. */
     animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion user preference must override component smooth scrolling rules. */
     scroll-behavior: auto !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion user preference must override component transition rules. */
     transition-duration: 0.001ms !important;
   }
 }

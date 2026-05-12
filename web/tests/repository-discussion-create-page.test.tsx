@@ -346,10 +346,15 @@ describe("RepositoryDiscussionCreatePage", () => {
       screen.getByRole("toolbar", { name: "Markdown formatting toolbar" }),
     ).toBeVisible();
     expect(
+      screen.getByRole("group", { name: "Attachment dropzone" }),
+    ).toBeVisible();
+    expect(
       screen.getByRole("checkbox", {
         name: /I have done a search for similar discussions/i,
       }),
     ).toBeVisible();
+    expect(screen.getByText("First time here?")).toBeVisible();
+    expect(screen.getByText("Help the community help you.")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Choose a different category" }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/discussions/new/choose");
