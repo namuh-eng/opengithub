@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 79,
+    "features_passed": 80,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 76,
+      "pass": 77,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 72,
+      "pass": 73,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 73,
+      "pass": 74,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 38,
+      "pass": 39,
       "fail": 0,
       "skip": 39
     }
@@ -2625,10 +2625,43 @@
       "feature_id": "discussions-005",
       "description": "Moderate and manage discussions through pinning, locking, transferring, deleting",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused API, component, and Playwright scenarios verified discussion moderation and issue conversion flows against the real app/test DB. make check and make test passed after fixes."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "PUT/PATCH/DELETE /api/repos/:owner/:repo/discussions/:number/pin",
+            "PUT/DELETE /api/repos/:owner/:repo/discussions/:number/lock",
+            "PUT /api/repos/:owner/:repo/discussions/:number/state",
+            "PATCH /api/repos/:owner/:repo/discussions/:number/category",
+            "GET/POST /api/repos/:owner/:repo/discussions/:number/transfer-targets|transfer",
+            "DELETE /api/repos/:owner/:repo/discussions/:number/delete",
+            "GET/POST /api/repos/:owner/:repo/issues/:number/convert-to-discussion"
+          ],
+          "notes": "Permission gates, global/category pin limits, lock reactions, close/reopen, recategorize, transfer same-owner constraints, delete confirmation/tombstone, conversion duplicate/poll-category errors, audit rows, activity/timeline events, and notifications were covered by DB-backed Rust API contracts."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "permission_gates",
+            "data_exposure"
+          ],
+          "notes": "Anonymous conversion returned 401; read-only moderation/conversion returned 403; validation errors did not leak session secret or stack data."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component coverage asserts named dialogs, accessible descriptions for destructive transfer/delete dialogs, disabled confirm states, disabled conversion categories, keyboard-reachable native controls, and no banned GitHub/Primer visual values."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "discussions-006",

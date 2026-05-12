@@ -3466,7 +3466,7 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
     discussion_number: i64,
     request: DiscussionMetadataRequest,
 ) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
-    let Some((repository, discussion_id, _title, _author_user_id)) =
+    let Some((repository, discussion_id, title, author_user_id)) =
         load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
             .await?
     else {
@@ -3518,8 +3518,34 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
         )
         .bind(discussion_id)
         .bind(actor_user_id)
-        .bind(category.slug)
+        .bind(&category.slug)
         .execute(pool)
+        .await?;
+        record_discussion_moderation_audit(
+            pool,
+            actor_user_id,
+            discussion_id,
+            "repository.discussion.category.update",
+            json!({
+                "repositoryId": repository.id,
+                "discussionNumber": discussion_number,
+                "category": category.slug,
+                "categoryId": category.id,
+            }),
+        )
+        .await?;
+        notify_discussion_author(
+            pool,
+            repository.id,
+            discussion_id,
+            author_user_id,
+            actor_user_id,
+            format!(
+                "Discussion #{} was moved to {}: {}",
+                discussion_number, category.name, title
+            ),
+            "discussion_category",
+        )
         .await?;
     }
 
@@ -3829,7 +3855,7 @@ pub async fn delete_repository_discussion_by_owner_name(
     discussion_number: i64,
     request: DeleteDiscussionRequest,
 ) -> Result<Option<DeleteDiscussionResponse>, RepositoryError> {
-    let Some((repository, discussion_id, title, _author_user_id)) =
+    let Some((repository, discussion_id, title, author_user_id)) =
         load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
             .await?
     else {
@@ -3895,6 +3921,16 @@ pub async fn delete_repository_discussion_by_owner_name(
             "reason": reason,
             "tombstoneId": tombstone_id,
         }),
+    )
+    .await?;
+    notify_discussion_author(
+        pool,
+        repository.id,
+        discussion_id,
+        author_user_id,
+        actor_user_id,
+        format!("Discussion #{} was deleted: {}", discussion_number, title),
+        "discussion_delete",
     )
     .await?;
     Ok(Some(DeleteDiscussionResponse {
@@ -4080,16 +4116,7 @@ async fn ensure_discussion_management_allowed(
         discussion_id,
         true,
     )
-    .await?;
-    let Some(permission) =
-        repository_permission_for_user(pool, repository.id, actor_user_id).await?
-    else {
-        return Err(RepositoryError::PermissionDenied);
-    };
-    if !permission.role.can_write() {
-        return Err(RepositoryError::PermissionDenied);
-    }
-    Ok(())
+    .await
 }
 
 async fn load_same_owner_transfer_repository(

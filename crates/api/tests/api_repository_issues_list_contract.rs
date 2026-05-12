@@ -12,9 +12,11 @@ use opengithub_api::{
             add_issue_comment, create_issue, ensure_default_labels, update_issue_state,
             CreateComment, CreateIssue, IssueState, UpdateIssueState,
         },
+        permissions::RepositoryRole,
         pulls::{create_pull_request, CreatePullRequest},
         repositories::{
-            create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility,
+            create_repository, grant_repository_permission, CreateRepository, RepositoryOwner,
+            RepositoryVisibility,
         },
     },
 };
@@ -159,6 +161,204 @@ async fn post_json(
         serde_json::from_slice(&bytes).expect("response should be json")
     };
     (status, value)
+}
+
+#[tokio::test]
+async fn issue_conversion_contract_enforces_permissions_and_copies_discussion_metadata() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping issue conversion scenario; set TEST_DATABASE_URL or DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "issue-convert-owner").await;
+    let moderator = create_user(&pool, "issue-convert-moderator").await;
+    let reader = create_user(&pool, "issue-convert-reader").await;
+    let moderator_cookie = cookie_header(&pool, &config, &moderator).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("issue-convert-{}", Uuid::new_v4().simple()),
+            description: Some("Issue conversion contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        moderator.id,
+        RepositoryRole::Triage,
+        "direct",
+    )
+    .await
+    .expect("moderator permission should grant");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        reader.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("reader permission should grant");
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, position, format)
+        VALUES ($1, 'general', 'General', '💬', 1, 'open_ended'),
+               ($1, 'polls', 'Polls', '📊', 2, 'poll')
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("discussion categories should insert");
+
+    let issue = create_issue(
+        &pool,
+        CreateIssue {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            title: "Convert this issue".to_owned(),
+            body: Some("Issue body copied to discussion.".to_owned()),
+            template_id: None,
+            template_slug: None,
+            field_values: std::collections::HashMap::new(),
+            milestone_id: None,
+            label_ids: Vec::new(),
+            assignee_user_ids: Vec::new(),
+            attachments: Vec::new(),
+        },
+    )
+    .await
+    .expect("issue should create");
+    add_issue_comment(
+        &pool,
+        issue.id,
+        CreateComment {
+            actor_user_id: owner.id,
+            body: "First copied comment.".to_owned(),
+        },
+    )
+    .await
+    .expect("comment should create");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let convert_path = format!(
+        "/api/repos/{owner_login}/{}/issues/{}/convert-to-discussion",
+        repository.name, issue.number
+    );
+
+    let (anonymous_status, anonymous_body) = send_json(app.clone(), &convert_path, None).await;
+    assert_eq!(anonymous_status, StatusCode::UNAUTHORIZED);
+    assert!(!anonymous_body.to_string().contains("test-session-secret"));
+
+    let (reader_status, reader_body) = post_json(
+        app.clone(),
+        &convert_path,
+        Some(&reader_cookie),
+        json!({ "categorySlug": "general" }),
+    )
+    .await;
+    assert_eq!(reader_status, StatusCode::FORBIDDEN, "{reader_body}");
+
+    let (metadata_status, metadata_body) =
+        send_json(app.clone(), &convert_path, Some(&moderator_cookie)).await;
+    assert_eq!(metadata_status, StatusCode::OK, "{metadata_body}");
+    assert_eq!(metadata_body["canConvert"], true);
+    assert_eq!(metadata_body["commentCount"], 1);
+    assert!(metadata_body["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .any(|category| category["slug"] == "polls"
+            && category["disabledReason"]
+                .as_str()
+                .expect("poll disabled reason")
+                .contains("Poll categories")));
+
+    let (poll_status, poll_body) = post_json(
+        app.clone(),
+        &convert_path,
+        Some(&moderator_cookie),
+        json!({ "categorySlug": "polls" }),
+    )
+    .await;
+    assert_eq!(poll_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(poll_body["details"]["field"], "fieldValues.categorySlug");
+
+    let (convert_status, convert_body) = post_json(
+        app.clone(),
+        &convert_path,
+        Some(&moderator_cookie),
+        json!({ "categorySlug": "general" }),
+    )
+    .await;
+    assert_eq!(convert_status, StatusCode::OK, "{convert_body}");
+    assert_eq!(convert_body["issueNumber"], issue.number);
+    assert_eq!(convert_body["discussionNumber"], 1);
+    assert_eq!(convert_body["title"], "Convert this issue");
+
+    let discussion_id = Uuid::parse_str(
+        convert_body["discussionId"]
+            .as_str()
+            .expect("discussion id"),
+    )
+    .expect("discussion id should parse");
+    let discussion_comment_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_comments WHERE discussion_id = $1",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion comments should count");
+    assert_eq!(discussion_comment_count, 2);
+    let source_issue_event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM timeline_events WHERE issue_id = $1 AND event_type = 'converted_to_discussion'",
+    )
+    .bind(issue.id)
+    .fetch_one(&pool)
+    .await
+    .expect("conversion event should count");
+    assert_eq!(source_issue_event_count, 1);
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM audit_events WHERE actor_user_id = $1 AND event_type = 'repository.issue.convert_to_discussion' AND target_id = $2",
+    )
+    .bind(moderator.id)
+    .bind(issue.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("conversion audit should count");
+    assert_eq!(audit_count, 1);
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM notifications WHERE user_id = $1 AND subject_type = 'discussion' AND subject_id = $2 AND reason = 'issue_converted_to_discussion'",
+    )
+    .bind(owner.id)
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("conversion notification should count");
+    assert_eq!(notification_count, 1);
+
+    let (duplicate_status, duplicate_body) = post_json(
+        app,
+        &convert_path,
+        Some(&moderator_cookie),
+        json!({ "categorySlug": "general" }),
+    )
+    .await;
+    assert_eq!(duplicate_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(duplicate_body["error"]["message"]
+        .as_str()
+        .expect("duplicate message")
+        .contains("already converted"));
+    assert!(!duplicate_body.to_string().contains("test-session-secret"));
 }
 
 #[tokio::test]

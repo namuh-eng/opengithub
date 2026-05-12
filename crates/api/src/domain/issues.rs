@@ -2269,6 +2269,31 @@ pub async fn convert_issue_to_discussion(
     .execute(pool)
     .await?;
 
+    if issue.author_user_id != input.actor_user_id {
+        create_notification(
+            pool,
+            CreateNotification {
+                user_id: issue.author_user_id,
+                repository_id: Some(repository_id),
+                subject_type: "discussion".to_owned(),
+                subject_id: Some(discussion_id),
+                title: format!(
+                    "Issue #{} was converted to discussion #{}: {}",
+                    issue.number, next_number, issue.title
+                ),
+                reason: "issue_converted_to_discussion".to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => CollaborationError::IssueNotFound,
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::IssueNotFound
+            }
+        })?;
+    }
+
     Ok(ConvertIssueToDiscussionResponse {
         issue_id: issue.id,
         issue_number: issue.number,

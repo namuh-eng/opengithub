@@ -736,6 +736,53 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
     assert_eq!(category_mismatch_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(category_mismatch_body["error"]["code"], "validation_failed");
 
+    for number in 2..=5 {
+        let extra_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO discussions (repository_id, category_id, number, title, body, author_user_id)
+            VALUES ($1, $2, $3, $4, 'extra body', $5)
+            RETURNING id
+            "#,
+        )
+        .bind(repository.id)
+        .bind(general_id)
+        .bind(number)
+        .bind(format!("Extra pin {number}"))
+        .bind(owner.id)
+        .fetch_one(&pool)
+        .await
+        .expect("extra discussion should insert");
+        let (status, body) = put_json(
+            app.clone(),
+            &format!(
+                "/api/repos/{owner_login}/{}/discussions/{number}/pin",
+                repository.name
+            ),
+            Some(&moderator_cookie),
+            json!({ "target": "global" }),
+        )
+        .await;
+        if number <= 4 {
+            assert_eq!(status, StatusCode::OK, "{body}");
+            let pin_exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM discussion_pins WHERE discussion_id = $1 AND pin_scope = 'global')",
+            )
+            .bind(extra_id)
+            .fetch_one(&pool)
+            .await
+            .expect("extra global pin should load");
+            assert!(pin_exists);
+        } else {
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(body["error"]["code"], "validation_failed");
+            assert!(body["error"]["message"]
+                .as_str()
+                .expect("pin limit message")
+                .contains("at most four global discussion pins"));
+            assert!(!body.to_string().contains("test-session-secret"));
+        }
+    }
+
     let (lock_status, lock_body) = put_json(
         app.clone(),
         &format!("{base}/lock"),
@@ -802,6 +849,54 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
     .await
     .expect("discussion category should load");
     assert_eq!(moved_category_id, ideas_id);
+
+    for number in 6..=10 {
+        let extra_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO discussions (repository_id, category_id, number, title, body, author_user_id)
+            VALUES ($1, $2, $3, $4, 'category extra body', $5)
+            RETURNING id
+            "#,
+        )
+        .bind(repository.id)
+        .bind(ideas_id)
+        .bind(number)
+        .bind(format!("Extra category pin {number}"))
+        .bind(owner.id)
+        .fetch_one(&pool)
+        .await
+        .expect("extra category discussion should insert");
+        let (status, body) = put_json(
+            app.clone(),
+            &format!(
+                "/api/repos/{owner_login}/{}/discussions/{number}/pin",
+                repository.name
+            ),
+            Some(&moderator_cookie),
+            json!({ "target": "category", "categorySlug": "ideas" }),
+        )
+        .await;
+        if number <= 9 {
+            assert_eq!(status, StatusCode::OK, "{body}");
+            let pin_exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM discussion_pins WHERE discussion_id = $1 AND pin_scope = 'category' AND category_id = $2)",
+            )
+            .bind(extra_id)
+            .bind(ideas_id)
+            .fetch_one(&pool)
+            .await
+            .expect("extra category pin should load");
+            assert!(pin_exists);
+        } else {
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(body["error"]["code"], "validation_failed");
+            assert!(body["error"]["message"]
+                .as_str()
+                .expect("category pin limit message")
+                .contains("at most four category discussion pins"));
+            assert!(!body.to_string().contains("test-session-secret"));
+        }
+    }
 
     let (labels_status, labels_body) = patch_json(
         app.clone(),
@@ -885,27 +980,62 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
             .expect("pins should count");
     assert_eq!(pin_count, 0);
 
+    let (bad_delete_status, bad_delete_body) = delete_json(
+        app.clone(),
+        &format!("{base}/delete"),
+        Some(&moderator_cookie),
+        json!({ "confirmation": "delete", "reason": "cleanup" }),
+    )
+    .await;
+    assert_eq!(bad_delete_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(bad_delete_body["error"]["code"], "validation_failed");
+
+    let (delete_status, delete_body) = delete_json(
+        app.clone(),
+        &format!("{base}/delete"),
+        Some(&moderator_cookie),
+        json!({
+            "confirmation": "delete discussion 1",
+            "reason": "duplicate cleanup"
+        }),
+    )
+    .await;
+    assert_eq!(delete_status, StatusCode::OK, "{delete_body}");
+    assert_eq!(delete_body["deleted"], true);
+    let tombstone_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_deletion_tombstones WHERE discussion_id = $1",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("delete tombstone should count");
+    assert_eq!(tombstone_count, 1);
+
     let audit_count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)::bigint
         FROM audit_events
         WHERE actor_user_id = $1
           AND target_type = 'repository_discussion'
+          AND target_id = $2
           AND event_type IN (
               'repository.discussion.pin',
               'repository.discussion.lock',
               'repository.discussion.unlock',
               'repository.discussion.close',
+              'repository.discussion.category.update',
               'repository.discussion.labels.update',
-              'repository.discussion.unpin'
+              'repository.discussion.unpin',
+              'repository.discussion.delete'
           )
         "#,
     )
     .bind(moderator.id)
+    .bind(discussion_id.to_string())
     .fetch_one(&pool)
     .await
     .expect("audit rows should count");
-    assert_eq!(audit_count, 6);
+    assert_eq!(audit_count, 8);
     let event_count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)::bigint

@@ -648,11 +648,14 @@ describe("RepositoryIssueDetailPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Convert to discussion" }),
     );
-    expect(await screen.findByRole("dialog")).toBeVisible();
+    expect(
+      await screen.findByRole("dialog", { name: "Convert issue" }),
+    ).toBeVisible();
     expect(screen.getByText(/3 issue comments will be copied/)).toBeVisible();
     expect(
       screen.getByRole("combobox", { name: "Discussion category" }),
     ).toHaveValue("general");
+    expect(screen.getByRole("option", { name: /Polls/ })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Convert issue" }));
 
     await waitFor(() => {

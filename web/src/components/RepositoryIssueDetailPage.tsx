@@ -666,10 +666,17 @@ export function RepositoryIssueDetailPage({
                 </p>
               )}
               {conversionOpen ? (
-                <div className="card mt-3 p-3" role="dialog">
+                <div
+                  aria-labelledby="issue-convert-dialog-title"
+                  aria-modal="false"
+                  className="card mt-3 p-3"
+                  role="dialog"
+                >
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="t-h3">Convert issue</h3>
+                      <h3 className="t-h3" id="issue-convert-dialog-title">
+                        Convert issue
+                      </h3>
                       <p className="t-xs mt-1">
                         The issue will close and link to the new discussion.
                         {conversion

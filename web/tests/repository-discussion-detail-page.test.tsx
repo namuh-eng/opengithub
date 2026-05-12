@@ -880,6 +880,12 @@ describe("RepositoryDiscussionDetailPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Transfer discussion" }),
     );
+    expect(
+      await screen.findByRole("dialog", { name: "Move this discussion" }),
+    ).toHaveAccessibleDescription(
+      /Only repositories owned by namuh-eng are available/,
+    );
+    expect(screen.getByRole("button", { name: "Transfer" })).toBeDisabled();
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/namuh-eng/opengithub/discussions/42/transfer-targets",
@@ -907,6 +913,15 @@ describe("RepositoryDiscussionDetailPage", () => {
     expect(pushMock).toHaveBeenCalledWith("/namuh-eng/runtime/discussions/7");
 
     fireEvent.click(screen.getByRole("button", { name: "Delete discussion" }));
+    const deleteDialog = screen.getByRole("dialog", {
+      name: "Delete this discussion",
+    });
+    expect(deleteDialog).toHaveAccessibleDescription(
+      /This destructive action cannot be undone/,
+    );
+    expect(
+      within(deleteDialog).getByRole("button", { name: "Delete discussion" }),
+    ).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "Spam cleanup" },
     });

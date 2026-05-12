@@ -988,6 +988,7 @@ function RepositoryDiscussionManagementPanel({
 
       {transferOpen ? (
         <div
+          aria-describedby="discussion-transfer-warning"
           aria-labelledby="discussion-transfer-dialog-title"
           aria-modal="true"
           className="fixed inset-0 z-50 grid place-items-center p-4"
@@ -1009,6 +1010,15 @@ function RepositoryDiscussionManagementPanel({
               <h3 className="t-h2 mt-1" id="discussion-transfer-dialog-title">
                 Move this discussion
               </h3>
+              <p
+                className="t-sm mt-2"
+                id="discussion-transfer-warning"
+                style={{ color: "var(--ink-3)" }}
+              >
+                Only repositories owned by {detail.repository.owner} are
+                available. Existing links will point readers to the transferred
+                discussion.
+              </p>
             </div>
             <label className="grid gap-2 t-sm">
               <span className="t-label">Repository</span>
@@ -1084,6 +1094,7 @@ function RepositoryDiscussionManagementPanel({
 
       {deleteOpen ? (
         <div
+          aria-describedby="discussion-delete-warning"
           aria-labelledby="discussion-delete-dialog-title"
           aria-modal="true"
           className="fixed inset-0 z-50 grid place-items-center p-4"
@@ -1105,6 +1116,14 @@ function RepositoryDiscussionManagementPanel({
               <h3 className="t-h2 mt-1" id="discussion-delete-dialog-title">
                 Delete this discussion
               </h3>
+              <p
+                className="t-sm mt-2"
+                id="discussion-delete-warning"
+                style={{ color: "var(--err)" }}
+              >
+                This destructive action cannot be undone. Type the exact
+                confirmation phrase before deletion is available.
+              </p>
               <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
                 Comments and body content are hidden from future reads. A
                 tombstone keeps hashes and audit metadata only.

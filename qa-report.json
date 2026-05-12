@@ -5581,5 +5581,87 @@
       "DiscussionCategoryChoice derived isPoll from slug ('poll'/'polls') instead of category format, so custom-slug poll categories behaved like normal/template categories in creation, recategorization, and transfer choices."
     ],
     "fix_description": "Discussion category choices now derive poll behavior from discussion_categories.format. Added API contract coverage for custom-slug poll categories and Playwright coverage for category settings create/edit/delete/section assignment flows. E2E seeds now set explicit category formats for Q&A and poll categories."
+  },
+  {
+    "feature_id": "discussions-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused API, component, and Playwright scenarios verified discussion moderation and issue conversion flows against the real app/test DB. make check and make test passed after fixes."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "PUT/PATCH/DELETE /api/repos/:owner/:repo/discussions/:number/pin",
+          "PUT/DELETE /api/repos/:owner/:repo/discussions/:number/lock",
+          "PUT /api/repos/:owner/:repo/discussions/:number/state",
+          "PATCH /api/repos/:owner/:repo/discussions/:number/category",
+          "GET/POST /api/repos/:owner/:repo/discussions/:number/transfer-targets|transfer",
+          "DELETE /api/repos/:owner/:repo/discussions/:number/delete",
+          "GET/POST /api/repos/:owner/:repo/issues/:number/convert-to-discussion"
+        ],
+        "notes": "Permission gates, global/category pin limits, lock reactions, close/reopen, recategorize, transfer same-owner constraints, delete confirmation/tombstone, conversion duplicate/poll-category errors, audit rows, activity/timeline events, and notifications were covered by DB-backed Rust API contracts."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_gates",
+          "data_exposure"
+        ],
+        "notes": "Anonymous conversion returned 401; read-only moderation/conversion returned 403; validation errors did not leak session secret or stack data."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component coverage asserts named dialogs, accessible descriptions for destructive transfer/delete dialogs, disabled confirm states, disabled conversion categories, keyboard-reachable native controls, and no banned GitHub/Primer visual values."
+      }
+    },
+    "tested_steps": [
+      "Inspected discussion moderation and issue conversion API/domain/routes plus RepositoryDiscussionDetailPage and RepositoryIssueDetailPage tests.",
+      "Added server-side audit/notification side effects for discussion recategorize/delete and issue-to-discussion conversion.",
+      "Relaxed discussion management permission to the PRD-required triage/write/admin moderation gate while retaining server-side auth checks.",
+      "Strengthened DB-backed API contracts for global/category pin limits, lock/reaction behavior, close/category/labels/unpin/delete audit/events/notifications, conversion permission gates, poll category rejection, copied comments, source issue event, duplicate conversion, and notification.",
+      "Strengthened UI coverage for pin/lock/close/category/transfer/delete controls, destructive dialog warnings, disabled confirm states, issue conversion dialog naming, disabled poll categories, and Editorial banned-value scan in component output.",
+      "Ran focused Playwright repository discussions E2E including issue conversion from sidebar; 5 passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Discussion recategorize wrote an activity event but no audit row or author notification."
+      },
+      {
+        "severity": "major",
+        "description": "Discussion delete wrote audit/tombstone but did not notify the discussion author."
+      },
+      {
+        "severity": "major",
+        "description": "Issue-to-discussion conversion copied data and audit but did not notify the source issue author."
+      },
+      {
+        "severity": "major",
+        "description": "Discussion transfer/delete management used write-only permission despite PRD requiring triage/write/admin moderation access."
+      },
+      {
+        "severity": "minor",
+        "description": "Issue conversion dialog lacked an accessible name; transfer/delete dialogs lacked explicit accessible warning descriptions."
+      }
+    ],
+    "fix_description": "Added missing audit/notification side effects, aligned management permission with moderator access, hardened destructive/convert dialog accessibility, and strengthened API/UI/E2E coverage for discussions-005.",
+    "commands": [
+      "make doctor",
+      "set -a; source .env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_moderation_supports_pin_lock_state_and_category_contracts -- --nocapture",
+      "set -a; source .env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_issues_list_contract issue_conversion_contract_enforces_permissions_and_copies_discussion_metadata -- --nocapture",
+      "cd web && npm test -- repository-discussion-detail-page.test.tsx repository-issue-detail.test.tsx",
+      "cd web && set -a; source ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts",
+      "make check && make test"
+    ],
+    "artifacts": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json"
+    ]
   }
 ]
