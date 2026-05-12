@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -52,6 +51,51 @@ function runSql(sql: string) {
     ],
     { stdio: "ignore" },
   );
+}
+
+function runSqlText(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+
+  try {
+    return execFileSync("psql", [
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-At",
+      "-c",
+      sql,
+    ])
+      .toString()
+      .trim();
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const parsed = new URL(databaseUrl);
+  const runtime = existsSync("/usr/bin/podman") ? "podman" : "docker";
+  return execFileSync(runtime, [
+    "exec",
+    "-e",
+    `PGPASSWORD=${decodeURIComponent(parsed.password)}`,
+    "opengithub-postgres-test",
+    "psql",
+    "-U",
+    decodeURIComponent(parsed.username),
+    "-d",
+    decodeURIComponent(parsed.pathname.slice(1)),
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-At",
+    "-c",
+    sql,
+  ])
+    .toString()
+    .trim();
 }
 
 async function expectApiSessionReady(cookieName: string, cookieValue: string) {
@@ -423,6 +467,108 @@ test("repository discussions list filters, category rail, empty state, and upvot
   ).toHaveAttribute("aria-pressed", "false");
   await expectNoDeadControls(page);
 });
+
+test("repository discussion creation supports category forms, preview, required search acknowledgement, and polls", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/new`);
+  await expect(page).toHaveURL(/\/discussions\/new\/choose$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("article")
+      .filter({ hasText: "Q&A" })
+      .getByText("Answers enabled"),
+  ).toBeVisible();
+
+  await page
+    .locator("article")
+    .filter({ hasText: "Q&A" })
+    .getByRole("link", { name: "Get started" })
+    .click();
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await expect(page.getByText("First time here?")).toBeVisible();
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await expect(page.getByLabel("Context")).toBeVisible();
+  await expect(page.getByLabel("Area")).toBeVisible();
+  await expect(page.getByLabel("Attachment dropzone")).toBeVisible();
+
+  const formTitle = `QA form discussion ${Date.now()}`;
+  await page.getByLabel("Title *").fill(formTitle);
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute("href", /q=is%3Aopen\+QA\+form\+discussion/);
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("## Context\n\nBody with **markdown**.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Body with markdown.");
+  await page.getByRole("tab", { name: "Write" }).click();
+  await expect(page.getByText("Context is required.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start discussion" }),
+  ).toBeDisabled();
+  await page.locator("#discussion-similar-ack").focus();
+  await page.getByLabel("Title *").focus();
+  await expect(
+    page.getByText("Similar-search acknowledgement is required."),
+  ).toBeVisible();
+  await page.getByLabel("Context").fill("I checked the current behavior.");
+  await page.getByLabel("Area").selectOption("UI");
+  await page.getByLabel(/I have done a search/).check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+
+  const formEvidence = runSqlText(`
+    SELECT COUNT(*)::text
+    FROM discussions
+    JOIN discussion_form_answers ON discussion_form_answers.discussion_id = discussions.id
+    JOIN discussion_comments ON discussion_comments.discussion_id = discussions.id
+    JOIN discussion_subscriptions ON discussion_subscriptions.discussion_id = discussions.id
+    JOIN discussion_activity_events ON discussion_activity_events.discussion_id = discussions.id
+    WHERE discussions.title = ${sqlLiteral(formTitle)}
+      AND discussion_form_answers.field_id = 'context'
+      AND discussion_comments.body LIKE '%Body with%'
+      AND discussion_subscriptions.state = 'subscribed'
+      AND discussion_activity_events.event_type = 'created'
+  `);
+  expect(Number(formEvidence)).toBeGreaterThan(0);
+
+  await page.goto(`${repositoryHref}/discussions/new?category=polls`);
+  await expect(page.getByRole("heading", { name: "📊 Polls" })).toBeVisible();
+  await expect(page.getByLabel("Context")).toHaveCount(0);
+  const pollTitle = `QA poll discussion ${Date.now()}`;
+  await page.getByLabel("Title *").fill(pollTitle);
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("Voting context for the poll.");
+  await page.getByLabel("Question *").fill("Which path should ship?");
+  await page.getByLabel("Poll option 1").fill("Polish first");
+  await page.getByLabel("Poll option 2").fill("Ship first");
+  await page.getByLabel(/I have done a search/).check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+
+  const pollEvidence = runSqlText(`
+    SELECT COUNT(*)::text
+    FROM discussions
+    JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
+    JOIN discussion_poll_options ON discussion_poll_options.poll_id = discussion_polls.id
+    WHERE discussions.title = ${sqlLiteral(pollTitle)}
+      AND discussion_polls.question = 'Which path should ship?'
+  `);
+  expect(Number(pollEvidence)).toBe(2);
+});
 test("repository issue converts into a discussion from the issue sidebar", async ({
   page,
   seed,
@@ -448,7 +594,7 @@ test("repository issue converts into a discussion from the issue sidebar", async
   await expect(
     page.getByRole("heading", { name: /Convert this issue into a discussion/ }),
   ).toBeVisible();
-  await expect(page.getByText(/converted from issue/i)).toBeVisible();
+  await expect(page.getByText(/converted from issue/i).first()).toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg",

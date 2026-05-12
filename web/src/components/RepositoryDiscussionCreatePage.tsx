@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { KeyboardEvent } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import type {
@@ -270,6 +270,7 @@ export function RepositoryDiscussionCreatePage({
   );
   const [acknowledged, setAcknowledged] = useState(false);
   const [titleTouched, setTitleTouched] = useState(false);
+  const [bodyTouched, setBodyTouched] = useState(false);
   const [ackTouched, setAckTouched] = useState(false);
   const [isPreviewPending, setIsPreviewPending] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -279,6 +280,11 @@ export function RepositoryDiscussionCreatePage({
   const titleError = useMemo(
     () => (title.trim() ? null : "Title is required."),
     [title],
+  );
+  const bodyError = useMemo(
+    () =>
+      isPollCategory || body.trim() ? null : "Discussion body is required.",
+    [body, isPollCategory],
   );
   const formError = useMemo(() => {
     if (!hasYamlFields) return null;
@@ -313,6 +319,7 @@ export function RepositoryDiscussionCreatePage({
     creation.enabled &&
     creation.viewer.canCreate &&
     !titleError &&
+    !bodyError &&
     !formError &&
     !pollError &&
     !attachmentError &&
@@ -361,6 +368,20 @@ export function RepositoryDiscussionCreatePage({
     setTab("write");
   }
 
+  function addAttachmentFiles(files: File[]) {
+    if (!files.length) return;
+    setAttachments((current) => [...current, ...files.map(attachmentFromFile)]);
+  }
+
+  function handleAttachmentDrop(event: DragEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    addAttachmentFiles(Array.from(event.dataTransfer.files ?? []));
+  }
+
+  function openAttachmentPicker() {
+    document.getElementById("discussion-attachments")?.click();
+  }
+
   async function submit() {
     setTitleTouched(true);
     setAckTouched(true);
@@ -372,6 +393,11 @@ export function RepositoryDiscussionCreatePage({
       return;
     }
     if (titleError) return;
+    if (bodyError) {
+      setBodyTouched(true);
+      setError(bodyError);
+      return;
+    }
     if (formError) {
       setError(formError);
       return;
@@ -515,6 +541,19 @@ export function RepositoryDiscussionCreatePage({
             </p>
           </section>
         )}
+
+        <section
+          className="card p-4"
+          style={{ background: "var(--accent-soft)" }}
+        >
+          <p className="t-label" style={{ color: "var(--accent)" }}>
+            First time here?
+          </p>
+          <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
+            Keep the conversation welcoming, search for a related thread first,
+            and include enough context for maintainers and neighbors to help.
+          </p>
+        </section>
 
         <section className="card overflow-hidden">
           <div className="border-b p-4" style={{ borderColor: "var(--line)" }}>
@@ -763,13 +802,30 @@ export function RepositoryDiscussionCreatePage({
                     Discussion body
                   </label>
                   <textarea
+                    aria-describedby={
+                      bodyTouched && bodyError
+                        ? "discussion-body-error"
+                        : undefined
+                    }
+                    aria-invalid={bodyTouched && bodyError ? "true" : "false"}
                     className="input min-h-72 w-full resize-y p-3 t-mono leading-6"
                     id="discussion-body"
+                    onBlur={() => setBodyTouched(true)}
                     onChange={(event) => setBody(event.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Add context, examples, screenshots, or proposed next steps."
                     value={body}
                   />
+                  {bodyTouched && bodyError ? (
+                    <p
+                      className="mt-2 t-sm"
+                      id="discussion-body-error"
+                      role="alert"
+                      style={{ color: "var(--err)" }}
+                    >
+                      {bodyError}
+                    </p>
+                  ) : null}
                   <p className="mt-2 t-xs" style={{ color: "var(--ink-3)" }}>
                     Markdown preview is rendered by the Rust sanitizer before
                     anything is created.
@@ -816,16 +872,31 @@ export function RepositoryDiscussionCreatePage({
               id="discussion-attachments"
               multiple
               onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                setAttachments((current) => [
-                  ...current,
-                  ...files.map(attachmentFromFile),
-                ]);
+                addAttachmentFiles(Array.from(event.target.files ?? []));
                 event.currentTarget.value = "";
               }}
               type="file"
             />
           </div>
+          <button
+            aria-label="Attachment dropzone"
+            className="mt-4 w-full rounded-[var(--radius-lg)] border border-dashed p-5 text-center"
+            onClick={openAttachmentPicker}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleAttachmentDrop}
+            style={{
+              background: "var(--surface-2)",
+              borderColor: "var(--line-strong)",
+            }}
+            type="button"
+          >
+            <span className="block t-sm">
+              Drop files here, or use Add files.
+            </span>
+            <span className="mt-1 block t-xs" style={{ color: "var(--ink-3)" }}>
+              Up to 10 files, 25 MiB each.
+            </span>
+          </button>
           {attachments.length ? (
             <ul
               className="mt-4 divide-y"
