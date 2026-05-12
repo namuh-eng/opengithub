@@ -5663,5 +5663,61 @@
       "qa-report.json",
       "qa-report-summary.json"
     ]
+  },
+  {
+    "feature_id": "discussions-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Poll category list/detail, poll creation controls, poll detail voting/results, comments/reactions preservation paths, and poll-vs-normal category constraints are covered by focused component, DB-backed API, and Playwright evidence. Added browser voting coverage after poll creation."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /:owner/:repo/discussions/categories/polls",
+          "POST /:owner/:repo/discussions/new/create",
+          "GET /:owner/:repo/discussions/:number",
+          "PUT /:owner/:repo/discussions/:number/poll/vote",
+          "PATCH /:owner/:repo/discussions/:number/category and transfer flows for poll compatibility"
+        ],
+        "notes": "DB-backed Rust contracts cover poll category creation, required poll payload validation, persisted options/policies, one active vote, vote replacement only when policy allows, invalid/cross-poll option rejection, private repository permission denial, activity events, audit rows, and no secret leakage."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Anonymous poll vote returns not_authenticated, private-repo outsider voting is forbidden without leaking discussion content, invalid option ids return validation envelopes, locked discussions reject votes, and required make check static gates passed."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused component and Playwright coverage exercises labelled poll question/options, radio voting controls, exact Vote action, status messaging, result progressbars, and no dead-control regressions in the poll creation/voting path."
+      }
+    },
+    "tested_steps": [
+      "Inspected PRD item discussions-006, prior qa-report/summary state, and existing poll routes/domain/components/tests from current origin/main base.",
+      "Verified and strengthened poll creation policy controls by adding allowsVoteChanges to the UI/API contract, preserving default changeable polls while allowing policy-disabled vote changes.",
+      "Strengthened DB-backed API contracts for poll creation persistence, poll category format seeding, one-vote reconciliation, policy-disabled vote changes, activity events, and audit rows.",
+      "Strengthened component tests for poll creation payloads and focused Playwright to create a poll, cast a vote, and verify updated result bars on the real local app/test DB.",
+      "Ran required check/test gates and focused Chromium Playwright without counting self-skipped DB tests."
+    ],
+    "bugs_found": [
+      "Poll creation form/API did not expose the existing allows_vote_changes poll policy, so QA could not verify creation-time policy selection for whether voters may change their vote.",
+      "Focused creation contract seeded a polls slug without format='poll', which masked current format-based poll-category behavior and failed the missing-poll validation path once run against the real DB.",
+      "Focused Playwright poll scenario created polls but did not exercise the poll vote action/results update."
+    ],
+    "fix_description": "Added poll vote-change policy to the creation payload/UI and persistence path, strengthened DB-backed contracts for allows_vote_changes=false and policy rejection, fixed poll-format test seeding, and added browser coverage that creates a poll, votes, and verifies result bars.",
+    "commands": [
+      "make doctor: passed; local verification stack healthy with postgres-test container on localhost:55433 and writable .scratch/cargo-target.",
+      "set -a; source .env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_poll_vote_api_enforces_options_and_reconciles_results -- --exact --nocapture: passed against TEST_DATABASE_URL without self-skip.",
+      "set -a; source .env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --exact --nocapture: passed against TEST_DATABASE_URL without self-skip.",
+      "cd web && npm test -- --run tests/repository-discussion-create-page.test.tsx tests/repository-discussion-detail-page.test.tsx tests/repository-discussions-page.test.tsx: 3 files / 30 tests passed.",
+      "cd web && set -a; source ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts -g 'repository discussion creation supports chooser forms preview acknowledgement and polls': 2 passed including auth setup, against local API/app/test DB.",
+      "make check && make test: passed; Cargo check, web typecheck, Clippy, Biome, Cargo tests, and web tests (666 passed)."
+    ],
+    "artifacts": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json"
+    ]
   }
 ]

@@ -6696,6 +6696,7 @@ export type DiscussionPollInput = {
   question: string;
   options: string[];
   allowsMultiple?: boolean;
+  allowsVoteChanges?: boolean;
 };
 
 export type DiscussionAttachmentDraft = {

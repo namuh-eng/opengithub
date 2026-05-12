@@ -551,6 +551,26 @@ async fn repository_discussion_poll_vote_api_enforces_options_and_reconciles_res
     .await
     .expect("poll vote events should count");
     assert_eq!(event_count, 2);
+
+    sqlx::query("UPDATE discussion_polls SET allows_vote_changes = false WHERE id = $1")
+        .bind(poll_id)
+        .execute(&pool)
+        .await
+        .expect("poll change policy should update");
+    let (policy_status, policy_body) = put_json(
+        app.clone(),
+        &vote_path,
+        Some(&voter_cookie),
+        json!({ "optionIds": [first_option_id] }),
+    )
+    .await;
+    assert_eq!(policy_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(policy_body["error"]["code"], "validation_failed");
+    assert!(policy_body["error"]["message"]
+        .as_str()
+        .expect("policy message")
+        .contains("does not allow vote changes"));
+
     let audit_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM audit_events WHERE actor_user_id = $1 AND event_type = 'repository.discussion_poll.vote'",
     )
@@ -1121,8 +1141,8 @@ async fn repository_discussion_creation_returns_forms_and_persists_normal_discus
     .expect("ideas category should insert");
     let polls_id: Uuid = sqlx::query_scalar(
         r#"
-        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers)
-        VALUES ($1, 'polls', 'Polls', '📊', 'Vote on options.', 2, false)
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, format, accepts_answers)
+        VALUES ($1, 'polls', 'Polls', '📊', 'Vote on options.', 2, 'poll', false)
         RETURNING id
         "#,
     )
@@ -1373,10 +1393,13 @@ body:
     )
     .await;
     assert_eq!(missing_poll_status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(missing_poll_body["error"]["message"]
-        .as_str()
-        .expect("poll error")
-        .contains("poll question"));
+    assert!(
+        missing_poll_body["error"]["message"]
+            .as_str()
+            .expect("poll error")
+            .contains("poll question"),
+        "{missing_poll_body}"
+    );
 
     let (poll_status, poll_body) = post_json(
         app.clone(),
@@ -1390,7 +1413,8 @@ body:
             "poll": {
                 "question": "Which branch policy should ship first?",
                 "options": ["Linear history", "Required reviews", "Signed commits"],
-                "allowsMultiple": true
+                "allowsMultiple": true,
+                "allowsVoteChanges": false
             }
         }),
     )
@@ -1406,6 +1430,7 @@ body:
         WHERE discussion_polls.discussion_id = $1
           AND discussions.category_id = $2
           AND discussion_polls.allows_multiple = true
+          AND discussion_polls.allows_vote_changes = false
         "#,
     )
     .bind(poll_discussion_id)

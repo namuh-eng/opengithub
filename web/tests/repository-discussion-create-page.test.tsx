@@ -598,6 +598,7 @@ describe("RepositoryDiscussionCreatePage", () => {
           question: "Which branch policy should ship first?",
           options: ["Linear history", "Required reviews"],
           allowsMultiple: true,
+          allowsVoteChanges: false,
         });
         return new Response(
           JSON.stringify({
@@ -637,6 +638,11 @@ describe("RepositoryDiscussionCreatePage", () => {
     fireEvent.click(
       screen.getByRole("checkbox", {
         name: /Allow voters to choose more than one option/i,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /Allow voters to change their vote after voting/i,
       }),
     );
     fireEvent.click(

@@ -520,6 +520,12 @@ pub struct DiscussionPollInput {
     pub options: Vec<String>,
     #[serde(default)]
     pub allows_multiple: bool,
+    #[serde(default = "default_poll_allows_vote_changes")]
+    pub allows_vote_changes: bool,
+}
+
+fn default_poll_allows_vote_changes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -527,6 +533,7 @@ struct NormalizedDiscussionPoll {
     question: String,
     options: Vec<String>,
     allows_multiple: bool,
+    allows_vote_changes: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2540,14 +2547,15 @@ pub async fn create_repository_discussion_by_owner_name(
         let poll_id = Uuid::new_v4();
         sqlx::query(
             r#"
-            INSERT INTO discussion_polls (id, discussion_id, question, allows_multiple)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO discussion_polls (id, discussion_id, question, allows_multiple, allows_vote_changes)
+            VALUES ($1, $2, $3, $4, $5)
             "#,
         )
         .bind(poll_id)
         .bind(discussion_id)
         .bind(&poll.question)
         .bind(poll.allows_multiple)
+        .bind(poll.allows_vote_changes)
         .execute(pool)
         .await?;
         for (position, option) in poll.options.iter().enumerate() {
@@ -4652,6 +4660,7 @@ fn normalize_discussion_poll(
         question,
         options,
         allows_multiple: poll.allows_multiple,
+        allows_vote_changes: poll.allows_vote_changes,
     }))
 }
 

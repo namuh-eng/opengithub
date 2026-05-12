@@ -645,6 +645,11 @@ test("repository discussion creation supports chooser forms preview acknowledgem
     .fill("Which discussion view should ship first?");
   await page.getByLabel("Poll option 1").fill("Saved searches");
   await page.getByLabel("Poll option 2").fill("Category digests");
+  await expect(
+    page.getByRole("checkbox", {
+      name: /Allow voters to change their vote after voting/i,
+    }),
+  ).toBeChecked();
   await page
     .getByRole("checkbox", {
       name: /I have done a search for similar discussions/i,
@@ -664,6 +669,13 @@ test("repository discussion creation supports chooser forms preview acknowledgem
   ).toBeVisible();
   await expect(page.getByText("Saved searches")).toBeVisible();
   await expect(page.getByText("Category digests")).toBeVisible();
+  await page.getByRole("radio", { name: /Saved searches/ }).check();
+  await page.getByRole("button", { name: "Vote", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Poll vote updated.");
+  await expect(page.getByText("1 total votes")).toBeVisible();
+  await expect(
+    page.getByRole("progressbar", { name: /Saved searches has 1 votes/ }),
+  ).toBeVisible();
 
   await page.goto(`${repositoryHref}/discussions/new/choose`);
   const customPollCard = page

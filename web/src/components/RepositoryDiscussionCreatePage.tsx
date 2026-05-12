@@ -261,6 +261,7 @@ export function RepositoryDiscussionCreatePage({
     newPollOptionDraft(),
   ]);
   const [pollAllowsMultiple, setPollAllowsMultiple] = useState(false);
+  const [pollAllowsVoteChanges, setPollAllowsVoteChanges] = useState(true);
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [rendered, setRendered] = useState<RenderedMarkdown>(
     defaultRendered(creation.form.body),
@@ -420,6 +421,7 @@ export function RepositoryDiscussionCreatePage({
                   .map((option) => option.value.trim())
                   .filter(Boolean),
                 allowsMultiple: pollAllowsMultiple,
+                allowsVoteChanges: pollAllowsVoteChanges,
               }
             : null,
           attachmentDrafts: attachments.map(attachmentPayload),
@@ -683,6 +685,20 @@ export function RepositoryDiscussionCreatePage({
                     type="checkbox"
                   />
                   <span>Allow voters to choose more than one option.</span>
+                </label>
+                <label
+                  className="flex items-start gap-3 t-sm"
+                  htmlFor="discussion-poll-change-votes"
+                >
+                  <input
+                    checked={pollAllowsVoteChanges}
+                    id="discussion-poll-change-votes"
+                    onChange={(event) =>
+                      setPollAllowsVoteChanges(event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  <span>Allow voters to change their vote after voting.</span>
                 </label>
               </div>
               {pollError ? (

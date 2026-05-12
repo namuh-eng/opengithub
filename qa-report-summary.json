@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 80,
+    "features_passed": 81,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 77,
+      "pass": 78,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 73,
+      "pass": 74,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 74,
+      "pass": 75,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 39,
+      "pass": 40,
       "fail": 0,
       "skip": 39
     }
@@ -2667,10 +2667,27 @@
       "feature_id": "discussions-006",
       "description": "Render and operate discussion polls with poll category list/detail, voting contr",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Poll category list/detail, poll creation controls, poll detail voting/results, comments/reactions preservation paths, and poll-vs-normal category constraints are covered by focused component, DB-backed API, and Playwright evidence. Added browser voting coverage after poll creation."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "DB-backed Rust contracts cover poll category creation, required poll payload validation, persisted options/policies, one active vote, vote replacement only when policy allows, invalid/cross-poll option rejection, private repository permission denial, activity events, audit rows, and no secret leakage."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Anonymous poll vote returns not_authenticated, private-repo outsider voting is forbidden without leaking discussion content, invalid option ids return validation envelopes, locked discussions reject votes, and required make check static gates passed."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused component and Playwright coverage exercises labelled poll question/options, radio voting controls, exact Vote action, status messaging, result progressbars, and no dead-control regressions in the poll creation/voting path."
+        }
+      }
     },
     {
       "feature_id": "projects-001",
