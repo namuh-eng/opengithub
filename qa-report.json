@@ -5525,5 +5525,61 @@
     "fix_description": "Added discussion detail upvote/unupvote behavior, Unanswered status rendering for answer-enabled discussions, focused component tests for upvote/subscription/status states, DB-backed Playwright detail assertions for answer card/timeline/replies/sidebar/upvote/subscription, and stabilized broad lint/test blockers without weakening product assertions.",
     "known_gaps": [],
     "timestamp": "2026-05-12T19:05:00Z"
+  },
+  {
+    "feature_id": "discussions-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused API, component, and Playwright scenarios passed for discussion category settings. Verified create/edit/delete/reorder controls, section creation/assignment, metadata edits, format changes, template previews/commits, and custom-slug poll category behavior. make check && make test passed after fixes."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/settings/discussions/categories",
+          "POST /api/repos/{owner}/{repo}/settings/discussions/categories",
+          "PATCH /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}",
+          "DELETE /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}",
+          "PUT /api/repos/{owner}/{repo}/settings/discussions/categories/order",
+          "POST /api/repos/{owner}/{repo}/settings/discussions/sections",
+          "PATCH /api/repos/{owner}/{repo}/settings/discussions/sections/{section_id}",
+          "PUT /api/repos/{owner}/{repo}/settings/discussions/sections/order",
+          "GET /api/repos/{owner}/{repo}/discussions/new/categories/{category_slug}",
+          "GET/PUT /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template",
+          "POST /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template/preview"
+        ],
+        "notes": "repository_discussions_contract covers admin permission gates, category create/edit, section/order/delete migration flows, custom poll format propagation to new-discussion category forms, malformed/invalid states, audit events, and template parsing/commit behavior."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Reader/admin permission contract rejects unauthorized category settings access without leaking secrets. Live unauthenticated POST probes for category, section, and template preview endpoints returned 401 JSON envelopes. OPTIONS with Origin https://evil.com returned 405 without Access-Control-Allow-Origin echo. XSS-like payloads in unauthenticated probes were not reflected."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright category settings scenario used accessible labels/roles for dialogs, form inputs, comboboxes, buttons, and links, and expectNoDeadControls passed. Component tests assert Editorial design-system usage and no banned GitHub visual tokens."
+      }
+    },
+    "tested_steps": [
+      "make doctor: local verification stack healthy; postgres-test reachable; .env.test present; per-worktree Cargo target writable.",
+      "cd web && source ../.env.test && npm test -- --run repository-discussion-category-settings-page.test.tsx repository-discussion-category-template-page.test.tsx: 2 files / 8 tests passed.",
+      "source .env.test && ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_category_settings_support_admin_create_and_edit -- --exact --nocapture: passed after adding custom poll format contract coverage.",
+      "cd web && source ../.env.test && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts -g 'repository discussion creation supports chooser forms preview acknowledgement and polls': 2 passed including setup.",
+      "cd web && source ../.env.test && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts -g 'repository discussion category settings manage categories sections and formats': 2 passed including setup.",
+      "make check && make test: Cargo check, web typecheck, clippy, biome, Cargo tests, and web tests passed (666 web tests).",
+      "Live Rust API security probes: unauthenticated category/category-section/template-preview mutations returned 401 JSON; CORS preflight from https://evil.com returned 405 without Access-Control-Allow-Origin."
+    ],
+    "bugs_found": [
+      "DiscussionCategoryChoice derived isPoll from slug ('poll'/'polls') instead of category format, so custom-slug poll categories behaved like normal/template categories in creation, recategorization, and transfer choices."
+    ],
+    "fix_description": "Discussion category choices now derive poll behavior from discussion_categories.format. Added API contract coverage for custom-slug poll categories and Playwright coverage for category settings create/edit/delete/section assignment flows. E2E seeds now set explicit category formats for Q&A and poll categories."
   }
 ]

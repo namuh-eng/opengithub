@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 78,
+    "features_passed": 79,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 75,
+      "pass": 76,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 71,
+      "pass": 72,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 72,
+      "pass": 73,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 37,
+      "pass": 38,
       "fail": 0,
       "skip": 39
     }
@@ -2578,10 +2578,48 @@
       "feature_id": "discussions-004",
       "description": "Manage discussion categories, sections, category formats, emoji/name/description",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused API, component, and Playwright scenarios passed for discussion category settings. Verified create/edit/delete/reorder controls, section creation/assignment, metadata edits, format changes, template previews/commits, and custom-slug poll category behavior. make check && make test passed after fixes."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/settings/discussions/categories",
+            "POST /api/repos/{owner}/{repo}/settings/discussions/categories",
+            "PATCH /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}",
+            "DELETE /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}",
+            "PUT /api/repos/{owner}/{repo}/settings/discussions/categories/order",
+            "POST /api/repos/{owner}/{repo}/settings/discussions/sections",
+            "PATCH /api/repos/{owner}/{repo}/settings/discussions/sections/{section_id}",
+            "PUT /api/repos/{owner}/{repo}/settings/discussions/sections/order",
+            "GET /api/repos/{owner}/{repo}/discussions/new/categories/{category_slug}",
+            "GET/PUT /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template",
+            "POST /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template/preview"
+          ],
+          "notes": "repository_discussions_contract covers admin permission gates, category create/edit, section/order/delete migration flows, custom poll format propagation to new-discussion category forms, malformed/invalid states, audit events, and template parsing/commit behavior."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_sanitization",
+            "cors",
+            "data_exposure"
+          ],
+          "notes": "Reader/admin permission contract rejects unauthorized category settings access without leaking secrets. Live unauthenticated POST probes for category, section, and template preview endpoints returned 401 JSON envelopes. OPTIONS with Origin https://evil.com returned 405 without Access-Control-Allow-Origin echo. XSS-like payloads in unauthenticated probes were not reflected."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright category settings scenario used accessible labels/roles for dialogs, form inputs, comboboxes, buttons, and links, and expectNoDeadControls passed. Component tests assert Editorial design-system usage and no banned GitHub visual tokens."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "discussions-005",

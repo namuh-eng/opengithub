@@ -1637,6 +1637,42 @@ async fn repository_discussion_category_settings_support_admin_create_and_edit()
     assert_eq!(duplicate_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(duplicate_body["error"]["code"], "validation_failed");
 
+    let (poll_status, poll_body) = post_json(
+        app.clone(),
+        &path,
+        Some(&owner_cookie),
+        json!({
+            "name": "Roadmap pulse",
+            "emoji": "🧭",
+            "description": "Collect structured roadmap feedback.",
+            "format": "poll",
+        }),
+    )
+    .await;
+    assert_eq!(poll_status, StatusCode::OK, "{poll_body}");
+    let poll_category = poll_body["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .find(|category| category["slug"] == "roadmap-pulse")
+        .expect("custom poll category should be returned");
+    assert_eq!(poll_category["isPoll"], true);
+    assert_eq!(poll_category["format"], "poll");
+
+    let (new_poll_status, new_poll_body) = get_json(
+        app.clone(),
+        &format!(
+            "/api/repos/{owner_login}/{}/discussions/new/categories/roadmap-pulse",
+            repository.name
+        ),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(new_poll_status, StatusCode::OK, "{new_poll_body}");
+    assert_eq!(new_poll_body["selectedCategory"]["isPoll"], true);
+    assert_eq!(new_poll_body["form"]["templatePath"], Value::Null);
+    assert_eq!(new_poll_body["form"]["fields"].as_array().unwrap().len(), 0);
+
     let (update_status, update_body) = patch_json(
         app.clone(),
         &format!("{path}/{category_id}"),
@@ -1675,7 +1711,7 @@ async fn repository_discussion_category_settings_support_admin_create_and_edit()
     .fetch_one(&pool)
     .await
     .expect("audit events should count");
-    assert_eq!(audit_count, 2);
+    assert_eq!(audit_count, 3);
 
     let (missing_status, missing_body) = patch_json(
         app,
