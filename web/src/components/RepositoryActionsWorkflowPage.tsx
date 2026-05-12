@@ -131,6 +131,7 @@ function dateTimeLabel(value: string | null | undefined) {
     minute: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 

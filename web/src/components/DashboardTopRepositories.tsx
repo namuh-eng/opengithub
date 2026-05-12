@@ -17,6 +17,7 @@ function formatUpdatedAt(value: string): string {
   const formatter = new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
   return `Updated ${formatter.format(updatedAt)}`;
 }

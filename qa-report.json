@@ -5383,5 +5383,77 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 2,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused discussions-002 creation path passed with real seeded browser/DB coverage, and broad make check + make test now pass after stabilizing UTC date formatting. Full make test-e2e remains red in unrelated suites, so qa_pass stays false."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "POST /{owner}/{repo}/discussions/new/create",
+          "POST /markdown/preview",
+          "Rust repository_discussion_creation_returns_forms_and_persists_normal_discussion contract"
+        ],
+        "notes": "Rust contract verified category YAML forms, required acknowledgement, discussion/comment/form answer/subscription/activity/notification persistence, and create-path validation against the real test DB."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth-backed browser creation",
+          "server-side required acknowledgement",
+          "sanitized markdown preview",
+          "bounded attachment metadata"
+        ],
+        "notes": "Focused UI and Rust tests exercise authenticated creation and validation; no raw HTML/script execution observed in Markdown preview coverage."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component/E2E coverage asserts accessible chooser/form headings, labels, tabs, toolbar, controls, and no dead controls on the creation path."
+      }
+    },
+    "tested_steps": [
+      "make doctor: Local verification stack healthy; postgres-test container reachable; .env.test present; per-worktree CARGO_TARGET_DIR writable.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test: verified 263 public tables including discussions, discussion_categories, discussion_category_forms, discussion_comments, discussion_form_answers, discussion_polls/options/votes, discussion_subscriptions, notifications-related schema via discussion tables.",
+      "Inspected PRD discussions-002 and implementation: chooser/new/create pages, RepositoryDiscussionCategoryChooser, RepositoryDiscussionCreatePage, Next create route, Rust discussions domain, repository_discussions_contract, component tests, and prior branch focused E2E coverage.",
+      "Added focused DB-backed Playwright coverage for /discussions/new/choose -> YAML Q&A form -> Markdown preview -> similar-search acknowledgement -> submit -> persisted comment/form answer/subscription/activity/notification counts.",
+      "cd web && npm run test -- repository-discussion-create-page.test.tsx: 1 file passed, 10 tests passed.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture: passed, 1 passed/0 failed.",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts -g 'repository discussion creation chooser submits' --project=chromium: 2 passed including setup.",
+      "Fixed pre-existing UTC/local-time drift in date-only UI formatters used by dashboard/profile/wiki/actions/project component tests; targeted rerun of the prior 8 failing Vitest files passed 58 tests after the fix.",
+      "CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make check: passed Cargo check, web typecheck, clippy, and Biome.",
+      "CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make test: passed Cargo tests and Web tests (664 passed).",
+      "CARGO_TARGET_DIR=$PWD/.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make test-e2e: failed after 141 passed / 18 failed. Failures are broad unrelated suites (projects, actions runners/job log, repository create/labels/milestones/releases/wiki/search-modal) plus an existing non-creation discussions issue-conversion E2E; the focused discussions-002 creation E2E passed earlier."
+    ],
+    "bugs_found": [
+      {
+        "scope": "broad web unit tests",
+        "description": "Date-only UTC timestamps rendered as previous local day under America/Los_Angeles, causing 8 unrelated Vitest failures.",
+        "fix": "Added timeZone: 'UTC' to affected date-only formatters."
+      }
+    ],
+    "fix_description": "Added focused discussions creation E2E coverage and stabilized UTC date formatting so make check and make test are green; did not mark qa_pass because full make test-e2e is still red outside the creation path.",
+    "known_gaps": [
+      {
+        "command": "CARGO_TARGET_DIR=$PWD/.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make test-e2e",
+        "status": "failed",
+        "blocking": true,
+        "evidence": "141 passed, 18 failed. Examples: repository-labels E2E spawnSync psql ENOENT; repository-discussions issue-conversion expected '1 issue comments will be copied'; repository-wiki strict role collisions; search-modal expected type=repositories but got type=all; project/action/repository smoke failures.",
+        "scope_assessment": "Not caused by the discussions-002 creation diff; focused creation Playwright passed and broad make check/make test passed.",
+        "needed_action": "Stabilize unrelated full E2E suites or relax the qa_pass gate to focused discussions-002 E2E plus green make check/make test, then rerun make test-e2e before setting qa_pass true."
+      }
+    ],
+    "artifacts": [
+      "web/tests/e2e/repository-discussions.spec.ts",
+      "qa-report.json",
+      "web/test-results/* error-context/trace artifacts from failed full make test-e2e (uncommitted)"
+    ],
+    "updated_at": "2026-05-12T06:58:00-07:00"
   }
 ]
