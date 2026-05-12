@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { KeyboardEvent } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import type {
@@ -450,6 +450,15 @@ export function RepositoryDiscussionCreatePage({
     }
   }
 
+  function addAttachmentFiles(files: File[]) {
+    setAttachments((current) => [...current, ...files.map(attachmentFromFile)]);
+  }
+
+  function handleAttachmentDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    addAttachmentFiles(Array.from(event.dataTransfer.files));
+  }
+
   if (!selected) {
     return (
       <section className="card p-6">
@@ -515,6 +524,20 @@ export function RepositoryDiscussionCreatePage({
             </p>
           </section>
         )}
+
+        <section
+          className="card p-4"
+          style={{ background: "var(--accent-soft)" }}
+        >
+          <p className="t-label" style={{ color: "var(--accent)" }}>
+            First time here?
+          </p>
+          <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
+            Start with context, include what you already tried, and keep the
+            conversation welcoming so maintainers and community members can help
+            quickly.
+          </p>
+        </section>
 
         <section className="card overflow-hidden">
           <div className="border-b p-4" style={{ borderColor: "var(--line)" }}>
@@ -800,32 +823,41 @@ export function RepositoryDiscussionCreatePage({
         <section className="card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <label className="t-label" htmlFor="discussion-attachments">
+              <p className="t-label" id="discussion-attachments-label">
                 Attachments
-              </label>
+              </p>
               <p className="mt-2 t-sm" style={{ color: "var(--ink-3)" }}>
                 Add screenshots or logs. Files are recorded as bounded draft
                 metadata for the Rust API to attach to the opening comment.
               </p>
             </div>
-            <label className="btn sm" htmlFor="discussion-attachments">
-              Add files
-            </label>
+          </div>
+          <label
+            className="mt-4 block rounded-[var(--radius-lg)] border border-dashed p-6 text-center"
+            htmlFor="discussion-attachments"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleAttachmentDrop}
+            style={{
+              background: "var(--surface-2)",
+              borderColor: "var(--line-strong)",
+            }}
+          >
+            <span className="t-h3">Drop files here or choose files</span>
+            <span className="mt-2 block t-xs" style={{ color: "var(--ink-3)" }}>
+              Up to 10 files, 25 MiB each.
+            </span>
             <input
+              aria-label="Attachments"
               className="sr-only"
               id="discussion-attachments"
               multiple
               onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                setAttachments((current) => [
-                  ...current,
-                  ...files.map(attachmentFromFile),
-                ]);
+                addAttachmentFiles(Array.from(event.target.files ?? []));
                 event.currentTarget.value = "";
               }}
               type="file"
             />
-          </div>
+          </label>
           {attachments.length ? (
             <ul
               className="mt-4 divide-y"

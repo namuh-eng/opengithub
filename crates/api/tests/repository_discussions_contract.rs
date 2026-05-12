@@ -1230,6 +1230,20 @@ body:
     .expect("notification should count");
     assert_eq!(notification_count, 1);
 
+    let (detail_status, detail_body) = get_json(
+        app.clone(),
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(detail_status, StatusCode::OK, "{detail_body}");
+    assert_eq!(detail_body["discussion"]["title"], "Search syntax ideas");
+    assert_eq!(
+        detail_body["formAnswers"][0]["value"],
+        "Users repeat search discussions."
+    );
+    assert_eq!(detail_body["sidebar"]["participants"][0]["login"], owner_login);
+
     let (missing_poll_status, missing_poll_body) = post_json(
         app.clone(),
         &base,

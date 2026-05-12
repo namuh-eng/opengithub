@@ -342,9 +342,11 @@ describe("RepositoryDiscussionCreatePage", () => {
 
     expect(screen.getByRole("heading", { name: /General/ })).toBeVisible();
     expect(screen.getByLabelText("Discussion body")).toBeVisible();
+    expect(screen.getByText("First time here?")).toBeVisible();
     expect(
       screen.getByRole("toolbar", { name: "Markdown formatting toolbar" }),
     ).toBeVisible();
+    expect(screen.getByText("Drop files here or choose files")).toBeVisible();
     expect(
       screen.getByRole("checkbox", {
         name: /I have done a search for similar discussions/i,

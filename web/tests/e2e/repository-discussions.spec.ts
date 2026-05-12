@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -423,6 +422,90 @@ test("repository discussions list filters, category rail, empty state, and upvot
   ).toHaveAttribute("aria-pressed", "false");
   await expectNoDeadControls(page);
 });
+
+test("repository discussion creation supports category forms, preview, required search acknowledgement, and polls", async ({
+  page,
+  seed,
+  signIn,
+}) => {
+  const seeded = await seed({ scenes: ["treeRefs"] });
+  const repositoryHref = seeded.hrefs.treeRepository;
+  seedDiscussions(repositoryHref);
+  await signIn(page, seeded, "owner");
+  await expectApiSessionReady(seeded.cookieName, seeded.cookies.owner);
+
+  await page.goto(`${repositoryHref}/discussions/new`);
+  await expect(page).toHaveURL(/\/discussions\/new\/choose$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(page.getByText("Answers enabled").first()).toBeVisible();
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await page.locator('a[href$="/discussions/new?category=q-a"]').click();
+
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await expect(page.getByText("First time here?")).toBeVisible();
+  await expect(page.getByText("Drop files here or choose files")).toBeVisible();
+  await expect(page.getByText("Context is required.")).toBeVisible();
+
+  await page.getByLabel("Title *").fill("How should discussion forms work?");
+  await expect(
+    page.getByRole("link", { name: "Search using this title" }),
+  ).toHaveAttribute(
+    "href",
+    /q=is%3Aopen\+How\+should\+discussion\+forms\+work/,
+  );
+  await page
+    .getByRole("textbox", { name: "Discussion body" })
+    .fill("**Preview** this first.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("Preview", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/discussions\/new\?category=q-a$/);
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page
+    .getByLabel("Context *")
+    .fill("Maintainers need the browser path covered.");
+  await page.getByLabel("Area").selectOption("UI");
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", { name: "How should discussion forms work?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Maintainers need the browser path covered."),
+  ).toBeVisible();
+
+  await page.goto(`${repositoryHref}/discussions/new?category=polls`);
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await expect(page.getByLabel("Question *")).toBeVisible();
+  await expect(page.getByLabel("Context *")).toHaveCount(0);
+  await page.getByLabel("Title *").fill("Choose the next discussion workflow");
+  await page.getByLabel("Question *").fill("Which workflow should ship next?");
+  await page.getByLabel("Poll option 1").fill("Category forms");
+  await page.getByLabel("Poll option 2").fill("Polls");
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose the next discussion workflow" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Which workflow should ship next?"),
+  ).toBeVisible();
+  await expect(page.getByText("Category forms")).toBeVisible();
+  await expectNoDeadControls(page);
+});
+
 test("repository issue converts into a discussion from the issue sidebar", async ({
   page,
   seed,

@@ -5383,5 +5383,44 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fixed two QA gaps: the create form now includes the first-time community reminder callout and an attachment dropzone/file input, and newly created discussions now render on the detail page by aliasing discussion participants correctly. Focused Vitest, Rust contract, focused Playwright creation scenario, make check, and TZ=UTC make test all passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/new",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "GET /api/repos/{owner}/{repo}/discussions/{number}",
+          "POST /{owner}/{repo}/discussions/new/create",
+          "POST /markdown/preview"
+        ],
+        "notes": "Focused Rust contract verifies create metadata, required similar-search acknowledgement, persisted form answers, opening comment, attachments, subscription, notification, activity event, poll/options, and the post-create detail contract."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Existing API contract covers forbidden create for read-only actor and sanitized YAML metadata; UI preview uses sanitizer endpoint and no GitHub hardcoded visual tokens were introduced."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright exercised accessible labels/roles for title, Markdown tabs, required form fields, poll controls, similar-search checkbox, and `expectNoDeadControls` on the created poll detail page."
+      }
+    },
+    "evidence": [
+      "make doctor \u2014 Local verification stack is healthy",
+      "make check \u2014 Cargo check passed; Web typecheck passed; Clippy passed; Biome passed",
+      "TZ=UTC make test \u2014 Cargo tests passed; Web tests passed (664 passed)",
+      "cd web && npx vitest run tests/repository-discussion-create-page.test.tsx \u2014 10 passed",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture \u2014 1 passed",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome DOTENV_CONFIG_PATH=../.env.test TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium -g 'repository discussion creation supports' \u2014 2 passed"
+    ],
+    "timestamp": "2026-05-12T05:32:00Z"
   }
 ]

@@ -6146,7 +6146,8 @@ async fn load_discussion_participants(
 ) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+        SELECT DISTINCT users.id AS author_id,
+               COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
                users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
         FROM users
         JOIN discussion_comments ON discussion_comments.author_user_id = users.id
