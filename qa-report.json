@@ -5719,5 +5719,57 @@
       "qa-report.json",
       "qa-report-summary.json"
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified Projects v2 list pages and copy behavior with focused component and DB-backed API contract tests. Fixed QA-found gaps: Welcome banner is dismissible, rows expose a More project options menu, templates link to workspaces, and open/closed counts remain stable across selected state while project rows exclude templates."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/users/:username/projects",
+          "GET /api/orgs/:org/projects",
+          "GET /api/repos/:owner/:repo/projects",
+          "POST /api/projects/:project_id/copies"
+        ],
+        "notes": "DB-backed contract test covers organization list search, status labels, templates, repository linkage by default/explicit project_repositories, sorting, pagination, open/closed state tabs, private-row non-leakage, authorized copy cloning views/fields/workflows/draft items, audit events, recent visits, and viewer forbidden copy errors."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "permission_error",
+          "private_data_non_leakage",
+          "viewer_copy_forbidden"
+        ],
+        "notes": "Outsider cannot see private closed projects and receives forbidden copy errors; no private project title is present in outsider response."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component coverage verifies labeled Search all projects input, Sort projects control, dialog semantics, dismiss button, and keyboard-native More project options button using Editorial primitives."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md and web/AGENTS.md Editorial design system guidance before UI edits.",
+      "Ran make doctor: local verification stack healthy, postgres-test up, .env.test present, per-worktree Cargo target writable.",
+      "Inspected ProjectsListPage, user/org/repo projects pages, Next copy proxy, Rust projects domain/routes, projects list component tests, and projects_list_contract.rs.",
+      "Ran npm test -- tests/projects-list-page.test.tsx: 9 tests passed after fixes, covering dense rows, search/sort URL state, open/closed tabs, templates, copy dialog success/error, permission-disabled copy, user tab query preservation, unavailable empty state, Editorial banned value scan, and dismissible banner.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test projects_list_contract -- --nocapture: 1 DB-backed test passed.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran make test: Cargo tests passed and Web tests passed (667 passed)."
+    ],
+    "bugs_found": [
+      "Welcome to Projects banner was not dismissible.",
+      "Project/template rows exposed Copy directly instead of a More project options menu.",
+      "Project list backend counted the currently selected state only, making Open/Closed tab counts unstable across tabs.",
+      "Projects tab included template rows and total counts instead of keeping templates in the Templates tab.",
+      "Template rows returned projectHref without the workspace /views/1 target."
+    ],
+    "fix_description": "Updated ProjectsListPage menu/banner interactions and Rust project list filtering/count/template href logic; extended focused UI and DB contract tests."
   }
 ]

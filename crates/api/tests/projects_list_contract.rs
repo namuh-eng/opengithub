@@ -319,6 +319,7 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     assert_json(&headers);
     assert_eq!(body["scope"]["kind"], "organization");
     assert_eq!(body["counts"]["open"], 1);
+    assert_eq!(body["counts"]["closed"], 0);
     assert_eq!(body["items"][0]["title"], "Platform roadmap");
     assert_eq!(body["items"][0]["status"]["label"], "On track");
     assert_eq!(body["items"][0]["counts"]["draft"], 1);
@@ -338,6 +339,10 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     assert_eq!(
         body["templates"]["items"][0]["projectId"],
         template_project_id.to_string()
+    );
+    assert_eq!(
+        body["templates"]["items"][0]["projectHref"],
+        format!("/{marker}/projects/2/views/1")
     );
 
     let copy_uri = format!("/api/projects/{public_project_id}/copies");
@@ -404,13 +409,14 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["page"], 1);
     assert_eq!(body["pageSize"], 1);
-    assert_eq!(body["total"], 3);
+    assert_eq!(body["total"], 2);
     assert_eq!(body["items"].as_array().expect("items").len(), 1);
     assert_eq!(body["items"][0]["title"], "Platform roadmap");
 
     let closed_uri = format!("/api/orgs/{marker}/projects?state=closed");
     let (status, _, body) = get_json(app.clone(), &closed_uri, Some(&member_cookie)).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["counts"]["open"], 2);
     assert_eq!(body["counts"]["closed"], 1);
     assert_eq!(body["items"][0]["id"], private_project_id.to_string());
 

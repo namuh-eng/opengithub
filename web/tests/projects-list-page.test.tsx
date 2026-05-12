@@ -147,6 +147,9 @@ describe("ProjectsListPage", () => {
       "href",
       "/orgs/namuh/projects/12/insights",
     );
+    expect(
+      screen.getByRole("button", { name: "More project options" }),
+    ).toBeInTheDocument();
   });
 
   it("renders the templates tab and disables unavailable copy actions", () => {
@@ -177,6 +180,9 @@ describe("ProjectsListPage", () => {
     expect(
       screen.getByRole("link", { name: /Team planning template/ }),
     ).toHaveAttribute("href", "/orgs/namuh/projects/4/views/1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "More project options" }),
+    );
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
   });
 
@@ -200,6 +206,9 @@ describe("ProjectsListPage", () => {
     );
     render(<ProjectsListPage list={projectList()} />);
 
+    fireEvent.click(
+      screen.getByRole("button", { name: "More project options" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     expect(
       screen.getByRole("dialog", { name: "Roadmap planning" }),
@@ -239,6 +248,9 @@ describe("ProjectsListPage", () => {
     );
     render(<ProjectsListPage list={projectList()} />);
 
+    fireEvent.click(
+      screen.getByRole("button", { name: "More project options" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     fireEvent.click(
       screen.getByRole("checkbox", { name: /Include draft issues/ }),
@@ -258,6 +270,17 @@ describe("ProjectsListPage", () => {
         }),
       }),
     );
+  });
+
+  it("dismisses the Welcome to Projects banner without leaving the page", () => {
+    render(<ProjectsListPage list={projectList()} />);
+
+    expect(screen.getByText("Welcome to Projects")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss Welcome to Projects" }),
+    );
+
+    expect(screen.queryByText("Welcome to Projects")).not.toBeInTheDocument();
   });
 
   it("builds URL-backed search, state, sort, and pagination controls", () => {

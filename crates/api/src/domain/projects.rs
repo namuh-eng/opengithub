@@ -5424,41 +5424,34 @@ async fn projects_for_scope(
     let filters = normalize_project_filters(query)?;
     let rows = visible_project_rows(pool, &scope, viewer_user_id).await?;
     let mut projects = rows;
-    apply_project_filters(&mut projects, &filters);
+    apply_project_query_filters(&mut projects, &filters);
     sort_projects(&mut projects, &filters.sort);
 
     let counts = project_counts(&projects);
-    let total = if filters.tab == "templates" {
-        projects
-            .iter()
-            .filter(|project| project.is_template)
-            .count() as i64
-    } else {
-        projects.len() as i64
-    };
     let offset = ((filters.page - 1) * filters.page_size) as usize;
     let limit = filters.page_size as usize;
+    let project_rows = projects
+        .iter()
+        .filter(|project| !project.is_template && project.state == filters.state)
+        .cloned()
+        .collect::<Vec<_>>();
+    let total = if filters.tab == "templates" {
+        counts.templates
+    } else {
+        project_rows.len() as i64
+    };
     let items = if filters.tab == "templates" {
         Vec::new()
     } else {
-        projects
-            .iter()
-            .filter(|project| project.state == filters.state)
-            .skip(offset)
-            .take(limit)
-            .cloned()
-            .collect()
+        project_rows.into_iter().skip(offset).take(limit).collect()
     };
     let templates_all = template_rows(&projects);
+    let template_total = templates_all.len() as i64;
     let templates = templates_all
         .into_iter()
         .skip(offset)
         .take(limit)
         .collect::<Vec<_>>();
-    let template_total = projects
-        .iter()
-        .filter(|project| project.is_template)
-        .count() as i64;
     let permissions = permissions_for_scope(&scope, viewer_user_id);
 
     Ok(ProjectList {
@@ -11969,7 +11962,7 @@ fn counted_field_values(
     counts.into_iter().collect()
 }
 
-fn apply_project_filters(projects: &mut Vec<ProjectRow>, filters: &ProjectListFilters) {
+fn apply_project_query_filters(projects: &mut Vec<ProjectRow>, filters: &ProjectListFilters) {
     if let Some(query) = &filters.query {
         let normalized = query.to_ascii_lowercase();
         let terms = normalized
@@ -12008,9 +12001,6 @@ fn apply_project_filters(projects: &mut Vec<ProjectRow>, filters: &ProjectListFi
                 })
         });
     }
-    if filters.tab != "templates" {
-        projects.retain(|project| project.state == filters.state);
-    }
 }
 
 fn sort_projects(projects: &mut [ProjectRow], sort: &str) {
@@ -12026,20 +12016,21 @@ fn sort_projects(projects: &mut [ProjectRow], sort: &str) {
 }
 
 fn project_counts(projects: &[ProjectRow]) -> ProjectCounts {
+    let non_template = projects.iter().filter(|project| !project.is_template);
     ProjectCounts {
-        open: projects
-            .iter()
+        open: non_template
+            .clone()
             .filter(|project| project.state == "open")
             .count() as i64,
-        closed: projects
-            .iter()
+        closed: non_template
+            .clone()
             .filter(|project| project.state == "closed")
             .count() as i64,
         templates: projects
             .iter()
             .filter(|project| project.is_template)
             .count() as i64,
-        total: projects.len() as i64,
+        total: non_template.count() as i64,
     }
 }
 
@@ -12053,7 +12044,7 @@ fn template_rows(projects: &[ProjectRow]) -> Vec<ProjectTemplateRow> {
             title: project.title.clone(),
             description: project.description.clone(),
             project_title: project.title.clone(),
-            project_href: project.href.clone(),
+            project_href: project.workspace_href.clone(),
             is_public: project.visibility == "public",
             viewer_can_copy: project.viewer_can_copy,
             created_at: project.created_at,

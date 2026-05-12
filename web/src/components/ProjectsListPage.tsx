@@ -283,6 +283,8 @@ function ProjectRowView({
   project: ProjectRow;
   onCopy: (target: CopyTarget) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <article className="list-row grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
       <Link className="min-w-0 no-underline" href={project.workspaceHref}>
@@ -320,22 +322,39 @@ function ProjectRowView({
         <Link className="btn sm ghost" href={project.workspaceHref}>
           Open
         </Link>
-        <button
-          className="btn sm"
-          disabled={!project.viewerCanCopy}
-          onClick={() =>
-            onCopy({
-              id: project.id,
-              title: project.title,
-              kind: "project",
-              viewerCanCopy: project.viewerCanCopy,
-            })
-          }
-          title="Copy this project"
-          type="button"
-        >
-          Copy
-        </button>
+        <div className="relative">
+          <button
+            aria-expanded={menuOpen}
+            className="btn sm"
+            onClick={() => setMenuOpen((open) => !open)}
+            type="button"
+          >
+            More project options
+          </button>
+          {menuOpen ? (
+            <div
+              className="card absolute right-0 z-10 mt-2 grid min-w-48 gap-2 p-2"
+              style={{ background: "var(--surface)" }}
+            >
+              <button
+                className="btn sm ghost justify-start"
+                disabled={!project.viewerCanCopy}
+                onClick={() =>
+                  onCopy({
+                    id: project.id,
+                    title: project.title,
+                    kind: "project",
+                    viewerCanCopy: project.viewerCanCopy,
+                  })
+                }
+                title="Copy this project"
+                type="button"
+              >
+                Copy
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -348,6 +367,8 @@ function TemplateRowView({
   template: ProjectTemplateRow;
   onCopy: (target: CopyTarget) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <article className="list-row grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
       <Link className="min-w-0 no-underline" href={template.projectHref}>
@@ -370,22 +391,39 @@ function TemplateRowView({
           {formatDate(template.createdAt)}
         </p>
       </Link>
-      <button
-        className="btn sm"
-        disabled={!template.viewerCanCopy}
-        onClick={() =>
-          onCopy({
-            id: template.projectId,
-            title: template.title,
-            kind: "template",
-            viewerCanCopy: template.viewerCanCopy,
-          })
-        }
-        title="Copy this template"
-        type="button"
-      >
-        Copy
-      </button>
+      <div className="relative justify-self-start md:justify-self-end">
+        <button
+          aria-expanded={menuOpen}
+          className="btn sm"
+          onClick={() => setMenuOpen((open) => !open)}
+          type="button"
+        >
+          More project options
+        </button>
+        {menuOpen ? (
+          <div
+            className="card absolute right-0 z-10 mt-2 grid min-w-48 gap-2 p-2"
+            style={{ background: "var(--surface)" }}
+          >
+            <button
+              className="btn sm ghost justify-start"
+              disabled={!template.viewerCanCopy}
+              onClick={() =>
+                onCopy({
+                  id: template.projectId,
+                  title: template.title,
+                  kind: "template",
+                  viewerCanCopy: template.viewerCanCopy,
+                })
+              }
+              title="Copy this template"
+              type="button"
+            >
+              Copy
+            </button>
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -505,6 +543,7 @@ export function ProjectsListPage({
   scopeLabel = list.scope.login,
 }: ProjectsListPageProps) {
   const [copyTarget, setCopyTarget] = useState<CopyTarget | null>(null);
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const showingTemplates = list.filters.tab === "templates";
   const rows = showingTemplates ? list.templates.items : list.items;
   const unavailable = list.unavailableReason;
@@ -537,22 +576,34 @@ export function ProjectsListPage({
         )}
       </div>
 
-      <div className="card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="t-label" style={{ color: "var(--ink-3)" }}>
-              Welcome to Projects
-            </p>
-            <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
-              Build planning views from issues, pull requests, and draft work
-              while keeping repository links visible.
-            </p>
+      {!welcomeDismissed ? (
+        <div className="card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="t-label" style={{ color: "var(--ink-3)" }}>
+                Welcome to Projects
+              </p>
+              <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
+                Build planning views from issues, pull requests, and draft work
+                while keeping repository links visible.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="chip soft">
+                {list.viewerPermissions.viewerRole ?? "viewer"}
+              </span>
+              <button
+                aria-label="Dismiss Welcome to Projects"
+                className="btn sm ghost"
+                onClick={() => setWelcomeDismissed(true)}
+                type="button"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
-          <span className="chip soft">
-            {list.viewerPermissions.viewerRole ?? "viewer"}
-          </span>
         </div>
-      </div>
+      ) : null}
 
       {unavailable ? (
         <div className="card p-5" role="status">
