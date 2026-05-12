@@ -1,0 +1,55 @@
+{
+  "prd_item": "discussions-001",
+  "branch": "visible-discussions-001-20260511180421",
+  "status": "qa_pass",
+  "origin_main_prd_inspected": true,
+  "acceptance_summary": [
+    "Repository Discussions list and category pages render pinned discussions, category rail, search/filter/sort controls, label/state filters, upvotes, empty category states, and community links.",
+    "Focused QA also exercised discussion detail interactions, category management, template preview/commit, poll voting, and issue-to-discussion conversion paths covered by the discussions E2E/contract surface."
+  ],
+  "fixes": [
+    "Fixed discussions list SQL pagination placement and category section grouping.",
+    "Fixed discussion participants author id alias.",
+    "Rendered discussion body markdown to sanitized HTML.",
+    "Allowed category sectionId:null to clear a section assignment.",
+    "Fixed issue conversion discussion owner lookup.",
+    "Allowed first discussion template commit to compare against the generated default template SHA when no template file exists yet.",
+    "Hardened discussions contract assertions and E2E selectors/seed helpers against real DB state and strict Playwright locators."
+  ],
+  "commands": [
+    {
+      "command": "make doctor",
+      "result": "pass",
+      "notes": "podman reachable, opengithub-postgres-test reachable, .env/.env.test present, per-worktree CARGO_TARGET_DIR writable"
+    },
+    {
+      "command": "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -Atc <discussion table check>",
+      "result": "pass",
+      "notes": "verified discussion tables including discussion_categories, discussions, discussion_comments, discussion_labels, discussion_pins, discussion_poll_options, discussion_poll_votes against localhost:55433 test DB container"
+    },
+    {
+      "command": "cd web && npm test -- tests/repository-discussions-page.test.tsx",
+      "result": "pass",
+      "notes": "1 file, 6 tests passed"
+    },
+    {
+      "command": "set -a; source .env.test; set +a; export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract -- --nocapture",
+      "result": "pass",
+      "notes": "7 Rust contract tests passed against test DB"
+    },
+    {
+      "command": "cd web && set -a; source ../.env.test; set +a; export CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium --grep 'repository discussions list filters'",
+      "result": "pass",
+      "notes": "focused discussions-001 browser flow passed; setup auth + Chromium test passed"
+    },
+    {
+      "command": "make check",
+      "result": "pass",
+      "notes": "cargo check, web typecheck, clippy, and biome passed after formatting the touched E2E spec"
+    }
+  ],
+  "known_gaps": [
+    "Full repository-discussions.spec.ts was not rerun after the focused PRD flow passed; Rust contract coverage for conversion and discussion management passed."
+  ],
+  "qa_pass_evidence": "Fresh focused E2E, web unit, Rust contract, DB schema, and make check evidence support setting prd.json discussions-001 qa_pass=true."
+}

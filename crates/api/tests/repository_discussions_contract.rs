@@ -812,7 +812,11 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
     .await;
     assert_eq!(labels_status, StatusCode::OK, "{labels_body}");
     assert_eq!(labels_body["labels"][0]["name"], "imports");
-    assert_eq!(labels_body["sidebar"]["labelOptions"][0]["name"], "imports");
+    assert!(labels_body["sidebar"]["labelOptions"]
+        .as_array()
+        .expect("label options")
+        .iter()
+        .any(|label| label["name"] == "imports"));
     let active_label_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM discussion_labels WHERE discussion_id = $1 AND label_id = $2",
     )
@@ -1315,7 +1319,8 @@ fn app_config() -> AppConfig {
 
 async fn create_user(pool: &PgPool, label: &str) -> User {
     let suffix = Uuid::new_v4().simple();
-    let user = upsert_user_by_email(
+    let username = format!("{label}-{suffix}");
+    let mut user = upsert_user_by_email(
         pool,
         &format!("{label}-{suffix}@opengithub.local"),
         Some(label),
@@ -1324,11 +1329,12 @@ async fn create_user(pool: &PgPool, label: &str) -> User {
     .await
     .expect("user should upsert");
     sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
-        .bind(format!("{label}-{suffix}"))
+        .bind(&username)
         .bind(user.id)
         .execute(pool)
         .await
         .expect("username should update");
+    user.username = Some(username);
     user
 }
 
@@ -2067,7 +2073,11 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
     );
     assert_eq!(reader_body["items"][0]["viewerVoted"], true);
     assert_eq!(reader_body["pinned"].as_array().expect("pins").len(), 1);
-    assert_eq!(reader_body["labels"][0]["name"], "roadmap");
+    assert!(reader_body["labels"]
+        .as_array()
+        .expect("labels")
+        .iter()
+        .any(|label| label["name"] == "roadmap"));
     assert_eq!(reader_body["categories"][0]["slug"], "general");
     assert_eq!(reader_body["helpfulContributors"][0]["commentsCount"], 2);
     assert_eq!(reader_body["communityLinks"][0]["label"], "Code of conduct");

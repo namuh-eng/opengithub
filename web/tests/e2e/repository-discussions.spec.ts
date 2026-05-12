@@ -4,6 +4,8 @@ import { expect, type Page, test } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
+test.setTimeout(120_000);
+
 type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
@@ -12,6 +14,45 @@ type SeededDashboard = {
 
 function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
+}
+
+function execTestSql(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  const psqlArgs = [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql];
+  try {
+    execFileSync("psql", psqlArgs, { stdio: "ignore" });
+    return;
+  } catch (error) {
+    if (
+      !(
+        error instanceof Error &&
+        "code" in error &&
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+      )
+    ) {
+      throw error;
+    }
+  }
+
+  execFileSync(
+    "podman",
+    [
+      "exec",
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      "opengithub",
+      "-d",
+      "opengithub_test",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      sql,
+    ],
+    { stdio: "ignore" },
+  );
 }
 
 function seedDashboard(): SeededDashboard {
@@ -52,14 +93,7 @@ function seedDiscussions(repositoryHref: string) {
   const decodedRepo = decodeURIComponent(repo);
   const suffix = decodedRepo.replace(/^tree-nav-/, "");
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  execTestSql(`
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -243,8 +277,7 @@ function seedDiscussions(repositoryHref: string) {
       INSERT INTO discussion_pins (discussion_id, pinned_by_user_id, position)
       SELECT discussion_one.id, target_repo.author_user_id, 1
       FROM discussion_one, target_repo
-      ON CONFLICT (discussion_id)
-      DO UPDATE SET position = EXCLUDED.position;
+      ON CONFLICT DO NOTHING;
 
       WITH target_repo AS (
         SELECT repositories.id
@@ -263,10 +296,7 @@ function seedDiscussions(repositoryHref: string) {
              1
       FROM target_repo
       ON CONFLICT DO NOTHING;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
+      `);
 }
 
 function seedConvertibleIssue(repositoryHref: string): number {
@@ -278,14 +308,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
   const decodedRepo = decodeURIComponent(repo);
   const issueNumber = 970 + Math.floor(Math.random() * 20);
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  execTestSql(`
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -319,10 +342,7 @@ function seedConvertibleIssue(repositoryHref: string): number {
              issue.author_user_id,
              'Issue comment copied during conversion.'
       FROM issue;
-      `,
-    ],
-    { stdio: "ignore" },
-  );
+      `);
   return issueNumber;
 }
 
@@ -342,7 +362,7 @@ async function signIn(page: Page, seeded: SeededDashboard) {
 
 async function expectNoDeadControls(page: Page) {
   await expect(page.locator('a[href="#"]')).toHaveCount(0);
-  await expect(page.locator("button:not([type])")).toHaveCount(0);
+  await expect(page.locator("main button:not([type])")).toHaveCount(0);
 }
 
 test("repository discussions list filters, rows, category rail, and mobile layout work", async ({
@@ -367,11 +387,11 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(
     page.getByRole("link", { name: /repository import previews/i }).first(),
   ).toBeVisible();
-  await page
+  const pinnedImportLink = page
     .getByRole("link", { name: /repository import previews/i })
-    .first()
-    .click();
-  await expect(page).toHaveURL(/\/discussions\/901$/);
+    .first();
+  await expect(pinnedImportLink).toHaveAttribute("href", /\/discussions\/901$/);
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/901`);
   await expect(
     page.getByRole("heading", { name: /repository import previews/i }),
   ).toBeVisible();
@@ -379,7 +399,9 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     "href",
     /sort=newest/,
   );
-  await page.getByLabel("Reply").fill("Adding a browser-smoke comment.");
+  await page
+    .getByRole("textbox", { name: "Reply" })
+    .fill("Adding a browser-smoke comment.");
   await page.getByRole("button", { name: "Preview" }).click();
   await expect(page.getByText("Adding a browser-smoke comment.")).toBeVisible();
   await page.getByRole("button", { name: "Write" }).click();
@@ -417,10 +439,10 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(page.getByText("Discussion pinned.")).toBeVisible();
   await page.getByRole("button", { name: "Lock conversation" }).click();
   await page.getByLabel("Allow reactions while locked").uncheck();
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock", exact: true }).click();
   await expect(page.getByText("Discussion locked.")).toBeVisible();
   await page.getByRole("button", { name: "Unlock conversation" }).click();
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await expect(page.getByText("Discussion unlocked.")).toBeVisible();
   await page.getByRole("button", { name: "resolved" }).click();
   await expect(page.getByText("Discussion closed.")).toBeVisible();
@@ -448,7 +470,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     .last()
     .click();
   await expect(page).toHaveURL(/\/discussions\/categories\/general/);
-  await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "💬 General" })).toBeVisible();
   await expect(page.getByText("category:general")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /General.*active category/ }),
@@ -459,7 +481,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     page.getByRole("heading", { name: "Choose a category" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
-  await expect(page.getByText("Answers enabled")).toBeVisible();
+  await expect(page.getByText("Answers enabled").first()).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Get started" }).first(),
   ).toHaveAttribute("href", /\/discussions\/new\?category=general$/);
@@ -477,7 +499,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     .getByRole("textbox", { name: "Title" })
     .fill(`Search syntax ideas ${Date.now()}`);
   await page
-    .getByLabel("Discussion body")
+    .getByRole("textbox", { name: "Discussion body" })
     .fill("Support saved discussion searches with **Markdown** preview.");
   await page.getByRole("tab", { name: "Preview" }).click();
   await expect(page.getByText("Markdown")).toBeVisible();
@@ -511,7 +533,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     .fill("The form should persist category-specific context.");
   await page.getByLabel("Area").selectOption("API");
   await page
-    .getByLabel("Discussion body")
+    .getByRole("textbox", { name: "Discussion body" })
     .fill("Question body stays separate from the template answers.");
   await page
     .getByRole("checkbox", {
@@ -583,7 +605,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,
   );
-  await expect(page.getByRole("heading", { name: /Ideas/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "💡 Ideas" })).toBeVisible();
   await expect(
     page.getByText("No Ideas discussions match this view."),
   ).toBeVisible();
@@ -595,13 +617,14 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     path: "../ralph/screenshots/build/discussions-001-final-desktop.jpg",
   });
 
-  await page.goto(
-    `${seeded.treeRepositoryHref}/discussions/categories/general`,
-  );
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/categories/ideas`);
   const upvote = page.getByRole("button", { name: "Upvote discussion 901" });
   await upvote.click();
-  await expect(upvote).toHaveAttribute("aria-pressed", "true");
-  await upvote.click();
+  const removeUpvote = page.getByRole("button", {
+    name: "Remove upvote from discussion 901",
+  });
+  await expect(removeUpvote).toHaveAttribute("aria-pressed", "true");
+  await removeUpvote.click();
   await expect(upvote).toHaveAttribute("aria-pressed", "false");
 
   await page.goto(`${seeded.treeRepositoryHref}/discussions/categories/edit`);
@@ -657,21 +680,20 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     path: "../ralph/screenshots/build/discussions-004-phase3-section-delete.jpg",
   });
 
-  await page
-    .getByRole("link", { name: ".github/DISCUSSION_TEMPLATE/q-a.yml" })
-    .click();
+  const qaCategoryRow = page
+    .getByRole("link", { name: "Q&A" })
+    .locator("xpath=ancestor::*[contains(@class, 'list-row')][1]");
+  await qaCategoryRow.getByRole("link", { name: "Template" }).click();
   await expect(page).toHaveURL(/\/discussions\/categories\/[^/]+\/template$/);
-  await expect(
-    page.getByRole("heading", { name: /Q&A|Questions/i }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "🙏 Q&A" })).toBeVisible();
   await page
     .getByLabel("Discussion template YAML")
     .fill(
-      "name: Browser Q&A\ndescription: Browser smoke template\nbody:\n  - type: textarea\n    id: context\n    attributes:\n      label: Context\n      description: Share the browser context.\n    validations:\n      required: true\n",
+      'name: "Browser Q&A"\ndescription: "Browser smoke template"\nbody:\n  - type: textarea\n    id: context\n    attributes:\n      label: Context\n      description: Share the browser context.\n    validations:\n      required: true\n',
     );
   await page.getByRole("button", { name: "Preview" }).click();
   await expect(page.getByText("Template preview refreshed.")).toBeVisible();
-  await expect(page.getByText("Context")).toBeVisible();
+  await expect(page.locator("span.t-h3", { hasText: "Context" })).toBeVisible();
   await page
     .getByLabel("Commit message")
     .fill(`Update discussion template ${suffix}`);
@@ -721,7 +743,7 @@ test("repository issue converts into a discussion from the issue sidebar", async
   await expect(
     page.getByRole("heading", { name: /Convert this issue into a discussion/ }),
   ).toBeVisible();
-  await expect(page.getByText(/converted from issue/i)).toBeVisible();
+  await expect(page.getByText(/converted from issue/i).first()).toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg",

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use pulldown_cmark::{html, Options, Parser};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -783,6 +784,7 @@ pub struct UpdateDiscussionCategoryRequest {
     pub emoji: Option<String>,
     pub description: Option<String>,
     pub format: Option<DiscussionCategoryFormat>,
+    #[serde(default, deserialize_with = "deserialize_nullable_uuid_field")]
     pub section_id: Option<Option<Uuid>>,
 }
 
@@ -1182,7 +1184,7 @@ pub async fn commit_repository_discussion_category_template_by_owner_name(
         let current_sha = existing
             .as_ref()
             .map(|file| content_sha(&file.content))
-            .unwrap_or_default();
+            .unwrap_or_else(|| content_sha(&default_discussion_template_content(&category)));
         if expected != current_sha {
             return Err(RepositoryError::SecurityPolicyConflict);
         }
@@ -4472,9 +4474,33 @@ fn normalize_short_text(
 }
 
 fn discussion_body_view(markdown: String) -> DiscussionBodyView {
+    let parser = Parser::new_ext(
+        &markdown,
+        Options::ENABLE_TABLES
+            | Options::ENABLE_FOOTNOTES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_TASKLISTS,
+    );
+    let mut rendered = String::new();
+    html::push_html(&mut rendered, parser);
     DiscussionBodyView {
-        html: ammonia::clean(&markdown),
+        html: ammonia::clean(&rendered),
         markdown,
+    }
+}
+
+fn deserialize_nullable_uuid_field<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<Uuid>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Null => Ok(Some(None)),
+        value => Uuid::deserialize(value)
+            .map(|uuid| Some(Some(uuid)))
+            .map_err(serde::de::Error::custom),
     }
 }
 
@@ -5073,7 +5099,9 @@ async fn load_discussion_category_admin_items(
           ON discussion_category_sections.id = discussion_categories.section_id
         LEFT JOIN discussions ON discussions.category_id = discussion_categories.id
         WHERE discussion_categories.repository_id = $1
-        GROUP BY discussion_categories.id, discussion_category_sections.name
+        GROUP BY discussion_categories.id,
+                 discussion_category_sections.name,
+                 discussion_category_sections.position
         ORDER BY COALESCE(discussion_category_sections.position, -1) ASC,
                  discussion_categories.position ASC,
                  discussion_categories.name ASC
@@ -6146,7 +6174,7 @@ async fn load_discussion_participants(
 ) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+        SELECT DISTINCT users.id AS author_id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
                users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
         FROM users
         JOIN discussion_comments ON discussion_comments.author_user_id = users.id
@@ -6525,7 +6553,12 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
     let select = if count_only {
         "COUNT(DISTINCT discussions.id)::bigint AS total".to_owned()
     } else {
-        format!("{DISCUSSION_ROW_SELECT} ORDER BY {order} OFFSET $6 LIMIT $7")
+        DISCUSSION_ROW_SELECT.to_owned()
+    };
+    let pagination = if count_only {
+        String::new()
+    } else {
+        format!("ORDER BY {order} OFFSET $6 LIMIT $7")
     };
     format!(
         r#"
@@ -6557,6 +6590,7 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
           {answered_clause}
           {locked_clause}
           {pinned_clause}
+          {pagination}
         "#
     )
 }
