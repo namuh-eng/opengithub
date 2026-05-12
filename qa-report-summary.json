@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 76,
+    "features_passed": 77,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 73,
+      "pass": 74,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 69,
+      "pass": 70,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 70,
+      "pass": 71,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 39
     }
@@ -2483,10 +2483,41 @@
       "feature_id": "discussions-002",
       "description": "Create discussions through category chooser, category-specific forms, Markdown c",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Verified discussion creation chooser and forms on current origin/main-derived worktree. Fixed detail participant aliasing so created discussions redirect/render form answers, fixed issue conversion converted-discussion owner lookup, added focused Playwright coverage for chooser -> YAML form create, Markdown preview, similar-search acknowledgement, poll create, and issue conversion. make check and make test pass after normalizing Vitest timezone to UTC. Focused Playwright repository-discussions.spec.ts passed 4/4 with system Chrome and .env.test."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/discussions/new",
+            "GET /api/repos/{owner}/{repo}/discussions/new/categories/{slug}",
+            "POST /api/repos/{owner}/{repo}/discussions",
+            "GET/POST /{owner}/{repo}/issues/{number}/convert-to-discussion proxy"
+          ],
+          "notes": "Focused Rust repository_discussions_contract creation case passed against postgresql://opengithub:opengithub@localhost:55433/opengithub_test. Component tests cover create-page validation, preview, attachment metadata, YAML answers, poll payloads, and issue conversion proxy UI."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_required_create",
+            "ack_validation",
+            "poll_form_conflict",
+            "no_secret_leakage"
+          ],
+          "notes": "Existing focused contract covers reader create denial, missing acknowledgement validation, poll/form conflict rejection, private repository privacy, and no session-secret leakage; no new secret exposure introduced."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component and Playwright paths use role/label-based interactions for title, YAML fields, Markdown tabs, toolbar, attachment input, acknowledgement checkbox, poll controls, category select, and Start discussion. No dead controls in focused repository-discussions E2E."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "discussions-003",

@@ -79,7 +79,7 @@ test: test-header
 	  run_silent "Cargo tests passed" "$(CARGO_LOCKED) test --workspace --all-targets"; \
 	fi && \
 	if [ -n "$(HAS_WEB)" ]; then \
-	  run_silent_with_test_count "Web tests passed" "cd web && npx vitest run" "vitest"; \
+	  run_silent_with_test_count "Web tests passed" "cd web && TZ=UTC npx vitest run" "vitest"; \
 	fi
 
 # E2E tests (Playwright — only when web/ exists).

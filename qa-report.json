@@ -5383,5 +5383,52 @@
     ],
     "fix_description": "Aligned code-security-005 UI/tests with moderate severity, added publish success notice, migrated focused advisory E2E to the shared signed-in fixture/runPsql/screenshot helpers, and verified the full DB-backed list/detail/edit/create/publish flow.",
     "timestamp": "2026-05-11T16:33:07.562349Z"
+  },
+  {
+    "feature_id": "discussions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified discussion creation chooser and forms on current origin/main-derived worktree. Fixed detail participant aliasing so created discussions redirect/render form answers, fixed issue conversion converted-discussion owner lookup, added focused Playwright coverage for chooser -> YAML form create, Markdown preview, similar-search acknowledgement, poll create, and issue conversion. make check and make test pass after normalizing Vitest timezone to UTC. Focused Playwright repository-discussions.spec.ts passed 4/4 with system Chrome and .env.test."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/discussions/new",
+          "GET /api/repos/{owner}/{repo}/discussions/new/categories/{slug}",
+          "POST /api/repos/{owner}/{repo}/discussions",
+          "GET/POST /{owner}/{repo}/issues/{number}/convert-to-discussion proxy"
+        ],
+        "notes": "Focused Rust repository_discussions_contract creation case passed against postgresql://opengithub:opengithub@localhost:55433/opengithub_test. Component tests cover create-page validation, preview, attachment metadata, YAML answers, poll payloads, and issue conversion proxy UI."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required_create",
+          "ack_validation",
+          "poll_form_conflict",
+          "no_secret_leakage"
+        ],
+        "notes": "Existing focused contract covers reader create denial, missing acknowledgement validation, poll/form conflict rejection, private repository privacy, and no session-secret leakage; no new secret exposure introduced."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright paths use role/label-based interactions for title, YAML fields, Markdown tabs, toolbar, attachment input, acknowledgement checkbox, poll controls, category select, and Start discussion. No dead controls in focused repository-discussions E2E."
+      }
+    },
+    "evidence": [
+      "make doctor",
+      "make check",
+      "make test",
+      "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_discussions_contract repository_discussion_creation_returns_forms_and_persists_normal_discussion -- --nocapture",
+      "cd web && npm test -- --run repository-discussion-create-page.test.tsx repository-discussions-page.test.tsx repository-issue-detail.test.tsx",
+      "cd web && set -a; source ../.env.test; set +a; export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome; npx playwright test tests/e2e/repository-discussions.spec.ts --project=chromium"
+    ],
+    "known_gaps": [
+      "Full make test-e2e was not run in this lane after focused discussions E2E passed; prior controller context reported unrelated broad E2E failures in other features."
+    ]
   }
 ]
