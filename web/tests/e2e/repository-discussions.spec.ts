@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -198,14 +197,107 @@ function seedDiscussions(repositoryHref: string) {
       ),
       comment_one AS (
         INSERT INTO discussion_comments (discussion_id, author_user_id, body)
-        SELECT discussion_one.id, target_repo.author_user_id, 'Useful answer'
+        SELECT discussion_one.id, target_repo.author_user_id, 'Useful answer for manifest previews.'
         FROM discussion_one, target_repo
         RETURNING id, discussion_id
+      ),
+      reply_one AS (
+        INSERT INTO discussion_comments (discussion_id, parent_comment_id, author_user_id, body)
+        SELECT discussion_one.id, comment_one.id, target_repo.author_user_id, 'Nested reply context for large manifests.'
+        FROM discussion_one, comment_one, target_repo
+        RETURNING id
+      ),
+      answer_pointer AS (
+        UPDATE discussions
+        SET answer_comment_id = comment_one.id, answered = true
+        FROM comment_one
+        WHERE discussions.id = comment_one.discussion_id
+        RETURNING discussions.id
+      ),
+      answer_row AS (
+        INSERT INTO discussion_answers (discussion_id, comment_id, marked_by_user_id)
+        SELECT discussion_one.id, comment_one.id, target_repo.author_user_id
+        FROM discussion_one, comment_one, target_repo
+        ON CONFLICT (discussion_id) DO UPDATE
+          SET comment_id = EXCLUDED.comment_id,
+              marked_by_user_id = EXCLUDED.marked_by_user_id,
+              marked_at = now()
+        RETURNING discussion_id
+      ),
+      reaction_row AS (
+        INSERT INTO discussion_reactions (discussion_id, comment_id, user_id, content)
+        SELECT discussion_one.id, comment_one.id, target_repo.author_user_id, '+1'
+        FROM discussion_one, comment_one, target_repo
+        ON CONFLICT DO NOTHING
+        RETURNING discussion_id
       )
       INSERT INTO discussion_labels (discussion_id, label_id)
       SELECT discussion_one.id, label_one.id
       FROM discussion_one, label_one
       ON CONFLICT DO NOTHING;
+
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      discussion_one AS (
+        SELECT discussions.id
+        FROM discussions, target_repo
+        WHERE discussions.repository_id = target_repo.id
+          AND discussions.number = 901
+        LIMIT 1
+      ),
+      answer_comment AS (
+        SELECT discussion_comments.id
+        FROM discussion_comments, discussion_one
+        WHERE discussion_comments.discussion_id = discussion_one.id
+          AND discussion_comments.body = 'Useful answer for manifest previews.'
+          AND discussion_comments.parent_comment_id IS NULL
+        ORDER BY discussion_comments.created_at DESC
+        LIMIT 1
+      )
+      UPDATE discussions
+      SET answer_comment_id = answer_comment.id, answered = true
+      FROM answer_comment
+      WHERE discussions.id = (SELECT id FROM discussion_one);
+
+      WITH target_repo AS (
+        SELECT repositories.id, users.id AS author_user_id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      discussion_one AS (
+        SELECT discussions.id
+        FROM discussions, target_repo
+        WHERE discussions.repository_id = target_repo.id
+          AND discussions.number = 901
+        LIMIT 1
+      ),
+      answer_comment AS (
+        SELECT discussion_comments.id
+        FROM discussion_comments, discussion_one
+        WHERE discussion_comments.discussion_id = discussion_one.id
+          AND discussion_comments.body = 'Useful answer for manifest previews.'
+          AND discussion_comments.parent_comment_id IS NULL
+        ORDER BY discussion_comments.created_at DESC
+        LIMIT 1
+      )
+      INSERT INTO discussion_answers (discussion_id, comment_id, marked_by_user_id)
+      SELECT discussion_one.id, answer_comment.id, target_repo.author_user_id
+      FROM discussion_one, answer_comment, target_repo
+      ON CONFLICT (discussion_id) DO UPDATE
+        SET comment_id = EXCLUDED.comment_id,
+            marked_by_user_id = EXCLUDED.marked_by_user_id,
+            marked_at = now();
 
       WITH target_repo AS (
         SELECT repositories.id
@@ -431,6 +523,38 @@ test("repository discussions list filters, category rail, empty state, and upvot
   await expect(
     page.getByRole("button", { name: "Upvote discussion 901" }),
   ).toHaveAttribute("aria-pressed", "false");
+
+  await page.goto(`${repositoryHref}/discussions/901?sort=oldest`);
+  await expect(
+    page.getByRole("heading", { name: /repository import previews/i }),
+  ).toBeVisible();
+  await expect(page.getByText("Answered").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View full answer" }),
+  ).toHaveAttribute("href", /#discussioncomment-/);
+  await expect(
+    page.getByText("Useful answer for manifest previews."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Nested reply context for large manifests."),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Newest" })).toHaveAttribute(
+    "href",
+    /sort=newest/,
+  );
+  await page.getByRole("button", { name: /Upvote 14/ }).click();
+  await expect(
+    page.getByRole("button", { name: /Remove upvote \d+/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  await expect(page.getByText("Subscribed.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
+  await expect(
+    page.getByRole("complementary").getByText("help-wanted"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Participants" }),
+  ).toBeVisible();
   await expectNoDeadControls(page);
 });
 

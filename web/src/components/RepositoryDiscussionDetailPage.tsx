@@ -17,6 +17,7 @@ import type {
   DiscussionReplyView,
   DiscussionSubscriptionState,
   DiscussionTransferTargetsView,
+  DiscussionVoteResponse,
   IssueListLabel,
   RepositoryDiscussionDetailView,
   RepositoryOverview,
@@ -93,11 +94,21 @@ function Avatar({
   );
 }
 
+function categoryAcceptsAnswers(detail: RepositoryDiscussionDetailView) {
+  return Boolean(
+    detail.sidebar.categoryOptions.find(
+      (category) => category.slug === detail.category.slug,
+    )?.acceptsAnswers,
+  );
+}
+
 function statusChip(detail: RepositoryDiscussionDetailView) {
   if (detail.discussion.answered)
     return <span className="chip ok">Answered</span>;
   if (detail.discussion.state === "closed")
     return <span className="chip soft">Closed</span>;
+  if (categoryAcceptsAnswers(detail))
+    return <span className="chip warn">Unanswered</span>;
   return <span className="chip ok">Open</span>;
 }
 
@@ -1352,6 +1363,8 @@ export function RepositoryDiscussionDetailPage({
     currentDetail.viewer.authenticated && currentDetail.viewer.canReact;
   const canComment =
     currentDetail.viewer.authenticated && currentDetail.viewer.canComment;
+  const canVote =
+    currentDetail.viewer.authenticated && currentDetail.viewer.canRead;
 
   async function mutateDetail(path: string, body: string) {
     setMessage(null);
@@ -1405,6 +1418,36 @@ export function RepositoryDiscussionDetailPage({
     } else {
       setReactions(payload);
     }
+  }
+
+  async function toggleVote(voted: boolean) {
+    if (!canVote) return;
+    setMessage(null);
+    const response = await fetch(`${detailHref}/vote`, {
+      method: voted ? "PUT" : "DELETE",
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | DiscussionVoteResponse
+      | { error?: { message?: string } }
+      | null;
+    if (!response.ok) {
+      setMessage(
+        payload && "error" in payload
+          ? (payload.error?.message ?? "Discussion vote could not be updated.")
+          : "Discussion vote could not be updated.",
+      );
+      return;
+    }
+    if (!payload || !("votesCount" in payload)) return;
+    setCurrentDetail((previous) => ({
+      ...previous,
+      viewer: { ...previous.viewer, viewerVoted: payload.viewerVoted },
+      discussion: {
+        ...previous.discussion,
+        votesCount: payload.votesCount,
+      },
+    }));
+    setMessage(payload.viewerVoted ? "Discussion upvoted." : "Upvote removed.");
   }
 
   async function toggleSubscription(subscribed: boolean) {
@@ -1594,9 +1637,24 @@ export function RepositoryDiscussionDetailPage({
                   {formatNumber(currentDetail.discussion.commentsCount)}{" "}
                   comments
                 </span>
-                <span className="chip soft">
-                  {formatNumber(currentDetail.discussion.votesCount)} votes
-                </span>
+                <button
+                  aria-pressed={currentDetail.viewer.viewerVoted}
+                  className={
+                    currentDetail.viewer.viewerVoted
+                      ? "chip active"
+                      : "chip soft"
+                  }
+                  disabled={!canVote}
+                  onClick={() => toggleVote(!currentDetail.viewer.viewerVoted)}
+                  type="button"
+                >
+                  {currentDetail.viewer.viewerVoted
+                    ? "Remove upvote"
+                    : "Upvote"}{" "}
+                  <span className="t-num">
+                    {formatNumber(currentDetail.discussion.votesCount)}
+                  </span>
+                </button>
               </div>
             </div>
             <a className="btn" href={detail.discussion.href}>

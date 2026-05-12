@@ -411,8 +411,10 @@ describe("RepositoryDiscussionCategorySettingsPage", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       moveToCategoryId: "cat-2",
     });
-    expect(
-      screen.queryByRole("link", { name: "General" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("link", { name: "General" }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
