@@ -809,6 +809,10 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
         .is_some_and(|value| value.starts_with("application/json")));
     assert_eq!(body["project"]["title"], "Editorial table workspace");
     assert_eq!(body["selectedView"]["id"], view_id.to_string());
+    assert_eq!(
+        body["selectedView"]["href"],
+        format!("/orgs/{marker}/projects/41/views/1")
+    );
     assert_eq!(body["fields"].as_array().expect("fields").len(), 2);
     assert_eq!(body["items"].as_array().expect("items").len(), 1);
     assert_eq!(body["items"][0]["title"], "Draft launch notes");

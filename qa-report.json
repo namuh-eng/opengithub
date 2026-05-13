@@ -6007,5 +6007,64 @@
       "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_iteration_settings_create_breaks_and_filter_tokens -- --nocapture",
       "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-field-settings.spec.ts"
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Reproduced the controller system-Chrome failure, first on origin/main as an unseeded Projects list and then through the side-panel lifecycle. Fixed the fixture to seed and open the real Projects workspace deterministically, preserved draft side-panel assertions, and verified title/body edits, project-only comments, convert-to-issue, archive, archived restore, remove, and mobile side-panel smoke."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /orgs/namuh/projects/1/views/1",
+          "GET /orgs/namuh/projects/1/items/{itemId}?view=1",
+          "PATCH /api/projects/{projectId}/items/{itemId}/draft",
+          "POST /api/projects/{projectId}/items/{itemId}/comments",
+          "POST /api/projects/{projectId}/items/{itemId}/convert-to-issue",
+          "PATCH /api/projects/{projectId}/items/{itemId}/archive",
+          "GET /orgs/namuh/projects/1/items/archived?view=1",
+          "PATCH /api/projects/{projectId}/items/{itemId}/restore",
+          "DELETE /api/projects/{projectId}/items/{itemId}"
+        ],
+        "notes": "DB-backed projects_workspace_contract passed 15/15 against TEST_DATABASE_URL with no self-skip. Fixed API workspace view href generation to use the scope-aware project href so organization archived-item Back to project links return to /orgs/{org}/projects/{number}/views/{view}."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_visibility_guards",
+          "data_exposure"
+        ],
+        "notes": "Required authenticated DB contract and browser lifecycle ran with seeded owner session; private project visibility and item detail/archive visibility guards are covered by projects_workspace_contract. No stack traces or secret values appeared in the exercised browser/API error paths."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Browser smoke covered accessible complementary side panel name, visible form labels/buttons, mobile viewport reload/open, no dead controls, and no horizontal overflow on the Projects item side panel path."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local verification stack healthy; test Postgres reachable and per-worktree Cargo target writable.",
+      "Reproduced exact rejected controller command before fixes: system-Chrome projects-items-side-panel failed because the fixture did not seed a workspace link on origin/main.",
+      "Inspected prior rejected artifact from projects-005-visible-retry-20260512233455: side-panel click reached the workspace but timed out before the complementary Project item detail panel appeared during route transition.",
+      "Fixed web/tests/e2e/projects-items-side-panel.spec.ts to seed PROJECTS_WORKSPACE_E2E, open seeded projectsWorkspaceHref, wait for item URLs, assert the complementary Project item detail panel, and retain full lifecycle coverage.",
+      "Fixed crates/api/src/domain/projects.rs so ProjectWorkspaceView.href uses the scope-aware project href; organization archive Back to project links now preserve /orgs/{org}.",
+      "Updated projects-workspace E2E to use the current accessible View menu button name while preserving saved-view configuration coverage.",
+      "Required DB gate passed: set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture (15 passed, no self-skip).",
+      "Required static gate passed after removing stale generated web/.next output: make check.",
+      "Required component gate passed: cd web && npx vitest run tests/project-workspace-page.test.tsx (19 passed).",
+      "Required browser gate passed from env-loaded shell with system Chrome: cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx playwright test tests/e2e/projects-items-side-panel.spec.ts --project=chromium (2 passed).",
+      "Relevant broad regression passed: cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx playwright test tests/e2e/projects-workspace.spec.ts --project=chromium (2 passed)."
+    ],
+    "bugs_found": [
+      "projects-items-side-panel E2E did not set PROJECTS_WORKSPACE_E2E on origin/main, so it could land on an empty organization Projects list under controller rerun.",
+      "Project workspace view hrefs were generated without the organization /orgs prefix, which made archived-item Back to project links point at the user-project route.",
+      "Side-panel E2E clicked server-rendered item routes without waiting for URL transition/panel render, making system-Chrome reruns nondeterministic under load.",
+      "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
+    ],
+    "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
   }
 ]

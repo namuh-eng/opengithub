@@ -1663,7 +1663,7 @@ pub async fn project_workspace(
     }
 
     let viewer_role = project.viewer_role.clone();
-    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let views = workspace_views(pool, project_id, &project.href).await?;
     let selected_view = select_workspace_view(&views, query.view)?;
     let fields = workspace_fields(pool, project_id, &selected_view).await?;
     let filters = normalize_workspace_filters(query, &selected_view, &fields)?;
@@ -4182,7 +4182,7 @@ pub async fn update_project_view_state_for_actor(
         return Err(ProjectsError::Forbidden);
     }
 
-    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let views = workspace_views(pool, project_id, &project.href).await?;
     let selected_view = views
         .iter()
         .find(|view| view.id == view_id)
@@ -4289,7 +4289,7 @@ pub async fn update_project_view_layout_for_actor(
         return Err(ProjectsError::Forbidden);
     }
 
-    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let views = workspace_views(pool, project_id, &project.href).await?;
     let selected_view = views
         .iter()
         .find(|view| view.id == view_id)
@@ -4393,7 +4393,7 @@ pub async fn update_project_roadmap_settings_for_actor(
         return Err(ProjectsError::Forbidden);
     }
 
-    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let views = workspace_views(pool, project_id, &project.href).await?;
     let selected_view = views
         .iter()
         .find(|view| view.id == view_id)
@@ -6538,8 +6538,7 @@ async fn project_settings_danger_state(
 async fn workspace_views(
     pool: &PgPool,
     project_id: Uuid,
-    owner: &str,
-    project_number: i64,
+    project_href: &str,
 ) -> Result<Vec<ProjectWorkspaceView>, ProjectsError> {
     let rows = sqlx::query(
         r#"
@@ -6561,7 +6560,7 @@ async fn workspace_views(
                 number: i64::from(position),
                 name: row.get("name"),
                 layout: row.get("layout"),
-                href: format!("/{owner}/projects/{project_number}/views/{position}"),
+                href: format!("{project_href}/views/{position}"),
                 configuration: row.get("configuration"),
                 updated_at: row.get("updated_at"),
             }
@@ -9290,7 +9289,7 @@ async fn workspace_fields_for_detail(
     pool: &PgPool,
     project_id: Uuid,
 ) -> Result<Vec<ProjectWorkspaceField>, ProjectsError> {
-    let views = workspace_views(pool, project_id, "project", 1).await?;
+    let views = workspace_views(pool, project_id, "/project/projects/1").await?;
     let selected_view = views.first().ok_or(ProjectsError::NotFound)?;
     workspace_fields(pool, project_id, selected_view).await
 }

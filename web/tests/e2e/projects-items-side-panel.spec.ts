@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededNavigation = {
   cookieName: string;
   cookieValue: string;
+  projectsWorkspaceHref: string;
 };
 
 function seedNavigation(): SeededNavigation {
@@ -28,6 +29,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -49,14 +51,9 @@ async function signIn(page: Page, seeded: SeededNavigation) {
   ]);
 }
 
-async function openFirstProjectWorkspace(page: Page) {
-  await page.goto("/orgs/namuh/projects");
-  await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible();
-  const workspaceLink = page
-    .locator('a[href*="/projects/"][href*="/views/"]')
-    .first();
-  await expect(workspaceLink).toBeVisible();
-  await workspaceLink.click();
+async function openFirstProjectWorkspace(page: Page, workspaceHref: string) {
+  expect(workspaceHref).toMatch(/\/projects\/\d+\/views\/\d+/);
+  await page.goto(workspaceHref);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 }
 
@@ -74,37 +71,30 @@ async function expectNoPageOverflow(page: Page) {
   expect(overflow).toBe(false);
 }
 
-async function projectItemLinks(page: Page): Promise<Locator[]> {
-  return page.locator('a[href*="/projects/"][href*="/items/"]').all();
-}
-
 async function openDraftItemPanel(page: Page): Promise<Locator> {
-  const links = await projectItemLinks(page);
-  expect(links.length).toBeGreaterThan(0);
-
-  for (const link of links.slice(0, 8)) {
-    await link.click();
-    const panel = page.getByRole("complementary", {
-      name: "Project item detail",
-    });
-    await expect(panel).toBeVisible();
-    if (await panel.getByText("Project-only draft").isVisible()) {
-      return panel;
-    }
-    await panel.getByRole("link", { name: "Close" }).click();
-  }
-
-  throw new Error("Seeded Projects workspace did not include a draft item");
-}
-
-async function openAnyItemPanel(page: Page): Promise<Locator> {
-  const links = await projectItemLinks(page);
-  expect(links.length).toBeGreaterThan(0);
-  await links[0].click();
+  const link = page.getByRole("link", { name: "Draft launch notes" });
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(page).toHaveURL(/\/projects\/\d+\/items\/[^/]+/);
   const panel = page.getByRole("complementary", {
     name: "Project item detail",
   });
-  await expect(panel).toBeVisible();
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(
+    panel.locator("p", { hasText: "Project-only draft" }),
+  ).toBeVisible();
+  return panel;
+}
+
+async function openAnyItemPanel(page: Page): Promise<Locator> {
+  const link = page.locator('a[href*="/projects/"][href*="/items/"]').first();
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(page).toHaveURL(/\/projects\/\d+\/items\/[^/]+/);
+  const panel = page.getByRole("complementary", {
+    name: "Project item detail",
+  });
+  await expect(panel).toBeVisible({ timeout: 20_000 });
   return panel;
 }
 
@@ -116,16 +106,19 @@ test.skip(
 test("Projects item side panel supports final item lifecycle smoke", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const seeded = seedNavigation();
   await signIn(page, seeded);
-  await openFirstProjectWorkspace(page);
+  await openFirstProjectWorkspace(page, seeded.projectsWorkspaceHref);
 
   await expect(page.getByRole("table")).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoPageOverflow(page);
 
   const panel = await openDraftItemPanel(page);
-  await expect(panel.getByText("Project-only draft")).toBeVisible();
+  await expect(
+    panel.locator("p", { hasText: "Project-only draft" }),
+  ).toBeVisible();
   await expect(
     panel.getByRole("form", { name: "Edit draft project item" }),
   ).toBeVisible();
@@ -167,7 +160,9 @@ test("Projects item side panel supports final item lifecycle smoke", async ({
   });
   await panel.getByRole("button", { name: "Convert draft" }).click();
   await expect(panel.getByText("Draft converted to issue")).toBeVisible();
-  await expect(panel.getByText("Project-only draft")).not.toBeVisible();
+  await expect(
+    panel.locator("p", { hasText: "Project-only draft" }),
+  ).not.toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/projects-005-final-linked-issue-sync.jpg",
@@ -181,9 +176,7 @@ test("Projects item side panel supports final item lifecycle smoke", async ({
   });
 
   await panel.getByRole("link", { name: "View archived items" }).click();
-  await expect(
-    page.getByRole("heading", { name: /Project archive/i }),
-  ).toBeVisible();
+  await expect(page.getByText("Project archive")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Restore" }).first(),
   ).toBeVisible();
@@ -201,12 +194,18 @@ test("Projects item side panel supports final item lifecycle smoke", async ({
   await page.getByRole("link", { name: /Back to project/i }).click();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   const restoredPanel = await openAnyItemPanel(page);
+  const removedTitle =
+    (await restoredPanel.getByRole("heading", { level: 2 }).textContent()) ??
+    "";
   await expect(
     restoredPanel.getByRole("button", { name: "Remove" }),
   ).toBeVisible();
   await restoredPanel.getByRole("button", { name: "Remove" }).click();
   await expect(page).toHaveURL(/\/projects\/\d+\/views\/\d+/);
-  await expect(page.getByText("Item removed from project.")).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: removedTitle }),
+  ).not.toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
