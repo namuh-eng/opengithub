@@ -9,28 +9,28 @@
   "totals": {
     "features_total": 119,
     "features_passed": 89,
-    "features_failed": 30,
+    "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 81,
+      "pass": 85,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 77,
+      "pass": 81,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 77,
+      "pass": 81,
       "fail": 0,
       "skip": 4
     },
     "accessibility": {
-      "pass": 44,
+      "pass": 47,
       "fail": 0,
       "skip": 39
     }
