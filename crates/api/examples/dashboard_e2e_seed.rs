@@ -991,6 +991,20 @@ async fn seed_projects_workspace_fixture(
     .await?;
     sqlx::query(
         r#"
+        INSERT INTO project_field_options (project_field_id, name, color, position)
+        VALUES ($1, 'Backlog', 'gray', 1),
+               ($1, 'In progress', 'blue', 2),
+               ($1, 'Done', 'green', 3),
+               ($2, 'P1', 'red', 1),
+               ($2, 'P2', 'yellow', 2)
+        "#,
+    )
+    .bind(status_field)
+    .bind(priority_field)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
         INSERT INTO project_iterations (project_field_id, name, start_date, duration_days, position)
         VALUES ($1, 'Iteration 1', '2026-05-04', 14, 1),
                ($1, 'Iteration 2', '2026-05-18', 14, 2),

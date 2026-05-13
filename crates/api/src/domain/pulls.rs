@@ -23,7 +23,10 @@ use super::{
         NotificationDeliveryCheck,
     },
     permissions::RepositoryRole,
-    projects::{run_project_item_automation, ProjectAutomationEvent, ProjectAutomationInput},
+    projects::{
+        auto_add_project_items_for_repository_event, run_project_item_automation,
+        ProjectAutomationEvent, ProjectAutomationInput,
+    },
     repositories::{
         get_repository, repository_permission_for_user, Repository, RepositoryVisibility,
         RepositoryWatchEvent,
@@ -1360,6 +1363,21 @@ pub async fn create_pull_request(
     .await?;
     insert_pull_request_audit_event(pool, &pull_request, input.actor_user_id).await?;
     index_pull_request_search_document(pool, &pull_request, repository.created_by_user_id).await?;
+    auto_add_project_items_for_repository_event(
+        pool,
+        ProjectAutomationInput {
+            actor_user_id: input.actor_user_id,
+            repository_id: pull_request.repository_id,
+            issue_id: None,
+            pull_request_id: Some(pull_request.id),
+            event: ProjectAutomationEvent::ItemAdded,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::projects::ProjectsError::Sqlx(error) => CollaborationError::Sqlx(error),
+        _ => CollaborationError::PullRequestNotFound,
+    })?;
     trigger_workflows_for_pull_request(
         pool,
         TriggerWorkflowsForPullRequest {

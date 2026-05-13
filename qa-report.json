@@ -6066,5 +6066,56 @@
       "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
     ],
     "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
+  },
+  {
+    "feature_id": "projects-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Built-in project workflow settings and automation verified with DB-backed Rust contract tests, focused Vitest, and focused Playwright on /orgs/namuh/projects/1/workflows using the test Postgres and system Chrome."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/workflows",
+          "PATCH /api/projects/{project_id}/workflows/{workflow_id}",
+          "POST /api/projects/{project_id}/automation/invocations",
+          "PATCH /api/repos/{owner}/{repo}/issues/{number}"
+        ],
+        "notes": "Rust contracts cover default workflow seeding, workflow update validation/permissions/stale expectedUpdatedAt, execution logs, audit events, Actions/GraphQL idempotent invocation, closed issue -> Done, merged PR -> Done, auto-add from repository event, close-on-status, and auto-archive completed items."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_checks",
+          "idempotency",
+          "data_exposure"
+        ],
+        "notes": "Reader/outsider workflow mutation and read guards return forbidden; repository-target and automation invocation paths verify repository write permissions; repeated workflow runs and Actions idempotency keys do not duplicate successful updates; error bodies did not leak test session secrets in focused contract coverage."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright smoke verified visible controls on the workflows settings page have accessible names, no dead links, and no horizontal overflow in desktop and mobile viewport coverage."
+      }
+    },
+    "tested_steps": [
+      "make doctor",
+      "make check",
+      "set -a; . ./.env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api project_workflow --test projects_workspace_contract -- --nocapture",
+      "set -a; . ./.env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api project_automation_invocation --test projects_workspace_contract -- --nocapture",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm test -- project-workflow-settings-page.test.tsx",
+      "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium"
+    ],
+    "bugs_found": [
+      "Repository-created issues and pull requests were not auto-added to projects by enabled item-added workflows.",
+      "closeOnStatus workflow configuration was persisted but not applied when a target status value was set.",
+      "The Projects workflow E2E seed created select field values without project_field_options, leaving workflow target-value selectors unsaveable.",
+      "The focused workflows Playwright spec did not enable the Projects workspace seed and used brittle heading/strict text locators."
+    ],
+    "fix_description": "Added repository-event auto-add workflow execution, close-on-status linked issue/PR closing, focused DB contract coverage for auto-add, auto-archive, closed/merged Done transitions, Actions/GraphQL idempotency and permission guards, and fixed the workflows E2E seed/spec to exercise the real settings page."
   }
 ]

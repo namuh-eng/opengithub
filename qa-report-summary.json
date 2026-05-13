@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 86,
+    "features_passed": 87,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 82,
+      "pass": 83,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 78,
+      "pass": 79,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 79,
+      "pass": 80,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 44,
+      "pass": 45,
       "fail": 0,
       "skip": 39
     }
@@ -2904,10 +2904,41 @@
       "feature_id": "projects-006",
       "description": "Implement built-in project workflows and automation for status updates, add-item",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Built-in project workflow settings and automation verified with DB-backed Rust contract tests, focused Vitest, and focused Playwright on /orgs/namuh/projects/1/workflows using the test Postgres and system Chrome."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/projects/{project_id}/workflows",
+            "PATCH /api/projects/{project_id}/workflows/{workflow_id}",
+            "POST /api/projects/{project_id}/automation/invocations",
+            "PATCH /api/repos/{owner}/{repo}/issues/{number}"
+          ],
+          "notes": "Rust contracts cover default workflow seeding, workflow update validation/permissions/stale expectedUpdatedAt, execution logs, audit events, Actions/GraphQL idempotent invocation, closed issue -> Done, merged PR -> Done, auto-add from repository event, close-on-status, and auto-archive completed items."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "permission_checks",
+            "idempotency",
+            "data_exposure"
+          ],
+          "notes": "Reader/outsider workflow mutation and read guards return forbidden; repository-target and automation invocation paths verify repository write permissions; repeated workflow runs and Actions idempotency keys do not duplicate successful updates; error bodies did not leak test session secrets in focused contract coverage."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright smoke verified visible controls on the workflows settings page have accessible names, no dead links, and no horizontal overflow in desktop and mobile viewport coverage."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "projects-007",

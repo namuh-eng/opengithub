@@ -3194,6 +3194,145 @@ pub async fn run_project_item_automation(
     Ok(())
 }
 
+pub async fn auto_add_project_items_for_repository_event(
+    pool: &PgPool,
+    input: ProjectAutomationInput,
+) -> Result<(), ProjectsError> {
+    if input.event != ProjectAutomationEvent::ItemAdded
+        || (input.issue_id.is_none() && input.pull_request_id.is_none())
+    {
+        return Ok(());
+    }
+
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT project_workflows.project_id
+        FROM project_workflows
+        JOIN projects ON projects.id = project_workflows.project_id
+        WHERE project_workflows.enabled = true
+          AND project_workflows.trigger_event = 'item_added'
+          AND projects.deleted_at IS NULL
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM project_workflow_repository_targets targets
+              WHERE targets.project_workflow_id = project_workflows.id
+                AND targets.repository_id = $1
+            )
+            OR (
+              NOT EXISTS (
+                SELECT 1
+                FROM project_workflow_repository_targets targets
+                WHERE targets.project_workflow_id = project_workflows.id
+              )
+              AND (
+                projects.default_repository_id = $1
+                OR EXISTS (
+                  SELECT 1
+                  FROM project_repositories linked
+                  WHERE linked.project_id = projects.id
+                    AND linked.repository_id = $1
+                )
+              )
+            )
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM project_permissions permissions
+            WHERE permissions.project_id = projects.id
+              AND permissions.user_id = $2
+              AND permissions.role IN ('write', 'admin', 'owner')
+          )
+        ORDER BY project_workflows.project_id
+        "#,
+    )
+    .bind(input.repository_id)
+    .bind(input.actor_user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut created_any = false;
+    for row in rows {
+        let project_id: Uuid = row.get("project_id");
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+              SELECT 1
+              FROM project_items
+              WHERE project_id = $1
+                AND archived_at IS NULL
+                AND ($2::uuid IS NULL OR issue_id = $2)
+                AND ($3::uuid IS NULL OR pull_request_id = $3)
+            )
+            "#,
+        )
+        .bind(project_id)
+        .bind(input.issue_id)
+        .bind(input.pull_request_id)
+        .fetch_one(pool)
+        .await?;
+        if exists {
+            continue;
+        }
+
+        let item_type = if input.pull_request_id.is_some() {
+            "pull_request"
+        } else {
+            "issue"
+        };
+        let item_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO project_items
+              (project_id, item_type, issue_id, pull_request_id, position)
+            VALUES (
+              $1, $2, $3, $4,
+              COALESCE((SELECT max(position) + 1 FROM project_items WHERE project_id = $1), 1)
+            )
+            RETURNING id
+            "#,
+        )
+        .bind(project_id)
+        .bind(item_type)
+        .bind(input.issue_id)
+        .bind(input.pull_request_id)
+        .fetch_one(pool)
+        .await?;
+        record_project_item_event(
+            pool,
+            project_id,
+            item_id,
+            input.actor_user_id,
+            "project.workflow.auto_add",
+            json!({
+                "repositoryId": input.repository_id,
+                "issueId": input.issue_id,
+                "pullRequestId": input.pull_request_id,
+                "actor": "@opengithub-project-automation",
+            }),
+        )
+        .await?;
+        record_project_audit(
+            pool,
+            input.actor_user_id,
+            "project.workflow.auto_add",
+            item_id,
+            json!({
+                "projectId": project_id,
+                "repositoryId": input.repository_id,
+                "issueId": input.issue_id,
+                "pullRequestId": input.pull_request_id,
+            }),
+        )
+        .await?;
+        created_any = true;
+    }
+
+    if created_any {
+        run_project_item_automation(pool, input).await?;
+    }
+    Ok(())
+}
+
 pub async fn invoke_project_automation_for_actor(
     pool: &PgPool,
     project_id: Uuid,
@@ -4546,6 +4685,8 @@ pub async fn update_project_item_field_for_actor(
 
     let normalized = normalize_project_field_value(&field, &request.value)?;
     apply_project_field_value(pool, &item, &field, &normalized, actor_user_id).await?;
+    run_close_on_status_workflows(pool, project_id, &item, &field, &normalized, actor_user_id)
+        .await?;
 
     sqlx::query(
         r#"
@@ -7379,6 +7520,17 @@ async fn run_project_item_workflows(
         .bind(input.actor_user_id)
         .execute(pool)
         .await?;
+        let edit_item = workspace_item_edit_target(pool, item.project_id, item.item_id).await?;
+        let target_field = workspace_field(pool, item.project_id, field_id).await?;
+        run_close_on_status_workflows(
+            pool,
+            item.project_id,
+            &edit_item,
+            &target_field,
+            &value,
+            input.actor_user_id,
+        )
+        .await?;
         record_project_item_event(
             pool,
             item.project_id,
@@ -7492,6 +7644,188 @@ async fn workflow_target_value(
     .fetch_optional(pool)
     .await?;
     Ok(option_name.map(|name| (field_id, json!(name))))
+}
+
+async fn run_close_on_status_workflows(
+    pool: &PgPool,
+    project_id: Uuid,
+    item: &ProjectWorkspaceEditItem,
+    field: &ProjectWorkspaceField,
+    value: &Value,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    if item.issue_id.is_none() && item.pull_request_issue_id.is_none() {
+        return Ok(());
+    }
+    let Some(repository_id) = item.repository_id else {
+        return Ok(());
+    };
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, workflow_key, trigger_event, configuration
+        FROM project_workflows
+        WHERE project_id = $1
+          AND enabled = true
+          AND configuration->>'closeOnStatus' = 'true'
+          AND configuration #>> '{target,fieldId}' = $2
+        ORDER BY created_at
+        "#,
+    )
+    .bind(project_id)
+    .bind(field.id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    for row in rows {
+        let workflow_id: Uuid = row.get("id");
+        let workflow_key: String = row.get("workflow_key");
+        let trigger_event: String = row.get("trigger_event");
+        let configuration: Value = row.get("configuration");
+        let Some((target_field_id, target_value)) =
+            workflow_target_value(pool, &configuration).await?
+        else {
+            continue;
+        };
+        if target_field_id != field.id || &target_value != value {
+            continue;
+        }
+
+        let idempotency_key = format!("{}:{}:close_on_status", workflow_id, item.id);
+        if workflow_log_exists(pool, project_id, &idempotency_key).await? {
+            continue;
+        }
+
+        let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+        if !permission
+            .as_ref()
+            .is_some_and(|permission| permission.role.can_write())
+        {
+            record_workflow_execution(
+                pool,
+                &WorkflowExecutionRecord {
+                    project_id,
+                    workflow_id: Some(workflow_id),
+                    item_id: Some(item.id),
+                    actor_user_id: Some(actor_user_id),
+                    source: "system",
+                    event_type: "close_on_status",
+                    status: "skipped",
+                    message: "Actor cannot close the linked repository item.",
+                    metadata: json!({
+                        "workflowKey": workflow_key,
+                        "idempotencyKey": idempotency_key,
+                        "repositoryId": repository_id,
+                    }),
+                },
+            )
+            .await?;
+            continue;
+        }
+
+        update_linked_issue_state(pool, item, "closed", actor_user_id).await?;
+        record_project_item_event(
+            pool,
+            project_id,
+            item.id,
+            actor_user_id,
+            "project.workflow.close_on_status",
+            json!({
+                "workflowId": workflow_id,
+                "workflowKey": workflow_key,
+                "triggerEvent": trigger_event,
+                "fieldId": field.id,
+                "value": value,
+                "actor": "@opengithub-project-automation",
+            }),
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO timeline_events
+              (repository_id, issue_id, pull_request_id, actor_user_id, event_type, metadata)
+            VALUES ($1, $2, $3, $4, 'project_workflow_closed', $5)
+            "#,
+        )
+        .bind(repository_id)
+        .bind(item.issue_id.or(item.pull_request_issue_id))
+        .bind(item.pull_request_id)
+        .bind(actor_user_id)
+        .bind(json!({
+            "projectId": project_id,
+            "projectItemId": item.id,
+            "workflowId": workflow_id,
+            "workflowKey": workflow_key,
+        }))
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO notifications (user_id, repository_id, subject_type, subject_id, title, reason)
+            SELECT issues.author_user_id, $2, 'project_item', $3, $4, 'project_workflow'
+            FROM issues
+            WHERE issues.id = $1 AND issues.author_user_id <> $5
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(item.issue_id.or(item.pull_request_issue_id))
+        .bind(repository_id)
+        .bind(item.id)
+        .bind("Project workflow closed a linked item")
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+        record_project_audit(
+            pool,
+            actor_user_id,
+            "project.workflow.close_on_status",
+            item.id,
+            json!({
+                "projectId": project_id,
+                "workflowId": workflow_id,
+                "workflowKey": workflow_key,
+                "fieldId": field.id,
+                "value": value,
+            }),
+        )
+        .await?;
+        record_workflow_execution(
+            pool,
+            &WorkflowExecutionRecord {
+                project_id,
+                workflow_id: Some(workflow_id),
+                item_id: Some(item.id),
+                actor_user_id: Some(actor_user_id),
+                source: "system",
+                event_type: "close_on_status",
+                status: "success",
+                message: "Project workflow closed the linked item.",
+                metadata: json!({
+                    "workflowKey": workflow_key,
+                    "idempotencyKey": idempotency_key,
+                    "fieldId": field.id,
+                    "value": value,
+                }),
+            },
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE project_workflows
+            SET last_run_at = now(),
+                last_run_status = 'success',
+                last_run_message = 'Project workflow closed the linked item.',
+                source = 'system',
+                updated_at = now()
+            WHERE id = $1
+            "#,
+        )
+        .bind(workflow_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
 }
 
 async fn run_project_auto_archive(
