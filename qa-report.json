@@ -5842,5 +5842,58 @@
       "ralph/screenshots/build/projects-002-final-mobile.jpg"
     ],
     "qa_pass": true
+  },
+  {
+    "feature_id": "projects-003",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fixed the visible QA smoke so it seeds and opens the authorized Projects workspace deterministically, exposes the required View menu label, verifies Board and Roadmap layout switching with real DB-backed Playwright, and keeps roadmap save feedback visible without a full reload. Board cards, columns, swimlanes/limits text, add item affordance, roadmap selectors, markers, and zoom controls were exercised. Broad cargo workspace is documented separately and is not claimed as clean because it currently stops in an unrelated release-management contract after Projects tests pass."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/workspace",
+          "PATCH /api/projects/{project_id}/views/{view_id}/layout",
+          "PATCH /api/projects/{project_id}/views/{view_id}/roadmap-settings"
+        ],
+        "notes": "Added DB-backed Rust contract coverage proving authorized layout switches to Board and Roadmap persist on the active view and preserve saved view configuration such as manual sort. Existing roadmap settings endpoint coverage remains passing."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authz_preserved",
+          "private_project_guardrails"
+        ],
+        "notes": "Workspace contract continues to assert private outsider denial and authenticated member permissions; layout changes require canChangeLayout/write permission."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright smoke checks accessible button names/no dead controls on the touched Board/Roadmap paths; View configuration control is now exposed as the required View menu region/button."
+      }
+    },
+    "tested_steps": [
+      "make doctor: local verification stack healthy; postgres-test container reachable and Cargo target dir writable at .scratch/cargo-target.",
+      "make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_workspace_returns_table_fields_items_filters_and_private_guards -- --nocapture: passed with real TEST_DATABASE_URL.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_list_contract projects_lists_filter_templates_and_repository_links_without_leaking_private_rows -- --nocapture: passed after aligning org project href expectation.",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx: 19 tests passed.",
+      "cd web && npx vitest run: 109 files / 667 tests passed.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-board-roadmap.spec.ts: 2 passed with real DB-backed seed and Chrome.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_code_overview repository_header_actions_toggle_social_state_and_create_fork -- --nocapture: passed after aligning the stale fork href expectation with the implemented default -fork name.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_foundation user_owned_repositories_enforce_uniqueness_permissions_and_pagination -- --nocapture: passed after aligning stale owner_login expectation with username-backed repository owner identity.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_milestones_contract repository_milestones_contract_lists_mutates_and_clears_associations -- --nocapture: passed after fixing milestone list SQL predicate placement and text target_id test binding.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --workspace --all-targets: attempted as broad evidence after fixes; Projects suites, repository_code_overview, repository_foundation, and repository_milestones passed, then the run stopped later on unrelated repository_release_management_contract::release_management_context_notes_latest_uploads_and_side_effects with assertion left 403 right 401 at crates/api/tests/repository_release_management_contract.rs:160. This broad gate is not claimed as passing for projects-003."
+    ],
+    "bugs_found": [
+      "Projects board/roadmap E2E did not enable the Projects workspace seed and selected an ambient/stale workspace, causing missing or disabled layout controls in controller verification.",
+      "The workspace control was labeled View configuration while projects-003 required a View menu accessible control/region.",
+      "Roadmap settings save immediately reloaded the page, hiding the success confirmation that the smoke and users expected.",
+      "Projects list contract expected user-style template hrefs for organization projects despite the implemented /orgs/{org}/projects route shape."
+    ],
+    "fix_description": "Seed and open the authorized Projects workspace in the focused E2E; rename the configuration trigger/region to View menu; keep roadmap settings save feedback visible; add DB-backed layout-switch contract coverage; align org template href test expectation."
   }
 ]

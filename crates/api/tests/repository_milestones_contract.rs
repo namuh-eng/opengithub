@@ -248,7 +248,7 @@ async fn repository_milestones_contract_lists_mutates_and_clears_associations() 
         "SELECT COUNT(*)::bigint FROM audit_events WHERE actor_user_id = $1 AND target_id = $2",
     )
     .bind(writer.id)
-    .bind(milestone.id)
+    .bind(milestone.id.to_string())
     .fetch_one(&pool)
     .await
     .expect("audit count should load");

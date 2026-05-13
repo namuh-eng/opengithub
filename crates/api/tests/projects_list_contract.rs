@@ -342,7 +342,7 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
     );
     assert_eq!(
         body["templates"]["items"][0]["projectHref"],
-        format!("/{marker}/projects/2/views/1")
+        format!("/orgs/{marker}/projects/2/views/1")
     );
 
     let copy_uri = format!("/api/projects/{public_project_id}/copies");

@@ -814,6 +814,69 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
         .expect("choices")
         .iter()
         .any(|choice| choice["layout"] == "board" && choice["keyboardHint"] == "b"));
+    assert!(body["layoutChoices"]
+        .as_array()
+        .expect("choices")
+        .iter()
+        .any(|choice| choice["layout"] == "roadmap"
+            && choice["keyboardHint"] == "r"
+            && choice["enabled"] == true));
+
+    let initial_view_updated_at = body["selectedView"]["updatedAt"]
+        .as_str()
+        .expect("selected view updated timestamp");
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/views/{view_id}/layout"),
+        Some(&member_cookie),
+        json!({
+            "layout": "board",
+            "columnFieldId": status_field,
+            "swimlaneFieldId": status_field,
+            "expectedUpdatedAt": initial_view_updated_at
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedView"]["id"], view_id.to_string());
+    assert_eq!(body["selectedView"]["layout"], "board");
+    assert_eq!(body["selectedView"]["configuration"]["sort"], "manual");
+    assert_eq!(
+        body["boardConfig"]["columnField"]["id"],
+        status_field.to_string()
+    );
+    assert_eq!(
+        body["boardConfig"]["swimlaneField"]["id"],
+        status_field.to_string()
+    );
+    assert_eq!(body["viewerPermissions"]["canChangeLayout"], true);
+
+    let board_view_updated_at = body["selectedView"]["updatedAt"]
+        .as_str()
+        .expect("board view updated timestamp");
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/views/{view_id}/layout"),
+        Some(&member_cookie),
+        json!({
+            "layout": "roadmap",
+            "startFieldId": target_field,
+            "targetFieldId": target_field,
+            "expectedUpdatedAt": board_view_updated_at
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedView"]["layout"], "roadmap");
+    assert_eq!(body["selectedView"]["configuration"]["sort"], "manual");
+    assert_eq!(
+        body["roadmapConfig"]["startDateField"]["id"],
+        target_field.to_string()
+    );
+    assert_eq!(
+        body["roadmapConfig"]["targetDateField"]["id"],
+        target_field.to_string()
+    );
 
     let (status, _, body) = patch_json(
         app.clone(),

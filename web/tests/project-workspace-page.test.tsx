@@ -859,7 +859,7 @@ describe("ProjectWorkspacePage", () => {
       "/mona/projects/12/settings",
     );
     expect(screen.getByRole("button", { name: "+ View" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     expect(screen.getByRole("button", { name: /Table/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Board/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Roadmap/ })).toBeDisabled();
@@ -885,7 +885,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     fireEvent.change(screen.getByLabelText("Filter query"), {
       target: { value: "is:open label:frontend" },
     });
@@ -933,7 +933,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     expect(screen.getByRole("button", { name: /Table/ })).toHaveTextContent(
       "t",
     );
@@ -996,7 +996,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     fireEvent.submit(screen.getByRole("form", { name: "Saved view state" }));
     expect(await screen.findByText("sort must be supported")).toHaveClass(
       "chip",
@@ -1495,9 +1495,8 @@ describe("ProjectWorkspacePage", () => {
         }),
       }),
     );
-    expect(assign).toHaveBeenCalledWith(
-      "/orgs/namuh/projects/12/views/1?sort=manual&group=Status",
-    );
+    expect(await screen.findByText("Roadmap settings saved")).toBeVisible();
+    expect(assign).not.toHaveBeenCalled();
   });
 
   it("uses Editorial primitives instead of banned GitHub visual values", () => {

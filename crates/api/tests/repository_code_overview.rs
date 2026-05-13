@@ -579,7 +579,7 @@ async fn repository_header_actions_toggle_social_state_and_create_fork() {
     assert!(fork_body["forkHref"]
         .as_str()
         .expect("fork href should exist")
-        .ends_with(&format!("/{}", repository.name)));
+        .ends_with(&format!("/{}-fork", repository.name)));
     assert_eq!(fork_body["social"]["forksCount"], 1);
     assert!(fork_body["social"]["forkedRepositoryHref"].is_string());
 

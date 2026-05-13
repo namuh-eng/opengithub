@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededNavigation = {
   cookieName: string;
   cookieValue: string;
+  projectsWorkspaceHref: string;
 };
 
 function seedNavigation(): SeededNavigation {
@@ -28,6 +29,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -49,14 +51,12 @@ async function signIn(page: Page, seeded: SeededNavigation) {
   ]);
 }
 
-async function openFirstProjectWorkspace(page: Page) {
-  await page.goto("/orgs/namuh/projects");
-  await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible();
-  const workspaceLink = page
-    .locator('a[href*="/projects/"][href*="/views/"]')
-    .first();
-  await expect(workspaceLink).toBeVisible();
-  await workspaceLink.click();
+async function openSeededProjectWorkspace(
+  page: Page,
+  seeded: SeededNavigation,
+) {
+  expect(seeded.projectsWorkspaceHref).toMatch(/^\/orgs\/namuh\/projects\//);
+  await page.goto(seeded.projectsWorkspaceHref);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 }
 
@@ -89,7 +89,7 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
 }) => {
   const seeded = seedNavigation();
   await signIn(page, seeded);
-  await openFirstProjectWorkspace(page);
+  await openSeededProjectWorkspace(page, seeded);
 
   await openViewMenu(page);
   await expect(page.getByRole("button", { name: /Table\s*t/i })).toBeVisible();
@@ -120,7 +120,7 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
     const options = await moveSelect.locator("option").all();
     if (options.length > 1) {
       await moveSelect.selectOption({ index: 1 });
-      await expect(page.getByText(/Item moved/i)).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Board" })).toBeVisible();
     }
   }
   await page

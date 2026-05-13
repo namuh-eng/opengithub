@@ -817,8 +817,10 @@ async fn milestone_rows(
         MilestoneSort::IssuesAsc => "total_count ASC, milestones.updated_at DESC",
     };
     let sql = format!(
-        "{} AND ($2::text IS NULL OR milestones.state = $2) ORDER BY {order_by} LIMIT $3 OFFSET $4",
-        milestone_select_sql("milestones.repository_id = $1")
+        "{} ORDER BY {order_by} LIMIT $3 OFFSET $4",
+        milestone_select_sql(
+            "milestones.repository_id = $1 AND ($2::text IS NULL OR milestones.state = $2)"
+        )
     );
     sqlx::query(&sql)
         .bind(repository_id)

@@ -67,7 +67,7 @@ async fn user_owned_repositories_enforce_uniqueness_permissions_and_pagination()
     .expect("owner should create own repository");
 
     assert_eq!(repository.owner_user_id, Some(owner.id));
-    assert_eq!(repository.owner_login, owner.email);
+    assert_eq!(repository.owner_login, owner.username.as_deref().unwrap());
     assert_eq!(repository.visibility, RepositoryVisibility::Private);
 
     let permission = repository_permission_for_user(&pool, repository.id, owner.id)
