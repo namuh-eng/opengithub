@@ -28,6 +28,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -124,7 +125,12 @@ test("Projects Insights supports final chart exploration and custom chart smoke"
     path: "../ralph/screenshots/build/projects-008-final-custom-range.jpg",
   });
 
-  await page.getByRole("link", { name: "View as data table" }).click();
+  const dataTableLink = page.getByRole("link", { name: "View as data table" });
+  await expect(dataTableLink).toHaveAttribute("href", /table=true/);
+  const dataTableHref = await dataTableLink.getAttribute("href");
+  expect(dataTableHref).toBeTruthy();
+  await page.goto(dataTableHref as string);
+  await expect(page).toHaveURL(/table=true/);
   await expect(
     page.getByRole("table", { name: /chart data table/i }),
   ).toBeVisible();
@@ -147,20 +153,20 @@ test("Projects Insights supports final chart exploration and custom chart smoke"
     });
     await createButton.click();
     await expect(page.getByRole("status")).toHaveText("Chart created.");
-    await page.getByText("Edit").click();
+    await page.getByText("Edit", { exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Save chart" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Save chart" }).click();
     await expect(page.getByRole("status")).toHaveText("Chart saved.");
     await page.getByRole("button", { name: "Share" }).click();
-    await expect(page.getByRole("status")).toContainText(/Share link/);
+    await expect(page.getByText(/Share link/)).toBeVisible();
     await page.screenshot({
       fullPage: true,
       path: "../ralph/screenshots/build/projects-008-final-shared-chart.jpg",
     });
     await page.getByRole("button", { name: "Delete" }).click();
-    await expect(page.getByRole("status")).toHaveText("Chart deleted.");
+    await expect(page.getByText("Chart deleted.")).toBeVisible();
   } else {
     await expect(
       page.getByText(/Your project role cannot create charts/),

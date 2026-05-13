@@ -40,8 +40,9 @@ function parseChartMutation(
         : null,
     visibility,
     expectedUpdatedAt:
-      typeof body.expectedUpdatedAt === "string"
-        ? body.expectedUpdatedAt
+      typeof body.expectedUpdatedAt === "string" &&
+      body.expectedUpdatedAt.trim()
+        ? body.expectedUpdatedAt.trim()
         : null,
   };
 }

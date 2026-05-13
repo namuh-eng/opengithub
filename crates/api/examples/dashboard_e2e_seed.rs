@@ -905,6 +905,7 @@ async fn seed_projects_workspace_fixture(
                       short_description = EXCLUDED.short_description,
                       visibility = EXCLUDED.visibility,
                       default_repository_id = EXCLUDED.default_repository_id,
+                      is_template = false,
                       updated_at = now()
         RETURNING id
         "#,
@@ -914,6 +915,11 @@ async fn seed_projects_workspace_fixture(
     .bind(actor_user_id)
     .fetch_one(pool)
     .await?;
+    sqlx::query("DELETE FROM project_templates WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+
     sqlx::query(
         r#"
         INSERT INTO project_permissions (project_id, user_id, role, source)

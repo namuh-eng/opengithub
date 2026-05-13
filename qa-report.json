@@ -6155,5 +6155,89 @@
       "Workflow settings h1 accessible name included hidden prefix and broke existing broad component test."
     ],
     "fix_description": "Added dedicated template settings pages, linked Templates nav, template-aware project lookup by number, NULL-safe repository is_default query, a DB mutation contract for settings/access/template/status/repository audit behavior, and a focused projects settings Playwright scenario. Full make test-e2e was resource-prohibitive for this lane; the focused feature-domain E2E subset covers projects-007 acceptance paths with real DB and browser."
+  },
+  {
+    "feature_id": "projects-008",
+    "attempt": 1,
+    "status": "pass",
+    "timestamp": "2026-05-13T15:59:06.291608Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh QA verified Projects v2 Insights default burn-up chart, filter/range/custom-range/data-table exploration, project-list Insights link, custom chart create/edit/share/delete, mobile no-overflow, and no dead controls in authenticated Playwright against this worktree on port 3015."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/insights",
+          "POST /api/projects/{project_id}/charts",
+          "PATCH /api/projects/{project_id}/charts/{chart_id}",
+          "DELETE /api/projects/{project_id}/charts/{chart_id}"
+        ],
+        "notes": "DB-backed Rust contract passed for burn-up read, filters, private item filtering, custom chart visibility/mutations, cache rows, audit rows, and invalid filters; focused browser/API route smoke proved Next chart mutation proxy accepts empty expectedUpdatedAt on create/delete after the fix."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_boundary",
+          "permission_filtering",
+          "private_item_filtering",
+          "audit_events",
+          "port_contamination_guard"
+        ],
+        "notes": "Focused Rust contract covers reader/outsider denial, private chart denial, private repository item filtering, and audit events. Browser gate was counted only after proving ports 3015/3016 were owned by this worktree; stale external port owner was killed and not counted."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright checks covered accessible chart region/data table, concrete links/no href=# controls, accessible button names, and mobile horizontal overflow."
+      }
+    },
+    "tested_steps": [
+      "make doctor \u2014 pass: local Postgres test container and .env.test healthy; Cargo target dir writable.",
+      "set -a; source .env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_insights_read_contract_filters_private_items_and_returns_burnup_data -- --nocapture \u2014 pass: 1 passed, 0 failed, no DB self-skip.",
+      "cd web && npm run test -- project-insights-page.test.tsx \u2014 pass: 10 component tests passed.",
+      "make check \u2014 pass: Cargo check, Web typecheck, Clippy, and Biome passed after fixes.",
+      "make test \u2014 pass: Cargo tests passed; Web tests passed (668 passed).",
+      "From web with ../.env.test sourced and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome, npx playwright test tests/e2e/projects-insights.spec.ts --project=chromium --reporter=list \u2014 pass: setup + Projects Insights browser smoke passed against real localhost:3015/3016 owned by this worktree.",
+      "Port ownership gate \u2014 pass: ss showed next-server cwd web/ in this worktree on :3015 and api cwd repo root on :3016 before counted Playwright run."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Projects Insights E2E did not seed the Projects workspace fixture, so it could miss the org project Insights link in a clean run.",
+        "file": "web/tests/e2e/projects-insights.spec.ts"
+      },
+      {
+        "severity": "major",
+        "description": "Projects workspace seeder reused a project that previous tests could leave marked as a template, moving it out of the Projects list and hiding the Insights link.",
+        "file": "crates/api/examples/dashboard_e2e_seed.rs"
+      },
+      {
+        "severity": "major",
+        "description": "Next chart mutation proxy forwarded an empty expectedUpdatedAt string on create/delete, causing Rust timestamp deserialization to return 422 and blocking custom chart creation from the browser form.",
+        "file": "web/src/app/api/projects/[projectId]/charts/route.ts"
+      },
+      {
+        "severity": "minor",
+        "description": "Projects Insights E2E locators were ambiguous for Edit and status messages after multiple forms/status chips rendered.",
+        "file": "web/tests/e2e/projects-insights.spec.ts"
+      }
+    ],
+    "fix_description": "Enabled Projects workspace E2E seeding, made the workspace seeder reset template state, normalized empty expectedUpdatedAt values to null in chart proxy routes, and tightened E2E locators/navigation for data table and chart mutation assertions.",
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/projects-008-final-burn-up.jpg",
+        "label": "Default burn-up chart"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-008-final-data-table.jpg",
+        "label": "Chart data table"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-008-final-mobile.jpg",
+        "label": "Mobile Insights layout"
+      }
+    ]
   }
 ]

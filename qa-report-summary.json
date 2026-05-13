@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 88,
+    "features_passed": 89,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 84,
+      "pass": 85,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 80,
+      "pass": 81,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 81,
+      "pass": 82,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 46,
+      "pass": 47,
       "fail": 0,
       "skip": 39
     }
@@ -2970,10 +2970,42 @@
       "feature_id": "projects-008",
       "description": "Implement Projects v2 Insights charts with default burn-up chart, custom charts,",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh QA verified Projects v2 Insights default burn-up chart, filter/range/custom-range/data-table exploration, project-list Insights link, custom chart create/edit/share/delete, mobile no-overflow, and no dead controls in authenticated Playwright against this worktree on port 3015."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/projects/{project_id}/insights",
+            "POST /api/projects/{project_id}/charts",
+            "PATCH /api/projects/{project_id}/charts/{chart_id}",
+            "DELETE /api/projects/{project_id}/charts/{chart_id}"
+          ],
+          "notes": "DB-backed Rust contract passed for burn-up read, filters, private item filtering, custom chart visibility/mutations, cache rows, audit rows, and invalid filters; focused browser/API route smoke proved Next chart mutation proxy accepts empty expectedUpdatedAt on create/delete after the fix."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_boundary",
+            "permission_filtering",
+            "private_item_filtering",
+            "audit_events",
+            "port_contamination_guard"
+          ],
+          "notes": "Focused Rust contract covers reader/outsider denial, private chart denial, private repository item filtering, and audit events. Browser gate was counted only after proving ports 3015/3016 were owned by this worktree; stale external port owner was killed and not counted."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused component and Playwright checks covered accessible chart region/data table, concrete links/no href=# controls, accessible button names, and mobile horizontal overflow."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "wiki-001",
