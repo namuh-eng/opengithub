@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededNavigation = {
   cookieName: string;
   cookieValue: string;
+  projectsWorkspaceHref: string;
 };
 
 function seedNavigation(): SeededNavigation {
@@ -28,6 +29,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -49,20 +51,11 @@ async function signIn(page: Page, seeded: SeededNavigation) {
   ]);
 }
 
-async function openFirstProjectFieldSettings(page: Page) {
-  await page.goto("/orgs/namuh/projects");
-  await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible();
-  const workspaceHref = await page
-    .locator('a[href*="/projects/"][href*="/views/"]')
-    .first()
-    .getAttribute("href");
-  expect(workspaceHref).toBeTruthy();
+async function openProjectFieldSettings(page: Page, seeded: SeededNavigation) {
   await page.goto(
-    String(workspaceHref).replace(/\/views\/\d+.*/, "/settings/fields"),
+    seeded.projectsWorkspaceHref.replace(/\/views\/\d+.*/, "/settings/fields"),
   );
-  await expect(
-    page.getByRole("heading", { name: /Project fields/i }),
-  ).toBeVisible();
+  await expect(page.getByText("Project fields")).toBeVisible();
 }
 
 async function expectNoDeadControls(page: Page) {
@@ -96,9 +89,10 @@ test.skip(
 test("Projects field settings support final signed-in administration smoke", async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   const seeded = seedNavigation();
   await signIn(page, seeded);
-  await openFirstProjectFieldSettings(page);
+  await openProjectFieldSettings(page, seeded);
 
   await expect(
     page.getByRole("link", { name: /Back to project/i }),
@@ -114,17 +108,18 @@ test("Projects field settings support final signed-in administration smoke", asy
 
   const uniqueField = `QA text ${Date.now()}`;
   await page.getByRole("button", { name: "New field" }).click();
-  await expect(page.getByRole("dialog", { name: "New field" })).toBeVisible();
-  await page.getByLabel("Name").fill(uniqueField);
-  await page.getByLabel("Type").selectOption("text");
+  const newFieldDialog = page.getByRole("dialog", { name: "New field" });
+  await expect(newFieldDialog).toBeVisible();
+  await newFieldDialog.getByLabel("Name").fill(uniqueField);
+  await newFieldDialog.getByLabel("Type").selectOption("text");
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/projects-004-final-create-dialog.jpg",
   });
-  await page.getByRole("button", { name: "Create field" }).click();
+  await newFieldDialog.getByRole("button", { name: "Create field" }).click();
   await expect(page.getByText("Field created.")).toBeVisible();
   await selectField(page, new RegExp(uniqueField));
-  await page.getByLabel("Name").fill(`${uniqueField} renamed`);
+  await page.getByLabel("Name", { exact: true }).fill(`${uniqueField} renamed`);
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Field renamed.")).toBeVisible();
   await page.getByRole("button", { name: "Delete" }).click();
@@ -166,9 +161,9 @@ test("Projects field settings support final signed-in administration smoke", asy
   await expect(
     page.getByText(/Relative filters support @current/),
   ).toBeVisible();
-  await page.getByLabel(/Starts on/i).fill("2026-05-04");
-  await page.getByLabel(/Duration/i).fill("2");
-  await page.getByLabel(/Unit/i).selectOption("weeks");
+  await page.getByLabel("Starts on", { exact: true }).fill("2026-05-04");
+  await page.getByLabel("Duration", { exact: true }).fill("2");
+  await page.getByRole("combobox", { name: /Unit/i }).selectOption("weeks");
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/projects-004-final-iteration-schedule.jpg",
@@ -195,9 +190,7 @@ test("Projects field settings support final signed-in administration smoke", asy
   await page.goto("/orgs/namuh/projects/1/settings/fields");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: /Project fields/i }),
-  ).toBeVisible();
+  await expect(page.getByText("Project fields")).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({

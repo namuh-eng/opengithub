@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   ProjectFieldOption,
   ProjectFieldSettings,
@@ -143,6 +143,9 @@ export function ProjectFieldSettingsPage({
   selectedFieldId,
 }: ProjectFieldSettingsPageProps) {
   const [fields, setFields] = useState(settings.fields);
+  const [localSelectedFieldId, setLocalSelectedFieldId] = useState(
+    selectedFieldId ?? null,
+  );
   const [newFieldOpen, setNewFieldOpen] = useState(false);
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState("single_select");
@@ -168,13 +171,17 @@ export function ProjectFieldSettingsPage({
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLocalSelectedFieldId(selectedFieldId ?? null);
+  }, [selectedFieldId]);
+
   const selectedField = useMemo(
     () =>
-      fields.find((field) => field.id === selectedFieldId) ??
+      fields.find((field) => field.id === localSelectedFieldId) ??
       fields.find((field) => !field.builtIn) ??
       fields[0] ??
       null,
-    [fields, selectedFieldId],
+    [fields, localSelectedFieldId],
   );
   const canManageAny =
     settings.viewerPermissions.canCreateFields ||
@@ -263,6 +270,7 @@ export function ProjectFieldSettingsPage({
     setNewFieldType("single_select");
     setNotice("Field created.");
     if (created) {
+      setLocalSelectedFieldId(created.id);
       window.history.replaceState(
         null,
         "",
@@ -285,6 +293,12 @@ export function ProjectFieldSettingsPage({
       },
     );
     if (!payload) return;
+    const renamedName = activeFieldName.trim();
+    setFields((currentFields) =>
+      currentFields.map((field) =>
+        field.id === selectedField.id ? { ...field, name: renamedName } : field,
+      ),
+    );
     setFieldName("");
     setNotice("Field renamed.");
   }
@@ -301,6 +315,7 @@ export function ProjectFieldSettingsPage({
     );
     if (!payload) return;
     setDeleteConfirmOpen(false);
+    setLocalSelectedFieldId(null);
     setFieldName("");
     setNotice("Field deleted. Existing item values were removed.");
     window.history.replaceState(
@@ -683,6 +698,7 @@ export function ProjectFieldSettingsPage({
                     field.id,
                   )}
                   key={field.id}
+                  onClick={() => setLocalSelectedFieldId(field.id)}
                   style={{
                     padding: "14px 16px",
                     gap: 12,
@@ -1460,6 +1476,7 @@ export function ProjectFieldSettingsPage({
 
       {newFieldOpen ? (
         <div
+          aria-labelledby="new-project-field-title"
           aria-modal="true"
           className="card"
           role="dialog"
@@ -1477,7 +1494,9 @@ export function ProjectFieldSettingsPage({
             className="row"
             style={{ justifyContent: "space-between", gap: 12 }}
           >
-            <h2 className="t-h3">New field</h2>
+            <h2 className="t-h3" id="new-project-field-title">
+              New field
+            </h2>
             <button
               className="btn sm"
               onClick={() => setNewFieldOpen(false)}
@@ -1543,6 +1562,7 @@ export function ProjectFieldSettingsPage({
 
       {deleteConfirmOpen && selectedField ? (
         <div
+          aria-labelledby="delete-project-field-title"
           aria-modal="true"
           className="card"
           role="dialog"
@@ -1557,7 +1577,11 @@ export function ProjectFieldSettingsPage({
           }}
         >
           <div className="t-label">Delete field</div>
-          <h2 className="t-h3" style={{ marginTop: 6 }}>
+          <h2
+            className="t-h3"
+            id="delete-project-field-title"
+            style={{ marginTop: 6 }}
+          >
             Delete {selectedField.name}?
           </h2>
           <p className="t-sm" style={{ color: "var(--ink-3)", marginTop: 10 }}>

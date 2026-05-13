@@ -979,6 +979,27 @@ async fn seed_projects_workspace_fixture(
     .bind(project_id)
     .fetch_one(pool)
     .await?;
+    let iteration_field: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_fields (project_id, name, field_type, position, settings)
+        VALUES ($1, 'Iteration', 'iteration', 4, '{"duration":2,"durationUnit":"weeks"}'::jsonb)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_iterations (project_field_id, name, start_date, duration_days, position)
+        VALUES ($1, 'Iteration 1', '2026-05-04', 14, 1),
+               ($1, 'Iteration 2', '2026-05-18', 14, 2),
+               ($1, 'Iteration 3', '2026-06-01', 14, 3)
+        "#,
+    )
+    .bind(iteration_field)
+    .execute(pool)
+    .await?;
     let issue_item_id: Uuid = sqlx::query_scalar(
         "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 1) RETURNING id",
     )
@@ -999,7 +1020,7 @@ async fn seed_projects_workspace_fixture(
         sqlx::query(
             r#"
             INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id)
-            VALUES ($1, $2, $3, $5), ($1, $4, $6, $5), ($1, $7, $8, $5)
+            VALUES ($1, $2, $3, $5), ($1, $4, $6, $5), ($1, $7, $8, $5), ($1, $9, $10, $5)
             "#,
         )
         .bind(item_id)
@@ -1010,6 +1031,8 @@ async fn seed_projects_workspace_fixture(
         .bind(serde_json::json!(priority))
         .bind(target_field)
         .bind(serde_json::json!(target))
+        .bind(iteration_field)
+        .bind(serde_json::json!("2026-05-11"))
         .execute(pool)
         .await?;
     }

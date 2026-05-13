@@ -5928,5 +5928,84 @@
       "web/tests/e2e/projects-board-roadmap.spec.ts"
     ],
     "timestamp": "2026-05-13T04:55:55.367167Z"
+  },
+  {
+    "feature_id": "projects-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused component coverage and system-Chrome Playwright acceptance path passed against a real seeded Projects workspace with create, rename, delete, single-select options, iteration schedule, add iteration, insert break, @current filter reflection, and mobile overflow checks."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET/POST /api/projects/:project_id/settings/fields",
+          "PATCH/DELETE /api/projects/:project_id/fields/:field_id",
+          "POST/PATCH/DELETE /api/projects/:project_id/fields/:field_id/options",
+          "PATCH /api/projects/:project_id/fields/:field_id/options/reorder",
+          "PATCH/POST/PATCH /api/projects/:project_id/fields/:field_id/iterations",
+          "POST/DELETE /api/projects/:project_id/fields/:field_id/iteration-breaks",
+          "GET /api/projects/:project_id/workspace?q=cycle:2026-05-01..2026-05-31"
+        ],
+        "notes": "DB-backed Rust contract tests passed with .env.test loaded; output showed 3 project_field tests plus the iteration/filter test passing with zero ignored/self-skipped tests."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "permission enforcement for read users",
+          "field/option validation",
+          "delete scoping removes project values only",
+          "audit/event side effects"
+        ],
+        "notes": "Focused DB contracts verify forbidden reader writes, validation failures for duplicates/built-ins/wrong field types, audit rows, cache invalidation-adjacent responses, and project_item_field_values cleanup on delete."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Fixed field modal accessible names with aria-labelledby; focused Playwright asserts visible buttons have accessible names and no dead placeholder links on desktop and mobile field-settings paths."
+      }
+    },
+    "tested_steps": [
+      "Inspected projects-004 PRD entry, QA reports, ProjectFieldSettingsPage, Next API proxy routes, Rust Projects domain/routes, DB migrations, focused Vitest, and focused Playwright spec.",
+      "Ran make doctor first; local verification stack was healthy with postgres-test reachable and .env.test present.",
+      "Fixed field settings client selection after creating/selecting fields so create+rename+delete acts on the intended custom field instead of falling back to the first custom field.",
+      "Added accessible dialog labels for New field and Delete field modals.",
+      "Extended dashboard_e2e_seed PROJECTS_WORKSPACE_E2E fixture with an Iteration field and three default iterations for the settings acceptance path.",
+      "Hardened focused Playwright spec to use the seeded projectsWorkspaceHref, enable PROJECTS_WORKSPACE_E2E, avoid ambiguous labels, and exercise system Chrome without self-skip.",
+      "make doctor",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "cd web && npm test -- project-field-settings-page.test.tsx --run",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_field -- --nocapture",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_iteration_settings_create_breaks_and_filter_tokens -- --nocapture",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-field-settings.spec.ts"
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "After creating a field, the settings page updated the URL but kept local selection on the first custom field, so subsequent rename/delete actions could target Status instead of the newly created field.",
+        "expected": "Newly created/selected fields remain selected in the detail pane before mutation controls are used.",
+        "actual": "The URL changed but the client component selection fell back to the first custom field until a real navigation occurred.",
+        "file": "web/src/components/ProjectFieldSettingsPage.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "The focused Projects field settings E2E fixture did not seed an iteration field and initially did not enable the Projects workspace seed, making the acceptance path fail before iteration controls.",
+        "expected": "Acceptance seed includes Projects v2 fields needed for custom field and iteration settings checks.",
+        "actual": "PROJECTS_WORKSPACE_E2E was not set and the fixture had only single-select/date fields.",
+        "file": "crates/api/examples/dashboard_e2e_seed.rs"
+      }
+    ],
+    "fix_description": "Fixed local selected-field state, dialog accessible names, Projects E2E iteration seed, and the focused system-Chrome acceptance spec.",
+    "timestamp": "2026-05-13T05:32:34.448158Z",
+    "commands": [
+      "make doctor",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "cd web && npm test -- project-field-settings-page.test.tsx --run",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_field -- --nocapture",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_iteration_settings_create_breaks_and_filter_tokens -- --nocapture",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-field-settings.spec.ts"
+    ]
   }
 ]
