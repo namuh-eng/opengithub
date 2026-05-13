@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededNavigation = {
   cookieName: string;
   cookieValue: string;
+  projectsWorkspaceHref: string;
 };
 
 function seedNavigation(): SeededNavigation {
@@ -28,6 +29,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -49,16 +51,14 @@ async function signIn(page: Page, seeded: SeededNavigation) {
   ]);
 }
 
-async function openFirstProjectWorkflowSettings(page: Page) {
-  await page.goto("/orgs/namuh/projects");
-  await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible();
-  const workspaceHref = await page
-    .locator('a[href*="/projects/"][href*="/views/"]')
-    .first()
-    .getAttribute("href");
-  expect(workspaceHref).toBeTruthy();
+async function openFirstProjectWorkflowSettings(
+  page: Page,
+  seeded: SeededNavigation,
+) {
+  expect(seeded.projectsWorkspaceHref).toMatch(/\/projects\/\d+\/views\/\d+/);
   await page.goto(
-    String(workspaceHref).replace(/\/views\/\d+.*/, "/workflows"),
+    seeded.projectsWorkspaceHref.replace(/\/views\/\d+.*/, "/workflows"),
+    { waitUntil: "domcontentloaded" },
   );
   await expect(
     page.getByRole("heading", { name: /Project workflows/i }),
@@ -89,14 +89,16 @@ test("Projects workflows support final signed-in automation smoke", async ({
 }) => {
   const seeded = seedNavigation();
   await signIn(page, seeded);
-  await openFirstProjectWorkflowSettings(page);
+  await openFirstProjectWorkflowSettings(page, seeded);
 
   await expect(
     page.getByRole("link", { name: "Back to project" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Fields" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Workflows" })).toBeVisible();
-  await expect(page.getByText("@opengithub-project-automation")).toBeVisible();
+  await expect(
+    page.getByText("@opengithub-project-automation").first(),
+  ).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({

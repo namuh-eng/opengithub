@@ -6066,5 +6066,63 @@
       "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
     ],
     "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
+  },
+  {
+    "feature_id": "projects-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Required signed-in Playwright smoke for /orgs/{org}/projects/{number}/workflows passed against the local test DB and this worktree after fixing deterministic project workflow seeding and the accessible workflow-page heading/status path."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{projectId}/workflows",
+          "PATCH /api/projects/{projectId}/workflows/{workflowId}",
+          "POST /api/projects/{projectId}/automation/invocations"
+        ],
+        "notes": "projects_workspace_contract passed 15/15 with project_workflow_settings, workflow update, engine, and automation invocation cases, including permission and validation paths."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "project_permission_enforcement",
+          "repository_target_permission_enforcement",
+          "stale_update_guard"
+        ],
+        "notes": "Focused contract coverage verified read-only workflow updates are forbidden, repository targets require linked write access, automation hooks preserve project/repository permissions, and stale workflow saves are rejected."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Workflow page exposes a Project workflows heading, visible named controls, no dead controls, no horizontal overflow at desktop/mobile, and role=status announces \"Workflow configuration saved.\" after Save workflow."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy; postgres-test up and .env.test present.",
+      "Reproduced and isolated controller browser rejection: the workflow editor lacked a successful role=status because the E2E fixture had no status options and the browser could also hit stale port 3015 from another checkout.",
+      "Fixed projects-workflows E2E setup to seed PROJECTS_WORKSPACE_E2E and navigate directly to seeded.projectsWorkspaceHref, avoiding stale list navigation false failures.",
+      "Added status/priority field options to the projects workspace E2E fixture so workflow target value selection exercises a real save path.",
+      "Added sr-only \"Project workflows:\" text to the workflow page h1 so the page has an accessible workflows heading while preserving the Editorial visual title.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran env-loaded ./hack/cargo_locked.sh test --test projects_workspace_contract -- --nocapture: 15 passed.",
+      "Ran cd web && env-loaded PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium: 2 passed."
+    ],
+    "bugs_found": [
+      "projects-workflows.spec.ts did not enable PROJECTS_WORKSPACE_E2E and depended on /orgs/namuh/projects discovery, allowing stale-port/list-navigation failures instead of directly exercising the seeded workflows page.",
+      "The projects workspace E2E fixture created single-select fields without project_field_options, so Save workflow submitted no target option and rendered an alert instead of a successful role=status announcement.",
+      "The workflows page visually labeled Project workflows but the h1 accessible name was only the project title, weakening the required browser heading gate."
+    ],
+    "fix_description": "Seeded workflow status/priority options for real target selection, made workflows E2E navigation deterministic from the seeded workspace href, disambiguated repeated automation actor text, and exposed Project workflows in the page h1 accessible name. The existing save success role=status now appears after the real PATCH succeeds.",
+    "artifacts": [
+      "ralph/screenshots/build/projects-006-final-workflows-list.jpg",
+      "ralph/screenshots/build/projects-006-final-edit-dialog.jpg",
+      "ralph/screenshots/build/projects-006-final-repository-selector.jpg",
+      "ralph/screenshots/build/projects-006-final-archive-criteria.jpg",
+      "ralph/screenshots/build/projects-006-final-activity-log.jpg",
+      "ralph/screenshots/build/projects-006-final-mobile.jpg"
+    ]
   }
 ]

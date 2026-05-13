@@ -227,6 +227,7 @@ export function ProjectWorkflowSettingsPage({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="t-label">Project workflows</div>
           <h1 className="t-h1" style={{ marginTop: 6 }}>
+            <span className="sr-only">Project workflows: </span>
             {currentSettings.project.title}
           </h1>
           <p
