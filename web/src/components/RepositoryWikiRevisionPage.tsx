@@ -43,9 +43,9 @@ function RevisionReader({
       <main className="min-w-0">
         <section className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <div>
-            <p className="t-label" style={{ color: "var(--ink-3)" }}>
+            <h2 className="t-label" style={{ color: "var(--ink-3)" }}>
               Historical wiki revision
-            </p>
+            </h2>
             <h1
               className="t-h1 mt-2 break-words"
               id="repository-wiki-revision-title"

@@ -3075,9 +3075,41 @@
       "description": "Implement wiki history, revision viewing, two-revision compare, and revert contr",
       "category": "crud",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "partial",
+          "notes": "Fixed QA-found wiki-003 gaps: the revision snapshot now exposes an accessible Historical wiki revision heading; the focused E2E was updated to assert the correct 201 Created API contract for wiki page creation. DB-backed Rust history/revision/compare contract and revert contract passed, focused component/route tests passed, and make check passed. Final required system-Chrome Playwright command is blocked because port 3015 is occupied by a separate /home/jaeyunha/dev/namuh/namuh-linear Next dev server, and this lane must not touch other worktrees."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/:owner/:repo/wiki/_history",
+            "GET /api/repos/:owner/:repo/wiki/:slug/_history/:sha",
+            "GET /api/repos/:owner/:repo/wiki/_compare",
+            "POST /api/repos/:owner/:repo/wiki/reverts",
+            "POST /api/repos/:owner/:repo/wiki/pages"
+          ],
+          "notes": "Focused Rust contracts with .env.test verified wiki history, revision snapshot, compare, and revert behavior; added Next route coverage preserving upstream revert status codes such as 409 instead of collapsing them to 400/502."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "permission_denial",
+            "stale_head_conflict",
+            "data_exposure"
+          ],
+          "notes": "Rust revert contract verified non-editor readers receive 403, stale expected-head reverts receive 409, no google-client-secret leakage, and revert events are recorded. History/revision/compare reads use optional auth and repository visibility checks."
+        },
+        "accessibility": {
+          "status": "partial",
+          "violations": [],
+          "notes": "Focused component tests cover accessible checkboxes labelled with commit messages, concrete links, no placeholder hrefs, and Editorial banned-value guardrails. Full browser/a11y sweep remains blocked by the port 3015 conflict before Playwright can launch this worktree's server."
+        }
+      },
+      "overall_status": "partial"
     },
     {
       "feature_id": "labels-001",

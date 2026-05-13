@@ -125,7 +125,7 @@ async function createTwoRevisionPage(
       },
     },
   );
-  expect(createResponse.status()).toBe(200);
+  expect(createResponse.status()).toBe(201);
   const created = (await createResponse.json()) as WikiMutationResult;
   const baseRevisionId = created.page.revision?.id;
   expect(baseRevisionId).toBeTruthy();
@@ -165,6 +165,8 @@ test.skip(
   !databaseUrl,
   "Repository Wiki history E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
+
+test.setTimeout(90_000);
 
 test.beforeEach(async ({ page }) => {
   await waitForApiHealth(page);

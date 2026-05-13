@@ -6333,5 +6333,81 @@
     "fix_description": "Preserved Rust API status envelopes in Next wiki mutation proxy routes; added editor-side validation/error flashes aligned to Rust title/slug guardrails; expanded DB-backed Rust and Playwright coverage for wiki-002 validation and Git-backed publishing.",
     "confidence": "high",
     "timestamp": "2026-05-13T13:39:00-07:00"
+  },
+  {
+    "feature_id": "wiki-003",
+    "attempt": 1,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Fixed QA-found wiki-003 gaps: the revision snapshot now exposes an accessible Historical wiki revision heading; the focused E2E was updated to assert the correct 201 Created API contract for wiki page creation. DB-backed Rust history/revision/compare contract and revert contract passed, focused component/route tests passed, and make check passed. Final required system-Chrome Playwright command is blocked because port 3015 is occupied by a separate /home/jaeyunha/dev/namuh/namuh-linear Next dev server, and this lane must not touch other worktrees."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/wiki/_history",
+          "GET /api/repos/:owner/:repo/wiki/:slug/_history/:sha",
+          "GET /api/repos/:owner/:repo/wiki/_compare",
+          "POST /api/repos/:owner/:repo/wiki/reverts",
+          "POST /api/repos/:owner/:repo/wiki/pages"
+        ],
+        "notes": "Focused Rust contracts with .env.test verified wiki history, revision snapshot, compare, and revert behavior; added Next route coverage preserving upstream revert status codes such as 409 instead of collapsing them to 400/502."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_denial",
+          "stale_head_conflict",
+          "data_exposure"
+        ],
+        "notes": "Rust revert contract verified non-editor readers receive 403, stale expected-head reverts receive 409, no google-client-secret leakage, and revert events are recorded. History/revision/compare reads use optional auth and repository visibility checks."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused component tests cover accessible checkboxes labelled with commit messages, concrete links, no placeholder hrefs, and Editorial banned-value guardrails. Full browser/a11y sweep remains blocked by the port 3015 conflict before Playwright can launch this worktree's server."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local test Postgres and .env.test were healthy.",
+      "Inspected prd.json, qa-report.json, qa-report-summary.json, .qrspi/wiki-003, wiki components, app routes, API routes, Rust domain/routes, and existing wiki tests; noted stale wiki-003 branches but used current worktree evidence.",
+      "Ran export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_contract -- --nocapture: 1 passed.",
+      "Ran export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract repository_wiki_revert_restores_base_revision_and_records_event -- --nocapture: 1 passed, including reader 403, editor revert, event row, stale 409, and no secret leakage.",
+      "Ran cd web && npx vitest run tests/repository-wiki-history-page.test.tsx tests/repository-wiki-revision-page.test.tsx tests/repository-wiki-compare-page.test.tsx --reporter=verbose: 3 files passed, 8 tests passed.",
+      "Added route coverage and ran cd web && npx vitest run tests/repository-wiki-reverts-route.test.ts --reporter=verbose: 1 file passed, 2 tests passed.",
+      "Ran combined focused web tests after fixes: cd web && npx vitest run tests/repository-wiki-revision-page.test.tsx tests/repository-wiki-reverts-route.test.ts tests/repository-wiki-history-page.test.tsx tests/repository-wiki-compare-page.test.tsx --reporter=verbose: 4 files passed, 10 tests passed.",
+      "Attempted required focused system-Chrome Playwright command from web/ with .env.test and /usr/bin/google-chrome. First run reached the revision snapshot and failed because the page label was not a heading; fixed the component. Subsequent exact-command reruns were blocked before launch by http://localhost:3015 already in use by /home/jaeyunha/dev/namuh/namuh-linear, which this lane cannot touch.",
+      "Ran make check: Cargo check, web typecheck, clippy, and Biome passed after import-order fix.",
+      "Started make test broad gate after focused verification; interrupted it after >8 minutes while broad Rust all-target compilation was still in progress, so it is not counted as pass evidence."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Next wiki revert route collapsed upstream API errors instead of preserving status/code; stale-head conflicts and permission errors could surface with the wrong contract.",
+        "expected": "POST /api/repos/:owner/:repo/wiki/reverts proxies upstream JSON error envelopes and status codes such as 409.",
+        "actual": "The route returned a generic status 400 for all thrown revert errors.",
+        "reproduction": "Mock revertRepositoryWikiPageFromCookie to reject with cause {status:409,error:{code:'wiki_revision_conflict'}} and call the Next route; before the fix the response status was not preserved."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "Revision snapshot UI exposed 'Historical wiki revision' only as label text, so heading-based browser verification and landmark navigation could not find it.",
+        "expected": "Revision detail has an accessible Historical wiki revision heading/banner plus the selected page content.",
+        "actual": "The text was rendered as a paragraph label above the page-title h1.",
+        "reproduction": "Open a historical wiki revision and query getByRole('heading', {name:'Historical wiki revision'})."
+      },
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "Focused wiki history E2E expected 200 from wiki page creation even though the API correctly returns 201 Created.",
+        "expected": "E2E asserts HTTP 201 for POST /wiki/pages creation.",
+        "actual": "The E2E expected 200 and would fail after the API request completed.",
+        "reproduction": "Run the focused Playwright spec against a healthy server; createTwoRevisionPage checked createResponse.status()).toBe(200)."
+      }
+    ],
+    "fix_description": "Preserved upstream revert API error envelopes/statuses in the Next route, added route tests, made the historical revision label a real heading, and aligned the focused E2E with the 201 Created wiki-page API contract. wiki-003 remains qa_pass=false because the final required focused system-Chrome Playwright rerun is blocked by port 3015 being occupied by another worktree; broad make test was also interrupted while still compiling and is not counted as pass evidence."
   }
 ]
