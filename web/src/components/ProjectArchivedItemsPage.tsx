@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ProjectArchivedItem, ProjectWorkspace } from "@/lib/api";
-import { projectItemHref } from "@/lib/navigation";
+import {
+  organizationProjectWorkspaceHref,
+  projectItemHref,
+  userProjectWorkspaceHref,
+} from "@/lib/navigation";
 
 type ProjectArchivedItemsPageProps = {
   workspace: ProjectWorkspace;
@@ -47,7 +51,14 @@ export function ProjectArchivedItemsPage({
     setMessage("Item restored");
   }
 
-  const workspaceHref = workspace.selectedView.href;
+  const workspaceHref =
+    scope === "organization"
+      ? organizationProjectWorkspaceHref(
+          owner,
+          workspace.project.number,
+          viewNumber,
+        )
+      : userProjectWorkspaceHref(owner, workspace.project.number, viewNumber);
   return (
     <main className="mx-auto w-full max-w-[980px] px-5 py-6 md:px-8">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">

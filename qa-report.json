@@ -6007,5 +6007,73 @@
       "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_iteration_settings_create_breaks_and_filter_tokens -- --nocapture",
       "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-field-settings.spec.ts"
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Project item side panel, draft edit/comment flow, conversion, archive page restore, remove confirmation, add-item controls, and mobile no-overflow smoke passed in focused component coverage plus system-Chrome Playwright against the real .env.test database. Fixed QA-found gaps: the Projects E2E seed now enables the Projects workspace fixture directly, archived Back-to-project links preserve organization scope, and side-panel Remove persists a URL-backed success notice without hydration mismatch."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workspace",
+          "GET /api/projects/:project_id/items/:item_id",
+          "GET /api/projects/:project_id/items/archived",
+          "POST /api/projects/:project_id/items",
+          "POST /api/projects/:project_id/items/bulk",
+          "PATCH /api/projects/:project_id/items/:item_id/draft",
+          "POST/PATCH/DELETE /api/projects/:project_id/items/:item_id/comments[/:comment_id]",
+          "GET /api/projects/:project_id/conversion-targets",
+          "POST /api/projects/:project_id/items/:item_id/convert-to-issue",
+          "PATCH /api/projects/:project_id/items/:item_id/archive",
+          "PATCH /api/projects/:project_id/items/:item_id/restore",
+          "PATCH /api/projects/:project_id/items/:item_id/fields/:field_id",
+          "PATCH /api/projects/:project_id/items/:item_id/position",
+          "DELETE /api/projects/:project_id/items/:item_id"
+        ],
+        "notes": "DB-backed Rust projects_workspace_contract passed 15/15 with .env.test loaded and zero ignored tests, covering draft edits/comments as project-only, conversion to linked issues with labels/assignees/milestone/timeline/notifications, archived list visibility and restore permissions, add/bulk/reorder/remove, and linked issue metadata synchronization through native project fields."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private project and private repository visibility guards",
+          "reader write/convert forbidden",
+          "stale expectedUpdatedAt validation",
+          "draft edits do not notify mentioned users before conversion",
+          "conversion validates linked repository, labels, assignees, and milestone"
+        ],
+        "notes": "Focused DB contracts enforce project/repository permission gates for item detail, archive/restore, draft edits, comments, conversion targets, and linked source mutations; project-only draft edits produced zero repository timeline events and zero notifications until conversion."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright coverage exercise named forms/buttons for draft edit, comments, conversion, archive/restore/remove, add-item, and mobile panel paths; visible buttons have accessible names, no dead links were found, and no horizontal overflow was detected."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first; local verification stack was healthy with postgres-test up, .env.test present, and per-worktree Cargo target writable.",
+      "Inspected PRD projects-005, existing Projects workspace/item side-panel implementation, archived-items page, API route proxies, Rust projects domain/contracts, focused component tests, and previous QA summary state.",
+      "Fixed browser-visible QA gaps without changing unrelated features: seeded Projects workspace explicitly for the E2E, made draft opening deterministic, restored organization-scoped Back-to-project archive navigation, and persisted side-panel Remove confirmation via a hydration-safe URL-backed notice.",
+      "Verified DB-backed Projects API contracts with .env.test loaded: projects_workspace_contract 15 passed, 0 failed, 0 ignored/self-skipped.",
+      "Verified ProjectWorkspacePage component coverage: 19 passed, including item side panel, draft conversion, draft comments, archive/remove, add linked/draft/bulk items, board moves, and roadmap paths.",
+      "Verified system-Chrome Playwright: auth setup plus projects-items-side-panel smoke passed, covering seeded workspace, draft edit/comment, conversion, archive page restore, removal notice, and mobile side panel.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome all passed.",
+      "Ran make test: Cargo tests passed and Web tests passed (667 passed)."
+    ],
+    "evidence": [
+      "make doctor",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture",
+      "make check",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx playwright test tests/e2e/projects-items-side-panel.spec.ts",
+      "make test"
+    ],
+    "remaining_risks": [
+      "Playwright emitted repeated FORCE_COLOR/NO_COLOR warnings from the dev server environment; tests still passed and no hydration mismatch remained after the final fix."
+    ]
   }
 ]

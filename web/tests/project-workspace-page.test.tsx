@@ -486,7 +486,7 @@ describe("ProjectWorkspacePage", () => {
       { method: "DELETE" },
     );
     expect(assign).toHaveBeenCalledWith(
-      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status&notice=item_removed",
     );
   });
 

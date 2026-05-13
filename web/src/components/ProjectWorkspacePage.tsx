@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, Fragment, useMemo, useState } from "react";
+import { type FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import type {
   ProjectConversionTargets,
   ProjectItemComment,
@@ -231,6 +231,14 @@ function requestValueForField(field: ProjectWorkspaceField, raw: string) {
   return raw;
 }
 
+function hrefWithNotice(href: string, notice: string) {
+  const [path, hash = ""] = href.split("#", 2);
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}notice=${encodeURIComponent(notice)}${
+    hash ? `#${hash}` : ""
+  }`;
+}
+
 export function ProjectWorkspacePage({
   workspace,
   scope,
@@ -282,6 +290,7 @@ export function ProjectWorkspacePage({
   const [itemSaving, setItemSaving] = useState(false);
   const [itemMessage, setItemMessage] = useState<string | null>(null);
   const [itemError, setItemError] = useState<string | null>(null);
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [emptyColumnsVisible, setEmptyColumnsVisible] = useState(
     workspace.boardConfig?.emptyColumnsVisible ?? true,
   );
@@ -340,6 +349,15 @@ export function ProjectWorkspacePage({
     ...baseQuery,
     view: viewNumber,
   };
+
+  useEffect(() => {
+    setNoticeMessage(
+      new URLSearchParams(window.location.search).get("notice") ===
+        "item_removed"
+        ? "Item removed from project."
+        : null,
+    );
+  }, []);
 
   function submitFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -713,8 +731,8 @@ export function ProjectWorkspacePage({
       );
       return;
     }
-    setItemMessage("Item removed");
-    window.location.assign(currentHref);
+    setItemMessage("Item removed from project.");
+    window.location.assign(hrefWithNotice(currentHref, "item_removed"));
   }
 
   return (
@@ -1659,6 +1677,9 @@ export function ProjectWorkspacePage({
                 {itemMessage ? (
                   <span className="chip ok">{itemMessage}</span>
                 ) : null}
+                {noticeMessage ? (
+                  <span className="chip ok">{noticeMessage}</span>
+                ) : null}
                 <button
                   className="btn sm"
                   disabled={!workspace.viewerPermissions.canAddItems}
@@ -1948,6 +1969,9 @@ export function ProjectWorkspacePage({
                 ) : null}
                 {itemMessage ? (
                   <span className="chip ok">{itemMessage}</span>
+                ) : null}
+                {noticeMessage ? (
+                  <span className="chip ok">{noticeMessage}</span>
                 ) : null}
                 <button
                   className="btn sm"
