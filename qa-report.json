@@ -6007,5 +6007,78 @@
       "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_iteration_settings_create_breaks_and_filter_tokens -- --nocapture",
       "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-field-settings.spec.ts"
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified the Projects item side panel lifecycle against the real .env.test Postgres using system Chrome. The E2E now enables the projects workspace seed fixture, opens the seeded workspace href directly, opens the draft item detail panel, edits title/body, adds a project-only comment, converts the draft to an issue, archives it, views/restores it from the archive page, removes an item, and repeats a mobile side-panel smoke."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workspace",
+          "GET /api/projects/:project_id/items/:item_id detail via item route",
+          "PATCH /api/projects/:project_id/items/:item_id/draft",
+          "POST /api/projects/:project_id/items/:item_id/comments",
+          "POST /api/projects/:project_id/items/:item_id/convert-to-issue",
+          "PATCH /api/projects/:project_id/items/:item_id/archive",
+          "GET /api/projects/:project_id/archived-items",
+          "PATCH /api/projects/:project_id/items/:item_id/restore",
+          "DELETE /api/projects/:project_id/items/:item_id"
+        ],
+        "notes": "DB-backed projects_workspace_contract passed 15/15 with no self-skips, including project_item_detail_and_archived_list_enforce_visibility, project_draft_editing_and_comments_are_project_only, project_draft_conversion_creates_linked_issue, and project_workspace_adds_reorders_and_removes_items."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private project item detail visibility remains covered by projects_workspace_contract",
+          "archive list visibility remains covered by projects_workspace_contract",
+          "real signed-in browser flow used seeded authenticated session instead of bypassing auth"
+        ],
+        "notes": "No endpoint or auth weakening was introduced; the browser gate exercises authenticated UI against the real DB, and the Rust contract confirms private guards for item detail and archive list."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser smoke asserts the complementary Project item detail landmark, named forms/buttons/links, no dead href controls, and no page overflow in desktop and mobile viewport."
+      }
+    },
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor: passed; container runtime, opengithub-postgres-test on :55433, .env/.env.test, and Cargo target dir all healthy.",
+      "Reproduced origin/main failure: env-loaded system-Chrome Playwright spec failed because /orgs/namuh/projects listed Projects 0 and no /projects/*/views/* workspace link without PROJECTS_WORKSPACE_E2E seed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture: passed; 15 passed, 0 failed, no self-skips.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed; Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx: passed; 1 file / 19 tests passed.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx playwright test tests/e2e/projects-items-side-panel.spec.ts --project=chromium: passed; 2 passed including auth setup and final item lifecycle smoke."
+    ],
+    "bugs_found": [
+      "The side-panel E2E did not enable the projects workspace DB fixture, so a clean .env.test run could land on /orgs/namuh/projects with Projects 0 and never reach the item side panel.",
+      "The test relied on broad project-list link discovery instead of the seeded workspace href returned by the seeder, making the acceptance path nondeterministic.",
+      "After item removal from the side panel, the success message could be lost during navigation back to the workspace; the product now carries a notice query and renders the confirmation on return.",
+      "Archive Back to project used the API-provided selectedView.href, which was not guaranteed to be the routed org/user workspace URL expected by the browser path."
+    ],
+    "fixes_applied": [
+      "Enabled PROJECTS_WORKSPACE_E2E in the projects item side-panel spec seeder and opened seeded.projectsWorkspaceHref directly.",
+      "Targeted the seeded draft item by accessible link name and scoped Project-only draft assertions to the side-panel metadata paragraph.",
+      "Preserved side-panel removal confirmation across the route change with a notice query parameter.",
+      "Computed archive Back to project href from scope/owner/project number/view number for stable routed navigation."
+    ],
+    "artifacts": [
+      "web/test-results/projects-items-side-panel--65877--final-item-lifecycle-smoke-chromium/error-context.md",
+      "web/test-results/projects-items-side-panel--65877--final-item-lifecycle-smoke-chromium/trace.zip",
+      "ralph/screenshots/build/projects-005-final-item-panel.jpg",
+      "ralph/screenshots/build/projects-005-final-draft-editor.jpg",
+      "ralph/screenshots/build/projects-005-final-convert-dialog.jpg",
+      "ralph/screenshots/build/projects-005-final-linked-issue-sync.jpg",
+      "ralph/screenshots/build/projects-005-final-archive-confirmation.jpg",
+      "ralph/screenshots/build/projects-005-final-archived-list.jpg",
+      "ralph/screenshots/build/projects-005-final-restore-confirmation.jpg",
+      "ralph/screenshots/build/projects-005-final-mobile.jpg"
+    ],
+    "remaining_risks": []
   }
 ]

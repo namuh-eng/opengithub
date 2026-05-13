@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 85,
+    "features_passed": 86,
     "features_failed": 1,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 81,
+      "pass": 82,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 77,
+      "pass": 78,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 78,
+      "pass": 79,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 43,
+      "pass": 44,
       "fail": 0,
       "skip": 39
     }
@@ -2861,10 +2861,44 @@
       "feature_id": "projects-005",
       "description": "Implement project items, draft issues, linked issue/PR sync, conversion of draft",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Verified the Projects item side panel lifecycle against the real .env.test Postgres using system Chrome. The E2E now enables the projects workspace seed fixture, opens the seeded workspace href directly, opens the draft item detail panel, edits title/body, adds a project-only comment, converts the draft to an issue, archives it, views/restores it from the archive page, removes an item, and repeats a mobile side-panel smoke."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/projects/:project_id/workspace",
+            "GET /api/projects/:project_id/items/:item_id detail via item route",
+            "PATCH /api/projects/:project_id/items/:item_id/draft",
+            "POST /api/projects/:project_id/items/:item_id/comments",
+            "POST /api/projects/:project_id/items/:item_id/convert-to-issue",
+            "PATCH /api/projects/:project_id/items/:item_id/archive",
+            "GET /api/projects/:project_id/archived-items",
+            "PATCH /api/projects/:project_id/items/:item_id/restore",
+            "DELETE /api/projects/:project_id/items/:item_id"
+          ],
+          "notes": "DB-backed projects_workspace_contract passed 15/15 with no self-skips, including project_item_detail_and_archived_list_enforce_visibility, project_draft_editing_and_comments_are_project_only, project_draft_conversion_creates_linked_issue, and project_workspace_adds_reorders_and_removes_items."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "private project item detail visibility remains covered by projects_workspace_contract",
+            "archive list visibility remains covered by projects_workspace_contract",
+            "real signed-in browser flow used seeded authenticated session instead of bypassing auth"
+          ],
+          "notes": "No endpoint or auth weakening was introduced; the browser gate exercises authenticated UI against the real DB, and the Rust contract confirms private guards for item detail and archive list."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused browser smoke asserts the complementary Project item detail landmark, named forms/buttons/links, no dead href controls, and no page overflow in desktop and mobile viewport."
+        }
+      }
     },
     {
       "feature_id": "projects-006",
