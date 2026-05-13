@@ -5842,5 +5842,65 @@
       "ralph/screenshots/build/projects-002-final-mobile.jpg"
     ],
     "qa_pass": true
+  },
+  {
+    "feature_id": "projects-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified Projects v2 board and roadmap layout switching at /orgs/namuh/projects/1/views/1 with a real signed-in seeded browser session. The smoke opens the accessible View menu, switches to Board, verifies columns/swimlanes/counts, moves a card through the accessible column select, opens Add item, switches to Roadmap, saves Quarter zoom, checks Year zoom, and reruns mobile/no-dead-control/no-overflow assertions."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/workspace",
+          "PATCH /api/projects/{project_id}/views/{view_id}/layout",
+          "PATCH /api/projects/{project_id}/items/{item_id}/position with groupFieldId/groupValue",
+          "PATCH /api/projects/{project_id}/views/{view_id}/roadmap-settings",
+          "Next same-origin proxies under /api/projects/{projectId}/views/{viewId}/layout and /roadmap-settings"
+        ],
+        "notes": "DB-backed projects_workspace_contract passed 15/15 against the committed .env.test database without self-skips; focused component tests verified layout, board, roadmap, and payload behavior."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Required static gates passed. DB-backed contracts include private guard and permission scenarios for project workspace/settings/item paths; signed browser smoke uses the real session cookie flow instead of anonymous or stubbed access."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Fixed the controller rejection by changing the product control/region to expose the accessible name 'View menu'. Browser smoke asserts accessible View menu, labelled move-to-column selects, labelled Roadmap settings form, no dead controls, and no horizontal page overflow on desktop and mobile."
+      }
+    },
+    "tested_steps": [
+      "Inspected current origin/main PRD projects-003 entry, qa-hints, QA report state, ProjectWorkspacePage, Projects routes, seed fixtures, and existing component/E2E coverage.",
+      "Reproduced the exact controller command with .env.test and /usr/bin/google-chrome; fresh failure showed the old non-deterministic direct dashboard seed left /orgs/namuh/projects with 0 projects, and code inspection showed the product exposed 'View configuration' while the required smoke expected 'View menu'.",
+      "Fixed the product accessible contract by renaming the control/region to View menu, adding aria-controls/aria-expanded, and removing a duplicate layout-choice label that polluted button names.",
+      "Made the projects-003 E2E deterministic by using the shared authenticated seed fixture with the projectsWorkspace scene and direct seeded workspace href, then asserting durable board move and roadmap zoom persistence rather than transient messages cleared by navigation.",
+      "Updated adjacent projects workspace E2E expectations from View configuration to View menu so broader E2E remains aligned with the product contract."
+    ],
+    "bugs_found": [
+      "The product did not expose the required accessible 'View menu' button/region; it exposed 'View configuration', so controller getByRole('button', { name: 'View menu' }) could fail deterministically.",
+      "The projects-003 E2E bypassed the shared seed fixture and invoked the dashboard seeder without PROJECTS_WORKSPACE_E2E, which could leave /orgs/namuh/projects with zero projects under the real env-loaded browser run.",
+      "The final smoke asserted transient success messages after handlers immediately navigated, so a successful board move or roadmap save could be misreported as a browser failure."
+    ],
+    "fix_description": "Aligned the Projects workspace UI with the PRD's accessible View menu contract, switched the final board/roadmap smoke to the real projectsWorkspace seed fixture, and asserted durable board/roadmap persisted state instead of transient messages.",
+    "commands": [
+      "make doctor: passed; postgres-test container healthy on localhost:55433, .env.test present, .env present, .scratch/cargo-target writable.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed after fixing Biome formatting; Cargo check, Web typecheck, Clippy, and Biome all green.",
+      "set -a; . ./.env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture: passed 15/15 DB-backed tests, no self-skips.",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx: passed 19/19 tests.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-board-roadmap.spec.ts: passed 2/2 (setup + Chromium final signed-in smoke) with TEST_DATABASE_URL loaded and system Chrome."
+    ],
+    "artifacts": [
+      "web/test-results/projects-board-roadmap-Pro-ee2b0-pport-final-signed-in-smoke-chromium/error-context.md (fresh reproduction before fix)",
+      "ralph/screenshots/build/projects-003-final-view-menu.jpg",
+      "ralph/screenshots/build/projects-003-final-board-default.jpg",
+      "ralph/screenshots/build/projects-003-final-board-move-add.jpg",
+      "ralph/screenshots/build/projects-003-final-roadmap-quarter.jpg",
+      "ralph/screenshots/build/projects-003-final-roadmap-year.jpg",
+      "ralph/screenshots/build/projects-003-final-mobile.jpg"
+    ],
+    "overall_status": "pass"
   }
 ]

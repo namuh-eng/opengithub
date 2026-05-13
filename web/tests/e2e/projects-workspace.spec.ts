@@ -35,9 +35,7 @@ test("Projects workspace table supports saved views, edits, add row, and final s
   await expect(
     page.getByRole("searchbox", { name: /Filter items/i }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /View configuration/i }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /View menu/i })).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();
   await expect(page.getByText(/matching items/i)).toBeVisible();
   await expectNoDeadControls(page);
@@ -47,14 +45,14 @@ test("Projects workspace table supports saved views, edits, add row, and final s
     path: screenshotPath(testInfo, "projects-002-final-default-table"),
   });
 
-  await page.getByRole("button", { name: /View configuration/i }).click();
+  await page.getByRole("button", { name: /View menu/i }).click();
   await expect(
     page.getByRole("group", { name: /Visible fields/i }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /Save view/i })).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: screenshotPath(testInfo, "projects-002-final-view-config"),
+    path: screenshotPath(testInfo, "projects-002-final-view-menu"),
   });
   await page
     .getByRole("button", { name: /Cancel|Revert/i })

@@ -1,95 +1,36 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  screenshotPath,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+test.skip(
+  skipWithoutTestDb(),
+  "Projects board and roadmap E2E needs TEST_DATABASE_URL or DATABASE_URL",
+);
 
-type SeededNavigation = {
-  cookieName: string;
-  cookieValue: string;
-};
+test.setTimeout(120_000);
 
-function seedNavigation(): SeededNavigation {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "0",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededNavigation;
-}
-
-async function signIn(page: Page, seeded: SeededNavigation) {
-  await page.context().addCookies([
-    {
-      name: seeded.cookieName,
-      value: seeded.cookieValue,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: false,
-    },
-  ]);
-}
-
-async function openFirstProjectWorkspace(page: Page) {
-  await page.goto("/orgs/namuh/projects");
-  await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible();
-  const workspaceLink = page
-    .locator('a[href*="/projects/"][href*="/views/"]')
-    .first();
-  await expect(workspaceLink).toBeVisible();
-  await workspaceLink.click();
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-}
-
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
-
-async function expectNoPageOverflow(page: Page) {
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  );
-  expect(overflow).toBe(false);
-}
-
-async function openViewMenu(page: Page) {
+async function openViewMenu(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "View menu" }).click();
   await expect(page.getByRole("region", { name: "View menu" })).toBeVisible();
 }
 
-test.skip(
-  !databaseUrl,
-  "Projects board and roadmap E2E needs TEST_DATABASE_URL or DATABASE_URL",
-);
-
 test("Projects board and roadmap layouts support final signed-in smoke", async ({
   page,
-}) => {
-  const seeded = seedNavigation();
-  await signIn(page, seeded);
-  await openFirstProjectWorkspace(page);
+  seed,
+  signIn,
+}, testInfo) => {
+  const seeded = await seed({ scenes: ["projectsWorkspace"] });
+  await signIn(page, seeded, "owner");
+  expect(seeded.hrefs.projectsWorkspace).toMatch(
+    /\/orgs\/namuh\/projects\/1\/views\/1/,
+  );
+  await page.goto(seeded.hrefs.projectsWorkspace);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   await openViewMenu(page);
   await expect(page.getByRole("button", { name: /Table\s*t/i })).toBeVisible();
@@ -99,7 +40,7 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/projects-003-final-view-menu.jpg",
+    path: screenshotPath(testInfo, "projects-003-final-view-menu"),
   });
 
   await page.getByRole("button", { name: /Board\s*b/i }).click();
@@ -109,18 +50,22 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
     page.getByText(/Board moves use the same project item field/),
   ).toBeVisible();
   await expectNoDeadControls(page);
-  await expectNoPageOverflow(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/projects-003-final-board-default.jpg",
+    path: screenshotPath(testInfo, "projects-003-final-board-default"),
   });
 
   const moveSelect = page.getByLabel(/Move .* to column/).first();
   if (await moveSelect.isVisible()) {
     const options = await moveSelect.locator("option").all();
     if (options.length > 1) {
+      const targetColumn = (await options[1].textContent())?.trim() ?? "";
       await moveSelect.selectOption({ index: 1 });
-      await expect(page.getByText(/Item moved/i)).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Board" })).toBeVisible();
+      await expect(
+        page.getByRole("region", { name: `${targetColumn} board column` }),
+      ).toContainText(/2 cards/);
     }
   }
   await page
@@ -135,7 +80,7 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/projects-003-final-board-move-add.jpg",
+    path: screenshotPath(testInfo, "projects-003-final-board-move-add"),
   });
   await page.keyboard.press("Escape");
 
@@ -145,32 +90,36 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   await expect(
     page.getByRole("form", { name: "Roadmap settings" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Month/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Quarter/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Year/i })).toBeVisible();
-  await page.getByRole("button", { name: /Quarter/i }).click();
+  await expect(page.getByRole("button", { name: /month/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /quarter/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /year/i })).toBeVisible();
+  await page.getByRole("button", { name: /quarter/i }).click();
   await page.getByRole("button", { name: /Save roadmap/i }).click();
-  await expect(page.getByText(/Roadmap settings saved/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Roadmap" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /quarter/i })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/projects-003-final-roadmap-quarter.jpg",
+    path: screenshotPath(testInfo, "projects-003-final-roadmap-quarter"),
   });
 
-  await page.getByRole("button", { name: /Year/i }).click();
+  await page.getByRole("button", { name: /year/i }).click();
   await expectNoDeadControls(page);
-  await expectNoPageOverflow(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/projects-003-final-roadmap-year.jpg",
+    path: screenshotPath(testInfo, "projects-003-final-roadmap-year"),
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expectNoDeadControls(page);
-  await expectNoPageOverflow(page);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/projects-003-final-mobile.jpg",
+    path: screenshotPath(testInfo, "projects-003-final-mobile"),
   });
 });
