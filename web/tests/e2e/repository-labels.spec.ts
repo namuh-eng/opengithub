@@ -1,12 +1,13 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  runPsql,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededSession = {
-  cookieName: string;
-  cookieValue: string;
-};
 
 type CreatedIssue = {
   number: number;
@@ -28,61 +29,6 @@ function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function seedSession(): SeededSession {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: "1",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededSession;
-}
-
-async function signIn(page: Page, seeded: SeededSession) {
-  await page.context().addCookies([
-    {
-      name: seeded.cookieName,
-      value: seeded.cookieValue,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: false,
-    },
-  ]);
-}
-
-async function expectNoDeadControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-  }
-}
-
-async function expectNoHorizontalOverflow(page: Page) {
-  const horizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  );
-  expect(horizontalOverflow).toBe(false);
-}
-
 function seedDiscussion(repositoryHref: string, labelId: string) {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
@@ -90,14 +36,11 @@ function seedDiscussion(repositoryHref: string, labelId: string) {
   const [, owner, repo] = repositoryHref.split("/");
   const discussionNumber = 980 + Math.floor(Math.random() * 10);
 
-  execFileSync(
-    "psql",
-    [
-      databaseUrl,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      `
+  runPsql(databaseUrl, [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
         FROM repositories
@@ -141,23 +84,23 @@ function seedDiscussion(repositoryHref: string, labelId: string) {
       FROM discussion
       ON CONFLICT DO NOTHING;
       `,
-    ],
-    { stdio: "ignore" },
-  );
+  ]);
 
   return discussionNumber;
 }
 
 test.skip(
-  !databaseUrl,
+  skipWithoutTestDb(),
   "Repository labels E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
 test("signed-in repository labels manage and apply across issues, pull requests, and discussions", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedSession();
-  await signIn(page, seeded);
+  const seeded = await seed({ scenes: ["empty"] });
+  await signIn(page, seeded, "owner");
   const unique = Date.now().toString(36);
   const repositoryName = `labels sweep ${unique}`;
   const normalizedName = repositoryName.replaceAll(/\s+/g, "-");
@@ -171,7 +114,7 @@ test("signed-in repository labels manage and apply across issues, pull requests,
   await expect(page).toHaveURL(new RegExp(`/${normalizedName}$`));
 
   const [, ownerLogin, repoName] = new URL(page.url()).pathname.split("/");
-  const cookie = `${seeded.cookieName}=${seeded.cookieValue}`;
+  const cookie = `${seeded.cookieName}=${seeded.cookies.owner}`;
   const labelResponse = await page.request.post(
     `http://localhost:3016/api/repos/${ownerLogin}/${repoName}/labels`,
     {
@@ -222,12 +165,14 @@ test("signed-in repository labels manage and apply across issues, pull requests,
   );
 
   await page.goto(`/${ownerLogin}/${repoName}/labels`);
-  await expect(page.getByRole("heading", { name: "Labels" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Labels", exact: true }),
+  ).toBeVisible();
   await page
     .getByPlaceholder("Search all labels")
     .fill(label.label.name.slice(0, 6));
   await expect(page.getByText(label.label.name)).toBeVisible();
-  await page.getByText("Sort").click();
+  await page.getByRole("button", { name: "Sort" }).click();
   await expect(
     page.getByRole("menuitemradio", { name: /Total issue count/ }),
   ).toHaveAttribute("href", /sort=total_issue_count/);
@@ -251,13 +196,16 @@ test("signed-in repository labels manage and apply across issues, pull requests,
 
   await page.goto(`/${ownerLogin}/${repoName}/issues/${issue.number}`);
   await page
-    .locator("section", { has: page.getByRole("heading", { name: "Labels" }) })
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Labels", exact: true }),
+    })
     .getByRole("button", { name: "Edit" })
     .click();
   await page.getByLabel("Search labels").fill(label.label.name.slice(0, 6));
   await page
-    .getByRole("button", { name: new RegExp(`Add ${label.label.name}`) })
-    .click();
+    .getByRole("checkbox", { name: new RegExp(label.label.name) })
+    .check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Issue metadata updated.")).toBeVisible();
   await expect(
     page.locator(".chip", { hasText: label.label.name }),
@@ -265,13 +213,16 @@ test("signed-in repository labels manage and apply across issues, pull requests,
 
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
   await page
-    .locator("section", { has: page.getByRole("heading", { name: "Labels" }) })
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Labels", exact: true }),
+    })
     .getByRole("button", { name: "Edit" })
     .click();
   await page.getByLabel("Search labels").fill(label.label.name.slice(0, 6));
   await page
-    .getByRole("button", { name: new RegExp(`Add ${label.label.name}`) })
-    .click();
+    .getByRole("checkbox", { name: new RegExp(label.label.name) })
+    .check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Pull request metadata updated.")).toBeVisible();
   await expect(
     page.locator(".chip", { hasText: label.label.name }),
@@ -285,20 +236,25 @@ test("signed-in repository labels manage and apply across issues, pull requests,
     page.locator(".chip", { hasText: label.label.name }),
   ).toBeVisible();
   await page
-    .locator("section", { has: page.getByRole("heading", { name: "Labels" }) })
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Labels", exact: true }),
+    })
     .getByRole("button", { name: "Edit" })
     .click();
   await page.getByLabel("Search labels").fill("docs");
   await page
-    .getByRole("button", { name: new RegExp(`Add docs ${unique}`) })
-    .click();
+    .getByRole("checkbox", { name: new RegExp(`docs ${unique}`) })
+    .check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Discussion metadata updated.")).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
 
   await page.goto(`/${ownerLogin}/${repoName}/labels`);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "Labels" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Labels", exact: true }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,

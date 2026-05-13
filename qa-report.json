@@ -6415,5 +6415,64 @@
     ],
     "fix_description": "Preserved upstream revert API error envelopes/statuses in the Next route, added route tests, made the historical revision label a real heading, and aligned the focused E2E with the 201 Created wiki-page API contract. Controller cleared the stale port 3015 conflict and reran the required DB-backed Rust contracts, make check, and focused system-Chrome wiki history Playwright gate; all passed, so wiki-003 is qa_pass=true.",
     "timestamp": "2026-05-13T14:52:26-07:00"
+  },
+  {
+    "feature_id": "labels-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Repository labels page lists, searches, sorts, creates, edits, and deletes labels with optimistic status feedback; focused browser acceptance applies/dismisses labels through issue, pull request, and discussion sidebars using the shared auth fixture and completed the discussion path under system Chrome."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/labels",
+          "POST /api/repos/:owner/:repo/labels",
+          "PATCH /api/repos/:owner/:repo/labels/:label_id",
+          "DELETE /api/repos/:owner/:repo/labels/:label_id",
+          "Next.js label action proxies under /:owner/:repo/labels/actions"
+        ],
+        "notes": "DB-backed repository_labels_contract passed with no self-skip and covered counts for open issues, pull requests, and discussions; sorting/search shape; create/update/delete result shape; duplicate-name conflicts; invalid color validation; and delete event return data."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_enforcement",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Contract verifies read-only users cannot create labels, outsiders cannot read a private repository's labels, invalid color returns validation_failed, duplicate names return conflict, and structured errors do not leak SESSION_SECRET. The E2E spec now uses _fixtures/auth.ts instead of inline cookie minting and removed direct docker exec usage."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright checks verified accessible names for visible buttons, no dead controls, and no horizontal overflow on desktop labels/detail pages and mobile labels page. Label picker controls remain labelled by the shared component."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: all local verification checks green using podman and .scratch/cargo-target.",
+      "Verified test DB schema with podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -tAc select to_regclass('public.repositories'); returned repositories.",
+      "Read prd.json labels-001, qa-report/summary status, previous rejected branch diff, web/tests/e2e/AGENTS.md, labels page/action code, shared auth fixture, and label domain/contract tests.",
+      "Refactored web/tests/e2e/repository-labels.spec.ts to import test/seed/signIn helpers from _fixtures/auth.ts, removed inline execFileSync/session cookie code, and seeded discussion rows through shared runPsql.",
+      "Hardened runPsql container fallback to use podman when host psql is unavailable and docker cannot execute the test DB container; this documents/centralizes the host compatibility reason in the fixture instead of the spec.",
+      "Fixed labels page mutation UX so create/edit/delete update the visible row list/count and expose role=status messages required by the acceptance path without waiting for server component refresh.",
+      "Updated focused labels/component coverage to assert created/updated/deleted status feedback; reran issue, pull request, and discussion detail sidebar component tests with labels coverage.",
+      "Applied two unrelated wiki broad-test fixes needed for current origin/main's make test gate: allow backend wiki validation to surface empty edit-message errors and derive wiki sidebar hrefs with repository context.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_labels_contract -- --nocapture: 1 passed, 0 skipped.",
+      "Ran cd web && npm test -- --run tests/repository-labels-page.test.tsx tests/repository-issue-detail.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-discussion-detail-page.test.tsx: 4 files passed, 43 tests passed.",
+      "Ran required browser gate from web with env-loaded .env.test, absolute CARGO_TARGET_DIR, and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome: repository-labels.spec.ts passed 2/2 including setup and labels acceptance path.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran make test: Cargo tests passed and Web tests passed (671 passed).",
+      "Ran final make doctor: green."
+    ],
+    "bugs_found": [
+      "Repository labels E2E spec violated the e2e auth fixture contract and directly invoked docker/psql for discussion seeding, failing on podman-only hosts.",
+      "Labels page showed no immediate created/updated/deleted status and did not update local label rows/counts before router.refresh, causing acceptance assertions to race stale server-rendered data.",
+      "Current main's wiki component tests failed in make test because client-side wiki validation blocked the expected backend validation response and wiki page sidebar links trusted fixture hrefs missing owner/repo context."
+    ],
+    "fix_description": "Refactored labels E2E through shared auth/psql helpers with podman-compatible fallback, added optimistic label list/count/status mutation feedback, strengthened focused component assertions, and fixed two current-main wiki regressions blocking the required broad test gate."
   }
 ]

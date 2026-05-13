@@ -253,6 +253,10 @@ describe("RepositoryLabelsPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Label created.",
+    );
+    expect(screen.getByText("triage")).toBeVisible();
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(fetch).toHaveBeenCalledWith("/mona/octo-app/labels/actions", {
       method: "POST",
@@ -278,6 +282,8 @@ describe("RepositoryLabelsPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
+    expect(await screen.findByText("Label updated.")).toBeVisible();
+    expect(screen.getByText("triage")).toBeVisible();
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         "/mona/octo-app/labels/actions/label-1",
@@ -297,6 +303,7 @@ describe("RepositoryLabelsPage", () => {
         },
       ),
     );
+    expect(await screen.findByText("Label deleted.")).toBeVisible();
     expect(confirm).toHaveBeenCalledWith("Delete label bug?");
   });
 

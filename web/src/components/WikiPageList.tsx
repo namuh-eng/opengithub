@@ -6,6 +6,7 @@ import type {
   RepositoryWikiHeading,
   RepositoryWikiPageSummary,
 } from "@/lib/api";
+import { repositoryWikiHref } from "@/lib/navigation";
 
 type WikiPageListProps = {
   owner: string;
@@ -194,7 +195,7 @@ export function WikiPageList({
                 className={`min-w-0 rounded-md px-2 py-2 t-sm hover:underline ${
                   page.active ? "font-semibold" : ""
                 }`}
-                href={page.href}
+                href={repositoryWikiHref(owner, repo, page.slug)}
                 id={labelId}
                 style={{
                   color: page.active ? "var(--ink-1)" : "var(--ink-3)",

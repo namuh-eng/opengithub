@@ -198,21 +198,27 @@ export const runPsql = (url: string, args: string[]): Buffer => {
     );
   }
 
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "-i",
-      "opengithub-postgres-test",
-      "psql",
-      "-U",
-      "opengithub",
-      "-d",
-      "opengithub_test",
-      ...args,
-    ],
-    { env },
-  );
+  const containerArgs = [
+    "exec",
+    "-i",
+    "opengithub-postgres-test",
+    "psql",
+    "-U",
+    "opengithub",
+    "-d",
+    "opengithub_test",
+    ...args,
+  ];
+
+  try {
+    return execFileSync("docker", containerArgs, { env });
+  } catch (dockerError) {
+    try {
+      return execFileSync("podman", containerArgs, { env });
+    } catch {
+      throw dockerError;
+    }
+  }
 };
 
 const seedContributorFileChangesForRepository = (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   ApiErrorEnvelope,
@@ -76,7 +76,7 @@ function RepositoryLabelForm({
   label: RepositoryLabelSummary | null;
   mode: "create" | "edit";
   onCancel: () => void;
-  onSaved: () => void;
+  onSaved: (label: RepositoryLabelSummary, mode: "create" | "edit") => void;
   owner: string;
   repo: string;
 }) {
@@ -114,7 +114,11 @@ function RepositoryLabelForm({
             },
           );
         }
-        onSaved();
+        const result = body as { label?: RepositoryLabelSummary } | null;
+        if (!result?.label) {
+          throw new Error("Label response was missing label details.");
+        }
+        onSaved(result.label, mode);
       } catch (saveError) {
         setError(errorMessage(saveError, "Label could not be saved."));
       }
@@ -231,6 +235,7 @@ function SortMenu({
   sort: string;
 }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const options = [
     { sort: "name", direction: "asc", label: "Name", hint: "A-Z" },
     {
@@ -248,8 +253,25 @@ function SortMenu({
     },
   ];
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         aria-expanded={open}
         aria-haspopup="menu"
@@ -299,6 +321,9 @@ export function RepositoryLabelsPage({
 }: RepositoryLabelsPageProps) {
   const router = useRouter();
   const [editing, setEditing] = useState<EditingState>(null);
+  const [localLabels, setLocalLabels] = useState(labels.items);
+  const [localTotal, setLocalTotal] = useState(labels.total);
+  const [status, setStatus] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const owner = repository.owner_login;
@@ -308,8 +333,40 @@ export function RepositoryLabelsPage({
   const sortedBy = labels.filters.sort || query.sort || "name";
   const direction = labels.filters.direction || query.direction || "asc";
 
-  function refreshAfterMutation() {
+  useEffect(() => {
+    setLocalLabels(labels.items);
+    setLocalTotal(labels.total);
+  }, [labels.items, labels.total]);
+
+  function sortLabels(items: RepositoryLabelSummary[]) {
+    return [...items].sort((left, right) => {
+      const ordering =
+        sortedBy === "total_issue_count"
+          ? left.counts.totalIssueCount - right.counts.totalIssueCount ||
+            left.name.localeCompare(right.name, undefined, {
+              sensitivity: "base",
+            })
+          : left.name.localeCompare(right.name, undefined, {
+              sensitivity: "base",
+            });
+      return direction === "desc" ? -ordering : ordering;
+    });
+  }
+
+  function refreshAfterMutation(
+    savedLabel: RepositoryLabelSummary,
+    mode: "create" | "edit",
+  ) {
     setEditing(null);
+    setDeleteError(null);
+    setStatus(mode === "create" ? "Label created." : "Label updated.");
+    setLocalLabels((current) => {
+      const withoutSaved = current.filter((item) => item.id !== savedLabel.id);
+      return sortLabels([...withoutSaved, savedLabel]);
+    });
+    if (mode === "create") {
+      setLocalTotal((value) => value + 1);
+    }
     router.refresh();
   }
 
@@ -318,6 +375,7 @@ export function RepositoryLabelsPage({
       return;
     }
     setDeleteError(null);
+    setStatus(null);
     setDeletingId(label.id);
     try {
       const response = await fetch(
@@ -332,6 +390,11 @@ export function RepositoryLabelsPage({
           { cause: envelope },
         );
       }
+      setLocalLabels((current) =>
+        current.filter((item) => item.id !== label.id),
+      );
+      setLocalTotal((value) => Math.max(0, value - 1));
+      setStatus("Label deleted.");
       router.refresh();
     } catch (error) {
       setDeleteError(errorMessage(error, "Label could not be deleted."));
@@ -354,7 +417,7 @@ export function RepositoryLabelsPage({
             </p>
             <h1 className="t-h1 mt-1">Labels</h1>
             <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
-              {labels.items.length} of {labels.total} labels match this view.
+              {localLabels.length} of {localTotal} labels match this view.
             </p>
           </div>
           {canWrite ? (
@@ -407,6 +470,12 @@ export function RepositoryLabelsPage({
           />
         ) : null}
 
+        {status ? (
+          <p className="chip ok" role="status">
+            {status}
+          </p>
+        ) : null}
+
         {deleteError ? (
           <p className="chip err" role="alert">
             {deleteError}
@@ -421,7 +490,7 @@ export function RepositoryLabelsPage({
             className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3"
             style={{ borderColor: "var(--line)" }}
           >
-            <span className="t-label">{labels.total} labels</span>
+            <span className="t-label">{localTotal} labels</span>
             <span className="t-xs">
               Sorted by{" "}
               {sortedBy === "total_issue_count" ? "issue count" : "name"}{" "}
@@ -429,8 +498,8 @@ export function RepositoryLabelsPage({
             </span>
           </div>
 
-          {labels.items.length ? (
-            labels.items.map((label) => {
+          {localLabels.length ? (
+            localLabels.map((label) => {
               const chipColor = colorValue(label.color);
               const issuesHref =
                 label.issuesHref ||
