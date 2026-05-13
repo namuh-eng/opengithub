@@ -6066,5 +6066,56 @@
       "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
     ],
     "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
+  },
+  {
+    "feature_id": "projects-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fixed the browser save path so the workflows editor keeps a live role=status region and announces exactly 'Workflow configuration saved.' after a successful PATCH. Focused system-Chrome Playwright workflows smoke passed against the real Next/Rust dev stack."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/workflows",
+          "PATCH /api/projects/{project_id}/workflows/{workflow_id}",
+          "POST /api/projects/{project_id}/automation/invocations"
+        ],
+        "notes": "projects_workspace_contract passed 15/15 without self-skip under .env.test, covering workflow defaults, update contract, permission guards, and Actions/GraphQL automation attribution."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required_for_mutation",
+          "permission_guard",
+          "repository_target_guard",
+          "no_test_self_skip"
+        ],
+        "notes": "Focused contract verifies workflow updates and automation invocations require authenticated project write permissions and linked repository write access. Browser smoke used the seeded signed-in session rather than bypassing auth."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Workflow save feedback is exposed through a persistent aria-live role=status region; E2E verifies accessible names for visible buttons, no dead controls, no horizontal overflow, and mobile reload smoke."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local verification stack healthy; postgres-test container reachable; .env.test present; per-worktree Cargo target writable.",
+      "Inspected rejected d0c6c427 diff and failure artifact; root cause was the focused E2E spending its timeout in raw cargo seed/navigation before the save assertion, plus the page only conditionally mounted the status node.",
+      "Updated projects-workflows E2E seeding to use ./hack/cargo_locked.sh and PROJECTS_WORKSPACE_E2E=1, then navigate directly to the seeded project workflows URL without weakening the save assertion.",
+      "Seeded project single-select field options so the real browser can choose target status values in the workflow editor.",
+      "Updated ProjectWorkflowSettingsPage to include an Editorial/tokenized persistent aria-live role=status region that announces exactly Workflow configuration saved. after successful save.",
+      "Killed a stale non-OpenGitHub Linear next-server on port 3015 before rerunning the required browser command.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --test projects_workspace_contract -- --nocapture: 15 passed, 0 failed, 0 ignored; no self-skip.",
+      "Ran cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium: 2 passed including the signed-in automation smoke."
+    ],
+    "bugs_found": [
+      "The workflow save feedback role=status was mounted only after a message existed, making the browser acceptance brittle around the successful save announcement.",
+      "The focused E2E used raw cargo and list-page discovery, which could consume the test timeout or hit a stale app on port 3015 before reaching the save assertion."
+    ],
+    "fix_description": "Added a persistent live status region for workflow saves, seeded selectable field options, and made the focused browser smoke use the repo cargo wrapper plus the seeded project workflow URL while preserving the exact Playwright save assertion."
   }
 ]

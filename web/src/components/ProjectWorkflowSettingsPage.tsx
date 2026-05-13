@@ -227,6 +227,7 @@ export function ProjectWorkflowSettingsPage({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="t-label">Project workflows</div>
           <h1 className="t-h1" style={{ marginTop: 6 }}>
+            <span className="sr-only">Project workflows: </span>
             {currentSettings.project.title}
           </h1>
           <p
@@ -669,15 +670,25 @@ export function ProjectWorkflowSettingsPage({
                     Close
                   </button>
                 </div>
-                {saveState.message ? (
+                <p
+                  aria-atomic="true"
+                  aria-live="polite"
+                  className="t-xs"
+                  role="status"
+                  style={{
+                    color: "var(--ink-3)",
+                    marginTop: 10,
+                    minHeight: 16,
+                  }}
+                >
+                  {saveState.status === "saved" ? saveState.message : ""}
+                </p>
+                {saveState.status === "error" && saveState.message ? (
                   <p
                     className="t-xs"
-                    role={saveState.status === "error" ? "alert" : "status"}
+                    role="alert"
                     style={{
-                      color:
-                        saveState.status === "error"
-                          ? "var(--err)"
-                          : "var(--ink-3)",
+                      color: "var(--err)",
                       marginTop: 10,
                     }}
                   >
