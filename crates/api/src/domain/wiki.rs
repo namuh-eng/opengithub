@@ -972,7 +972,7 @@ pub async fn repository_wiki_pages_for_actor_by_owner_name(
     else {
         return Ok(None);
     };
-    let wiki_repository_id = ensure_wiki_repository(pool, &repository).await?;
+    let (wiki_repository_id, _) = ensure_wiki_repository(pool, &repository).await?;
     let pages = wiki_page_summaries(pool, wiki_repository_id, None).await?;
     Ok(Some(WikiPagesIndex {
         repository: repository_summary,
@@ -1099,7 +1099,7 @@ pub async fn revert_repository_wiki_page_by_owner_name(
     else {
         return Ok(None);
     };
-    let wiki_repository_id = ensure_wiki_repository(pool, &repository).await?;
+    let (wiki_repository_id, _) = ensure_wiki_repository(pool, &repository).await?;
     let rows = sqlx::query(
         r#"
         SELECT wiki_pages.id AS page_id,
@@ -1286,22 +1286,25 @@ async fn editable_wiki_context(
 async fn ensure_wiki_repository(
     pool: &PgPool,
     repository: &Repository,
-) -> Result<Uuid, RepositoryError> {
+) -> Result<(Uuid, PathBuf), RepositoryError> {
     let storage_path = wiki_storage_path(repository);
-    sqlx::query_scalar::<_, Uuid>(
+    let row = sqlx::query(
         r#"
         INSERT INTO wiki_repositories (repository_id, git_storage_kind, git_storage_path, default_branch)
         VALUES ($1, 'local_bare', $2, 'master')
         ON CONFLICT (repository_id)
         DO UPDATE SET git_storage_path = COALESCE(wiki_repositories.git_storage_path, EXCLUDED.git_storage_path)
-        RETURNING id
+        RETURNING id, git_storage_path
         "#,
     )
     .bind(repository.id)
     .bind(storage_path.to_string_lossy().to_string())
     .fetch_one(pool)
     .await
-    .map_err(RepositoryError::from)
+    .map_err(RepositoryError::from)?;
+    let wiki_repository_id: Uuid = row.get("id");
+    let git_storage_path: String = row.get("git_storage_path");
+    Ok((wiki_repository_id, PathBuf::from(git_storage_path)))
 }
 
 async fn save_wiki_page(
@@ -1323,7 +1326,7 @@ async fn save_wiki_page(
     let markdown = validate_markdown(&request.markdown)?;
     let image_references = extract_image_references(&markdown)?;
     let message = validate_commit_message(&request.message)?;
-    let wiki_repository_id = ensure_wiki_repository(pool, &repository).await?;
+    let (wiki_repository_id, storage_path) = ensure_wiki_repository(pool, &repository).await?;
     let default_branch: String =
         sqlx::query_scalar("SELECT default_branch FROM wiki_repositories WHERE id = $1")
             .bind(wiki_repository_id)
@@ -1481,8 +1484,8 @@ async fn save_wiki_page(
         .await?;
     }
 
-    let storage_path = publish_local_wiki_commit(
-        &repository,
+    publish_local_wiki_commit(
+        &storage_path,
         &page_slug,
         &path,
         &markdown,
@@ -1777,7 +1780,7 @@ async fn wiki_page_from_row(
         content_sha: rendered.content_sha,
         outline,
         edit_href: can_edit.then(|| format!("{}/_edit", wiki_page_href(repository, &slug))),
-        history_href: format!("{}/_history", wiki_page_href(repository, &slug)),
+        history_href: wiki_page_history_href(repository, &slug),
     })
 }
 
@@ -2360,7 +2363,7 @@ fn wiki_history_href(
     page_size: i64,
 ) -> String {
     let base = slug
-        .map(|slug| format!("{}/_history", wiki_page_href(repository, slug)))
+        .map(|slug| wiki_page_history_href(repository, slug))
         .unwrap_or_else(|| format!("{}/_history", wiki_home_href(repository)));
     let mut params = Vec::new();
     if page > 1 {
@@ -2383,9 +2386,17 @@ fn wiki_revision_history_href(
 ) -> String {
     let revision = commit_oid.unwrap_or("unknown");
     format!(
-        "{}/_history/{}",
-        wiki_page_href(repository, slug),
+        "{}/{}",
+        wiki_page_history_href(repository, slug),
         percent_encode_segment(revision)
+    )
+}
+
+fn wiki_page_history_href(repository: &Repository, slug: &str) -> String {
+    format!(
+        "{}/{}/_history",
+        wiki_home_href(repository),
+        percent_encode_path(slug)
     )
 }
 
@@ -2562,14 +2573,13 @@ fn wiki_commit_oid(repository: &Repository, slug: &str, markdown: &str, message:
 }
 
 fn publish_local_wiki_commit(
-    repository: &Repository,
+    bare_path: &Path,
     slug: &str,
     path: &str,
     markdown: &str,
     message: &str,
     default_branch: &str,
 ) -> Result<PathBuf, RepositoryError> {
-    let bare_path = wiki_storage_path(repository);
     if let Some(parent) = bare_path.parent() {
         fs::create_dir_all(parent).map_err(|_| RepositoryError::GitStorageFailed)?;
     }
@@ -2582,7 +2592,7 @@ fn publish_local_wiki_commit(
     let work_path = std::env::temp_dir().join(format!("opengithub-wiki-{}", Uuid::new_v4()));
     fs::create_dir_all(&work_path).map_err(|_| RepositoryError::GitStorageFailed)?;
     let result = publish_local_wiki_commit_inner(
-        &bare_path,
+        bare_path,
         &work_path,
         slug,
         path,
@@ -2591,7 +2601,7 @@ fn publish_local_wiki_commit(
         default_branch,
     );
     let _ = fs::remove_dir_all(&work_path);
-    result.map(|_| bare_path)
+    result.map(|_| bare_path.to_path_buf())
 }
 
 fn publish_local_wiki_commit_inner(

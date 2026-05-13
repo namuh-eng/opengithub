@@ -6216,5 +6216,60 @@
       "ralph/screenshots/build/projects-008-final-mobile.jpg"
     ],
     "confidence": "high"
+  },
+  {
+    "feature_id": "wiki-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh QA/fix lane verified repository wiki read/write behavior against the real localhost:55433 Postgres test DB and focused Chromium browser flow. Fixed Home wiki history links to use /wiki/Home/_history for scoped history/compare, made local wiki Git storage deterministic under parallel tests by persisting and reusing the wiki repository storage path, and tightened the focused Playwright locators to exact accessible names."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/wiki",
+          "GET /api/repos/{owner}/{repo}/wiki/{slug}",
+          "GET /api/repos/{owner}/{repo}/wiki/_history",
+          "GET /api/repos/{owner}/{repo}/wiki/{slug}/_history",
+          "GET /api/repos/{owner}/{repo}/wiki/_compare",
+          "POST /api/repos/{owner}/{repo}/wiki/pages",
+          "PATCH /api/repos/{owner}/{repo}/wiki/pages/{slug}",
+          "POST /api/repos/{owner}/{repo}/wiki/preview",
+          "POST /api/repos/{owner}/{repo}/wiki/revert"
+        ],
+        "notes": "DB-backed repository_wiki_contract passed 1/1 and repository_wiki_write_contract passed 2/2 with .env.test loaded; no DB self-skip. Contract evidence covers markdown rendering, clone URL, disabled/private/not-found states, page/revision/history/compare shapes, preview/save/update/revert responses, image asset rows, git metadata rows, and bare .wiki.git storage creation."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_and_permission_states",
+          "private_repository_not_found",
+          "disabled_wiki_state",
+          "data_exposure"
+        ],
+        "notes": "Read contract verifies private wiki anonymous access returns not_found, disabled wiki returns explicit disabled state without page data, and compare output does not expose google-client-secret. Write contract exercises permissioned owner write paths and reader forbidden paths without stack/env leakage."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Chromium E2E passed visible page navigation plus expectNoDeadControls and expectNoHorizontalOverflow for desktop and mobile wiki layouts."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy with postgres-test container up, .env.test present, and per-worktree Cargo target writable.",
+      "Ran schema sanity through podman exec psql against localhost:55433/opengithub_test; relevant wiki tables present: wiki_repositories, wiki_pages, wiki_page_revisions, wiki_page_toc_cache, wiki_git_commits, wiki_assets, wiki_revert_events.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_contract -- --nocapture: 1 passed, 0 failed, 0 ignored/self-skipped.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract -- --nocapture: 2 passed, 0 failed, 0 ignored/self-skipped; storage_dir/{owner}-{repo}.wiki.git assertion passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran from web/ with .env.test loaded and system Chrome: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-wiki.spec.ts --project=chromium: 2 passed including setup and chromium wiki flow; not self-skipped/no-detail."
+    ],
+    "bugs_found": [
+      "Home page compare/history links collapsed to /wiki/_history instead of the page-scoped /wiki/Home/_history expected by the contract.",
+      "Wiki writes recomputed OPENGITHUB_GIT_STORAGE_DIR after async test-level environment changes, so parallel write/revert tests could publish into the other test's temp storage and fail the .wiki.git existence assertion.",
+      "Focused browser test locators were ambiguous because rendered markdown headings and revision links also contained Wiki/Home/Architecture accessible names."
+    ],
+    "fix_description": "Fixed page-scoped wiki history URL generation, made local wiki Git publishing reuse the storage path persisted on wiki_repositories instead of rereading mutable process env during publish, corrected the private repository read-contract setup to create the private repo as its owner, and made focused E2E locators exact where the page intentionally contains repeated names."
   }
 ]

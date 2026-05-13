@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 89,
+    "features_passed": 90,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 85,
+      "pass": 86,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 81,
+      "pass": 82,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 81,
+      "pass": 82,
       "fail": 0,
       "skip": 4
     },
     "accessibility": {
-      "pass": 47,
+      "pass": 48,
       "fail": 0,
       "skip": 39
     }
@@ -3004,10 +3004,46 @@
       "feature_id": "wiki-001",
       "description": "Render repository wiki home and page-reading experience with Markdown content, p",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh QA/fix lane verified repository wiki read/write behavior against the real localhost:55433 Postgres test DB and focused Chromium browser flow. Fixed Home wiki history links to use /wiki/Home/_history for scoped history/compare, made local wiki Git storage deterministic under parallel tests by persisting and reusing the wiki repository storage path, and tightened the focused Playwright locators to exact accessible names."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/wiki",
+            "GET /api/repos/{owner}/{repo}/wiki/{slug}",
+            "GET /api/repos/{owner}/{repo}/wiki/_history",
+            "GET /api/repos/{owner}/{repo}/wiki/{slug}/_history",
+            "GET /api/repos/{owner}/{repo}/wiki/_compare",
+            "POST /api/repos/{owner}/{repo}/wiki/pages",
+            "PATCH /api/repos/{owner}/{repo}/wiki/pages/{slug}",
+            "POST /api/repos/{owner}/{repo}/wiki/preview",
+            "POST /api/repos/{owner}/{repo}/wiki/revert"
+          ],
+          "notes": "DB-backed repository_wiki_contract passed 1/1 and repository_wiki_write_contract passed 2/2 with .env.test loaded; no DB self-skip. Contract evidence covers markdown rendering, clone URL, disabled/private/not-found states, page/revision/history/compare shapes, preview/save/update/revert responses, image asset rows, git metadata rows, and bare .wiki.git storage creation."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_and_permission_states",
+            "private_repository_not_found",
+            "disabled_wiki_state",
+            "data_exposure"
+          ],
+          "notes": "Read contract verifies private wiki anonymous access returns not_found, disabled wiki returns explicit disabled state without page data, and compare output does not expose google-client-secret. Write contract exercises permissioned owner write paths and reader forbidden paths without stack/env leakage."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Chromium E2E passed visible page navigation plus expectNoDeadControls and expectNoHorizontalOverflow for desktop and mobile wiki layouts."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "wiki-002",
