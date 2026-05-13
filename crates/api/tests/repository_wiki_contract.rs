@@ -508,7 +508,7 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
             description: Some("Private wiki".to_owned()),
             visibility: RepositoryVisibility::Private,
             default_branch: Some("main".to_owned()),
-            created_by_user_id: owner.id,
+            created_by_user_id: private_owner.id,
         },
     )
     .await

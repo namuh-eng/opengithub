@@ -6216,5 +6216,56 @@
       "ralph/screenshots/build/projects-008-final-mobile.jpg"
     ],
     "confidence": "high"
+  },
+  {
+    "feature_id": "wiki-001",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused system-Chrome Playwright wiki acceptance passed after scoping the slug navigation click to the Wiki pages sidebar and verifying the active page state. Product fixes preserve /wiki as the Home reader while using explicit /wiki/Home paths for Home edit/history/revision actions. Killed a stale non-OpenGitHub namuh-linear Next listener on :3015 before the final browser run."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "DB-backed repository_wiki_contract (1 test) and repository_wiki_write_contract (2 tests) passed against .env.test localhost:55433 with no skips. Fixed Home history links, raw validation messages for wiki security validation, a private-repo fixture owner mismatch, and write-contract env serialization."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Repository wiki contracts cover private repository not-found behavior for anonymous users, disabled wiki state, permission-gated write/revert flows, markdown sanitization, and no secret leakage in checked responses."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright exercises role/name based navigation, copy status, mobile reload, no dead controls, and no horizontal overflow. E2E selectors were tightened to exact/scoped accessible names to avoid permalink/revision-link ambiguity."
+      }
+    },
+    "tested_steps": [
+      "make doctor => Local verification stack is healthy (postgres-test up, .env.test present, per-worktree Cargo target writable).",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_contract -- --nocapture => 1 passed, 0 failed, 0 ignored.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract -- --nocapture => 2 passed, 0 failed, 0 ignored.",
+      "make check => Cargo check, web typecheck, Clippy, and Biome passed.",
+      "From web/: set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-wiki.spec.ts --reporter=line => 2 passed."
+    ],
+    "bugs_found": [
+      {
+        "description": "Home wiki edit/history/revision links reused the canonical /wiki reader href, producing ambiguous or broken /wiki/_edit and /wiki/_history/<rev> paths instead of page-scoped /wiki/Home/... paths.",
+        "fix": "Added explicit slug href generation for page-scoped wiki actions while keeping /wiki as the Home reader."
+      },
+      {
+        "description": "Wiki validation error envelopes exposed the generic RepositoryError prefix for InvalidSecurityPolicy messages, breaking the compare contract and user-facing copy consistency.",
+        "fix": "Mapped InvalidSecurityPolicy to validation_failed with the raw domain message."
+      },
+      {
+        "description": "Repository wiki write contract tests raced through a process-global OPENGITHUB_GIT_STORAGE_DIR environment variable when run in parallel.",
+        "fix": "Serialized the write/revert contract tests around the storage env mutation."
+      },
+      {
+        "description": "The E2E slug navigation assertion used broad accessible-name lookups that could match revision/permalink links and did not prove the sidebar page link drove navigation.",
+        "fix": "Scoped the Architecture Guide click to the Wiki pages navigation, used exact accessible names, and asserted the sidebar active state after navigation."
+      }
+    ],
+    "known_gaps": [],
+    "fix_description": "Fixed wiki Home page-scoped action URLs, validation error messages, contract determinism, and focused browser acceptance selector precision for slug navigation.",
+    "timestamp": "2026-05-13T19:10:00Z"
   }
 ]

@@ -1776,8 +1776,8 @@ async fn wiki_page_from_row(
         html: rendered.html,
         content_sha: rendered.content_sha,
         outline,
-        edit_href: can_edit.then(|| format!("{}/_edit", wiki_page_href(repository, &slug))),
-        history_href: format!("{}/_history", wiki_page_href(repository, &slug)),
+        edit_href: can_edit.then(|| format!("{}/_edit", wiki_page_slug_href(repository, &slug))),
+        history_href: format!("{}/_history", wiki_page_slug_href(repository, &slug)),
     })
 }
 
@@ -2353,6 +2353,14 @@ fn wiki_page_href(repository: &Repository, slug: &str) -> String {
     )
 }
 
+fn wiki_page_slug_href(repository: &Repository, slug: &str) -> String {
+    format!(
+        "{}/{}",
+        wiki_home_href(repository),
+        percent_encode_path(slug)
+    )
+}
+
 fn wiki_history_href(
     repository: &Repository,
     slug: Option<&str>,
@@ -2360,7 +2368,7 @@ fn wiki_history_href(
     page_size: i64,
 ) -> String {
     let base = slug
-        .map(|slug| format!("{}/_history", wiki_page_href(repository, slug)))
+        .map(|slug| format!("{}/_history", wiki_page_slug_href(repository, slug)))
         .unwrap_or_else(|| format!("{}/_history", wiki_home_href(repository)));
     let mut params = Vec::new();
     if page > 1 {
@@ -2384,7 +2392,7 @@ fn wiki_revision_history_href(
     let revision = commit_oid.unwrap_or("unknown");
     format!(
         "{}/_history/{}",
-        wiki_page_href(repository, slug),
+        wiki_page_slug_href(repository, slug),
         percent_encode_segment(revision)
     )
 }

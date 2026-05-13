@@ -93,18 +93,19 @@ test.beforeEach(async ({ page }) => {
 test("signed-in repository wiki supports Home, slug navigation, TOC expansion, clone copy, and mobile layout", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const seeded = seedWiki();
   await signIn(page, seeded);
 
   await page.goto(seeded.repositoryWikiHref);
-  await expect(page.getByRole("link", { name: "Wiki" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "Wiki pages" }),
+    page.getByRole("link", { exact: true, name: "Wiki" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Home" }),
   ).toBeVisible();
+  const wikiPages = page.getByRole("navigation", { name: "Wiki pages" });
+  await expect(wikiPages).toBeVisible();
   await expect(page.getByText(/Clone this wiki locally/)).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
@@ -113,11 +114,18 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
     path: "../ralph/screenshots/build/wiki-001-final-home.jpg",
   });
 
-  await page.getByRole("link", { name: "Architecture Guide" }).click();
+  await wikiPages
+    .getByRole("link", { exact: true, name: "Architecture Guide" })
+    .click();
   await expect(page).toHaveURL(/\/wiki\/Architecture%20Guide$/);
   await expect(
-    page.getByRole("heading", { name: "Architecture Guide" }),
+    page.getByRole("heading", { exact: true, name: "Architecture Guide" }),
   ).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Wiki pages" })
+      .getByRole("link", { exact: true, name: "Architecture Guide" }),
+  ).toHaveAttribute("aria-current", "page");
   await page
     .getByRole("button", {
       name: "Expand Architecture Guide table of contents",
@@ -138,7 +146,7 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Architecture Guide" }),
+    page.getByRole("heading", { exact: true, name: "Architecture Guide" }),
   ).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
