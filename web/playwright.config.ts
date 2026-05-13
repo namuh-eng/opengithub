@@ -38,7 +38,9 @@ export default defineConfig({
   webServer: {
     command: "cd .. && make dev",
     url: `http://localhost:${port}`,
-    reuseExistingServer: true,
+    // Always launch the web server from this worktree so acceptance tests cannot
+    // accidentally exercise a stale sibling checkout already bound to :3015.
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       APP_URL: `http://localhost:${port}`,

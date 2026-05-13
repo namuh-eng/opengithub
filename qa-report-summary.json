@@ -2910,7 +2910,7 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "System-Chrome Playwright workflow settings smoke passed with .env.test after fixing the projects workspace seed, stable button accessibility enumeration, mobile reload determinism, and stale :3015 listener handling."
+          "notes": "System-Chrome Playwright workflow settings smoke passed from this worktree with .env.test; the Save workflow click produced the accessible role=status confirmation \"Workflow configuration saved.\" and the full desktop/mobile acceptance path completed."
         },
         "api_contract": {
           "status": "pass",
@@ -2930,7 +2930,7 @@
             "repository target filtering",
             "no stale app on :3015 for browser gate"
           ],
-          "notes": "Workflow targets require linked repositories and actor write permission; auto-add only considers projects the actor can write and matching repository targets, so automation does not bypass repository/project permissions."
+          "notes": "Workflow targets require linked repositories and actor write permission; auto-add only considers projects the actor can write and matching repository targets. Playwright now refuses to reuse an existing :3015 server, preventing stale sibling checkouts from satisfying or breaking the browser gate."
         },
         "accessibility": {
           "status": "pass",
