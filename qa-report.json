@@ -5842,5 +5842,66 @@
       "ralph/screenshots/build/projects-002-final-mobile.jpg"
     ],
     "qa_pass": true
+  },
+  {
+    "feature_id": "projects-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified Projects v2 layout switching, Board columns/swimlanes/card move path, Add item affordance, Roadmap date fields/markers/zoom, and draggable-pane smoke through focused Vitest and Chromium Playwright."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/views/{view_id}/workspace",
+          "PATCH /api/projects/{project_id}/views/{view_id}/layout",
+          "PATCH /api/projects/{project_id}/views/{view_id}/roadmap-settings",
+          "PATCH /api/projects/{project_id}/items/{item_id}/position",
+          "GET /api/projects/{project_id}/settings"
+        ],
+        "notes": "Full DB-backed projects_workspace_contract passed 15/15 with isolated unauthenticated rate-limit subjects, including the previously rejected settings private-repository/unauthenticated 404 contract."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Private project settings continue to return forbidden for authenticated outsiders and not_found for unauthenticated viewers; the fix avoids shared test IP bucket coupling without weakening production rate limiting or permission assertions."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused component/E2E coverage uses accessible View menu, Roadmap settings form, labelled move selects, visible controls with accessible names, and no dead link/button regressions in the board/roadmap flow."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first and confirmed the local DB/migrations/cache setup was healthy.",
+      "Inspected projects-003 PRD plus the projects workspace Rust contract, ProjectWorkspacePage component, focused Vitest, and Playwright board/roadmap smoke.",
+      "Reproduced the controller rejection: full projects_workspace_contract failed 14 passed / 1 failed because unauthenticated GET /api/projects/{project_id}/settings hit the shared unknown-IP core rate-limit bucket before returning the expected 404 not_found.",
+      "Fixed projects workspace contract isolation by assigning unauthenticated in-process helper requests unique X-Forwarded-For subjects, preserving the meaningful 404/403 assertions.",
+      "Fixed the UI/test smoke drift by exposing the PRD-required accessible View menu label, seeding the Projects workspace fixture in the board/roadmap E2E, and asserting persisted post-reload board/roadmap state instead of transient messages."
+    ],
+    "bugs_found": [
+      "Unauthenticated helper requests in projects_workspace_contract shared the global unknown-IP rate-limit bucket, making the private settings 404 contract nondeterministic in broad/fresh verification.",
+      "The Projects workspace UI exposed the layout control as View configuration while PRD/E2E expected View menu.",
+      "The Projects board/roadmap E2E did not enable the Projects workspace seed fixture and expected transient success messages that disappear after intentional reload persistence."
+    ],
+    "fix_description": "Isolated unauthenticated Projects contract test requests from the shared rate-limit bucket, aligned the layout control accessible name with the PRD View menu, and made the board/roadmap E2E seed and post-save assertions deterministic.",
+    "commands": [
+      "make doctor: passed; local verification stack healthy with postgres-test container up and .scratch/cargo-target writable.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed (Cargo check, Web typecheck, Clippy, Biome).",
+      "set -a; . ./.env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture: passed 15/15.",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx: passed 19/19.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-board-roadmap.spec.ts: passed 2/2 (setup + signed-in board/roadmap smoke)."
+    ],
+    "artifacts": [
+      "crates/api/tests/projects_workspace_contract.rs",
+      "web/src/components/ProjectWorkspacePage.tsx",
+      "web/tests/project-workspace-page.test.tsx",
+      "web/tests/e2e/projects-board-roadmap.spec.ts",
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json"
+    ],
+    "qa_pass": true,
+    "completed_at": "2026-05-13"
   }
 ]

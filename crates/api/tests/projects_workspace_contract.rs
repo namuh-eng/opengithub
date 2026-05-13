@@ -17,11 +17,13 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
+use std::sync::atomic::{AtomicU32, Ordering};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+static UNAUTHENTICATED_REQUEST_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 async fn database_pool() -> Option<PgPool> {
     let database_url = std::env::var("TEST_DATABASE_URL")
@@ -460,6 +462,8 @@ async fn get_json(
     let mut builder = Request::builder().method(Method::GET).uri(uri);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
+    } else {
+        builder = builder.header("x-forwarded-for", unauthenticated_test_ip());
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
@@ -486,6 +490,8 @@ async fn patch_json(
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
+    } else {
+        builder = builder.header("x-forwarded-for", unauthenticated_test_ip());
     }
     let response = app
         .oneshot(
@@ -516,6 +522,8 @@ async fn post_json(
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
+    } else {
+        builder = builder.header("x-forwarded-for", unauthenticated_test_ip());
     }
     let response = app
         .oneshot(
@@ -542,6 +550,8 @@ async fn delete_json(
     let mut builder = Request::builder().method(Method::DELETE).uri(uri);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
+    } else {
+        builder = builder.header("x-forwarded-for", unauthenticated_test_ip());
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
@@ -568,6 +578,8 @@ async fn delete_json_body(
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
+    } else {
+        builder = builder.header("x-forwarded-for", unauthenticated_test_ip());
     }
     let response = app
         .oneshot(
@@ -584,6 +596,11 @@ async fn delete_json_body(
         .expect("body should read");
     let value = serde_json::from_slice(&bytes).expect("response should be JSON");
     (status, headers, value)
+}
+
+fn unauthenticated_test_ip() -> String {
+    let id = UNAUTHENTICATED_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("projects-workspace-contract-unauthenticated-{id}")
 }
 
 #[tokio::test]

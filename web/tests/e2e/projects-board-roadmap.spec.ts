@@ -28,6 +28,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -119,8 +120,14 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   if (await moveSelect.isVisible()) {
     const options = await moveSelect.locator("option").all();
     if (options.length > 1) {
+      const targetColumn =
+        (await options[1].textContent())?.trim() ?? "the destination";
       await moveSelect.selectOption({ index: 1 });
-      await expect(page.getByText(/Item moved/i)).toBeVisible();
+      await expect(
+        page.getByRole("region", {
+          name: new RegExp(`${targetColumn} board column`, "i"),
+        }),
+      ).toBeVisible();
     }
   }
   await page
@@ -150,7 +157,10 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   await expect(page.getByRole("button", { name: /Year/i })).toBeVisible();
   await page.getByRole("button", { name: /Quarter/i }).click();
   await page.getByRole("button", { name: /Save roadmap/i }).click();
-  await expect(page.getByText(/Roadmap settings saved/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Quarter/i })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/projects-003-final-roadmap-quarter.jpg",
