@@ -5644,6 +5644,16 @@ fn project_from_row(row: sqlx::postgres::PgRow) -> Result<ProjectRow, ProjectsEr
         .unwrap_or_else(|| "unknown".to_owned());
     let number: i64 = row.try_get("number")?;
     let id: Uuid = row.try_get("id")?;
+    let is_organization_project = row
+        .try_get::<Option<String>, _>("owner_org_slug")
+        .ok()
+        .flatten()
+        .is_some();
+    let project_href_prefix = if is_organization_project {
+        format!("/orgs/{owner}")
+    } else {
+        format!("/{owner}")
+    };
     let default_repository = row
         .try_get::<Option<Uuid>, _>("default_repository_id")?
         .map(|repo_id| {
@@ -5686,8 +5696,8 @@ fn project_from_row(row: sqlx::postgres::PgRow) -> Result<ProjectRow, ProjectsEr
         description: row.try_get("short_description")?,
         state: state.clone(),
         visibility: row.try_get("visibility")?,
-        href: format!("/{owner}/projects/{number}"),
-        workspace_href: format!("/{owner}/projects/{number}/views/1"),
+        href: format!("{project_href_prefix}/projects/{number}"),
+        workspace_href: format!("{project_href_prefix}/projects/{number}/views/1"),
         owner,
         is_template,
         default_repository,
@@ -5727,6 +5737,7 @@ async fn workspace_project_row(
           projects.state, projects.visibility,
           projects.owner_user_id = $2 AS viewer_is_owner,
           COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+          owner_org.slug AS owner_org_slug,
           project_permissions.role AS project_role,
           organization_memberships.role AS organization_role,
           organization_policy_settings.projects_base_permission AS organization_base_role
@@ -5754,6 +5765,14 @@ async fn workspace_project_row(
         .unwrap_or_else(|| "unknown".to_owned());
     let number: i64 = row.try_get("number")?;
     let viewer_role = workspace_role_from_row(&row)?;
+    let owner_prefix = if row
+        .try_get::<Option<String>, _>("owner_org_slug")?
+        .is_some()
+    {
+        format!("/orgs/{owner}")
+    } else {
+        format!("/{owner}")
+    };
     Ok(ProjectWorkspaceProject {
         id: project_id,
         number,
@@ -5761,8 +5780,8 @@ async fn workspace_project_row(
         description: row.try_get("short_description")?,
         state: row.try_get("state")?,
         visibility: row.try_get("visibility")?,
-        href: format!("/{owner}/projects/{number}"),
-        workspace_href: format!("/{owner}/projects/{number}/views/1"),
+        href: format!("{owner_prefix}/projects/{number}"),
+        workspace_href: format!("{owner_prefix}/projects/{number}/views/1"),
         owner,
         viewer_role,
     })
@@ -5776,9 +5795,10 @@ fn workspace_role_from_row(row: &sqlx::postgres::PgRow) -> Result<Option<String>
     let project_role: Option<String> = row.try_get("project_role")?;
     let org_role: Option<String> = row.try_get("organization_role")?;
     let org_base_role: Option<String> = row.try_get("organization_base_role")?;
-    Ok(project_role
-        .or(org_role)
-        .or(org_base_role.filter(|role| role != "none")))
+    let org_base_role = org_role
+        .as_ref()
+        .and_then(|_| org_base_role.filter(|role| role != "none"));
+    Ok(project_role.or(org_role).or(org_base_role))
 }
 
 async fn project_settings_general(
@@ -5915,8 +5935,12 @@ async fn project_settings_repositories(
     .await?;
 
     let mut links = Vec::new();
+    let mut seen_repository_ids = Vec::new();
     for row in rows {
         let repository_id: Uuid = row.get("repository_id");
+        if seen_repository_ids.contains(&repository_id) {
+            continue;
+        }
         let visibility: String = row.get("visibility");
         let viewer_permission = match viewer_user_id {
             Some(user_id) => repository_permission_for_user(pool, repository_id, user_id)
@@ -5927,6 +5951,7 @@ async fn project_settings_repositories(
         if visibility != "public" && viewer_permission.is_none() {
             continue;
         }
+        seen_repository_ids.push(repository_id);
         let owner = row
             .try_get::<Option<String>, _>("owner_login")?
             .unwrap_or_else(|| "unknown".to_owned());
@@ -6587,6 +6612,7 @@ async fn workspace_fields(
         FROM project_fields
         WHERE project_id = $1
           AND deleted_at IS NULL
+          AND field_type <> 'title'
         ORDER BY position, created_at
         "#,
     )

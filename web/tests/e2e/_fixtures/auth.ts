@@ -45,6 +45,7 @@ const SCENE_ENVS = {
   orgProfile: { ORG_PROFILE_E2E: "1" },
   ownerPackages: { OWNER_PACKAGES_E2E: "1" },
   accountSecurity: { ACCOUNT_SECURITY_E2E: "1" },
+  projectsWorkspace: { PROJECTS_WORKSPACE_E2E: "1" },
 } as const satisfies Record<string, Record<string, string>>;
 
 export type Scene = keyof typeof SCENE_ENVS;
@@ -71,6 +72,7 @@ export type SeedResult = {
     organizationProfile: string;
     organizationEmptyTeams: string;
     repositoryWiki: string;
+    projectsWorkspace: string;
   };
   raw: Record<string, unknown>;
 };
@@ -93,6 +95,7 @@ type RawSeedOutput = {
   organizationProfileHref: string;
   organizationEmptyTeamsHref: string;
   repositoryWikiHref: string;
+  projectsWorkspaceHref: string;
 };
 
 const databaseUrl = () =>
@@ -160,6 +163,7 @@ const toSeedResult = (raw: RawSeedOutput): SeedResult => ({
     organizationProfile: raw.organizationProfileHref,
     organizationEmptyTeams: raw.organizationEmptyTeamsHref,
     repositoryWiki: raw.repositoryWikiHref,
+    projectsWorkspace: raw.projectsWorkspaceHref,
   },
   raw: raw as unknown as Record<string, unknown>,
 });

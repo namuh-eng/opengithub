@@ -5771,5 +5771,76 @@
       "Template rows returned projectHref without the workspace /views/1 target."
     ],
     "fix_description": "Updated ProjectsListPage menu/banner interactions and Rust project list filtering/count/template href logic; extended focused UI and DB contract tests."
+  },
+  {
+    "feature_id": "projects-002",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified the Projects v2 table workspace against the real test Postgres using the shared Playwright auth fixture. The spec now seeds a dedicated projectsWorkspace scene, signs in through _fixtures/auth.ts, opens the canonical /orgs/namuh/projects/1/views/1 workspace directly, and asserts saved views, filter/search, table rows, inline editor, add-row panel, no dead controls, and no horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workspace",
+          "PATCH /api/projects/:project_id/items/:item_id/fields/:field_id",
+          "POST /api/projects/:project_id/items",
+          "POST /api/projects/:project_id/items/bulk",
+          "PATCH /api/projects/:project_id/items/:item_id/position",
+          "DELETE /api/projects/:project_id/items/:item_id",
+          "PATCH /api/projects/:project_id/views/:view_id/state",
+          "PATCH /api/projects/:project_id/views/:view_id/layout",
+          "PATCH /api/projects/:project_id/views/:view_id/roadmap-settings"
+        ],
+        "notes": "DB-backed projects_workspace_contract passed 15 tests covering workspace reads, private guards, field edits, native issue title sync, audit events, add/reorder/remove, board grouped moves, saved view/layout/roadmap state, validation errors, and settings repository visibility."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private_project_forbidden_for_authenticated_outsider",
+          "anonymous_private_project_not_found",
+          "private_repository_link_non_leakage",
+          "org_base_permission_requires_membership"
+        ],
+        "notes": "Preserved the projects permission hardening from the rejected branch: organization base project permissions are scoped to members, unreadable private repositories are filtered/deduped, and private workspace visibility remains covered by Rust contract tests."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and E2E checks assert accessible saved-view navigation, labeled searchbox, named View configuration/field editor/add controls, no href=# dead links, and no horizontal overflow."
+      }
+    },
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor: passed; local verification stack healthy with opengithub-postgres-test reachable on :55433.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed; Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test --test projects_workspace_contract: passed; 15 passed, 0 failed.",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx: passed; 1 file / 19 tests passed.",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workspace.spec.ts --project=chromium: passed; 2 passed including auth setup and the Chromium Projects workspace spec, no self-skip."
+    ],
+    "bugs_found": [
+      "The rejected branch's Playwright spec used inline execFileSync seeding, contrary to web/tests/e2e/AGENTS.md for new signed-in specs.",
+      "The previous browser spec navigated by clicking from the org projects list and could time out while Next.js compiled the destination route; the dedicated DB-backed workspace href from the fixture removes that navigation race while still exercising the real workspace page.",
+      "The E2E expected navigation name /Project views/i but the product exposes the accessible landmark as Saved project views, causing a real browser timeout after the workspace rendered.",
+      "The dashboard seeder lacked a fixture-scoped Projects workspace href, so projects-002 browser coverage could not reliably target a real seeded workspace through _fixtures/auth.ts."
+    ],
+    "fix_description": "Kept the product hardening from the rejected projects-002 branch, added a fixture-scoped PROJECTS_WORKSPACE_E2E scene and projectsWorkspace href to the shared Playwright auth fixture, rewrote the Projects workspace E2E to use _fixtures/auth.ts instead of inline seeding, targeted the canonical seeded org workspace directly, aligned the saved-view navigation assertion with the actual accessible name, and extended the spec timeout to cover first-run compile/seeding without masking self-skips.",
+    "commands": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test --test projects_workspace_contract",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workspace.spec.ts --project=chromium"
+    ],
+    "artifacts": [
+      "web/test-results/projects-workspace-Project-61ec6-d-row-and-final-screenshots-chromium/trace.zip from the initial failed run (navigation-name timeout evidence)",
+      "ralph/screenshots/build/projects-002-final-default-table.jpg",
+      "ralph/screenshots/build/projects-002-final-view-config.jpg",
+      "ralph/screenshots/build/projects-002-final-inline-editor.jpg",
+      "ralph/screenshots/build/projects-002-final-add-row.jpg",
+      "ralph/screenshots/build/projects-002-final-mobile.jpg"
+    ],
+    "qa_pass": true
   }
 ]

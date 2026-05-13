@@ -415,7 +415,7 @@ fn app_config() -> AppConfig {
 }
 
 async fn create_user(pool: &PgPool, login: &str) -> User {
-    let user = upsert_user_by_email(
+    let mut user = upsert_user_by_email(
         pool,
         &format!("{login}-{}@opengithub.local", Uuid::new_v4()),
         Some(login),
@@ -429,6 +429,7 @@ async fn create_user(pool: &PgPool, login: &str) -> User {
         .execute(pool)
         .await
         .expect("username should update");
+    user.username = Some(login.to_owned());
     user
 }
 
@@ -793,10 +794,16 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     assert_eq!(body["fields"].as_array().expect("fields").len(), 2);
     assert_eq!(body["items"].as_array().expect("items").len(), 1);
     assert_eq!(body["items"][0]["title"], "Draft launch notes");
-    assert_eq!(
-        body["items"][0]["fieldValues"][0]["fieldId"],
-        title_field.to_string()
-    );
+    assert!(!body["fields"]
+        .as_array()
+        .expect("workspace fields")
+        .iter()
+        .any(|field| field["id"] == title_field.to_string()));
+    assert!(body["items"][0]["fieldValues"]
+        .as_array()
+        .expect("field values")
+        .iter()
+        .any(|field| field["fieldId"] == status_field.to_string()));
     assert_eq!(body["groups"][0]["label"], "In progress");
     assert_eq!(body["unsavedView"]["active"], true);
     assert_eq!(body["viewerPermissions"]["canEdit"], true);
@@ -816,7 +823,13 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["items"][0]["fieldValues"][1]["displayValue"], "Done");
+    assert!(body["items"][0]["fieldValues"]
+        .as_array()
+        .expect("updated field values")
+        .iter()
+        .any(
+            |field| field["fieldId"] == status_field.to_string() && field["displayValue"] == "Done",
+        ));
     let stored_value: Value = sqlx::query_scalar(
         "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
     )
@@ -1213,6 +1226,13 @@ async fn project_draft_editing_and_comments_are_project_only() {
     .await
     .expect("project permissions should insert");
     sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position, configuration) VALUES ($1, 'Table', 'table', 1, '{}')",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("view should insert");
+    sqlx::query(
         "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1)",
     )
     .bind(project_id)
@@ -1446,6 +1466,13 @@ async fn project_draft_conversion_creates_linked_issue() {
     .execute(&pool)
     .await
     .expect("project permissions should insert");
+    sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position, configuration) VALUES ($1, 'Table', 'table', 1, '{}')",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("view should insert");
 
     let repo = create_repository(
         &pool,
@@ -1525,7 +1552,11 @@ async fn project_draft_conversion_creates_linked_issue() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["repositories"][0]["id"], repo.id.to_string());
-    assert_eq!(body["repositories"][0]["labels"][0]["name"], "frontend");
+    assert!(body["repositories"][0]["labels"]
+        .as_array()
+        .expect("repository labels")
+        .iter()
+        .any(|label| label["name"] == "frontend"));
 
     let (status, _, body) = post_json(
         app.clone(),
@@ -1876,7 +1907,11 @@ async fn project_settings_read_contract_filters_private_repositories_and_permiss
     .await
     .expect("organization should create");
     sqlx::query(
-        "INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'member'), ($1, $4, 'member')",
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role)
+        VALUES ($1, $2, 'owner'), ($1, $3, 'member'), ($1, $4, 'member')
+        ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role
+        "#,
     )
     .bind(org.id)
     .bind(owner.id)
@@ -1888,11 +1923,12 @@ async fn project_settings_read_contract_filters_private_repositories_and_permiss
     sqlx::query(
         r#"
         INSERT INTO organization_policy_settings (
-          organization_id, projects_base_permission, projects_enabled, members_can_change_repository_visibility
+          organization_id, base_repository_permission, projects_base_permission, projects_enabled, members_can_change_repository_visibility
         )
-        VALUES ($1, 'read', false, false)
+        VALUES ($1, 'none', 'read', false, false)
         ON CONFLICT (organization_id)
-        DO UPDATE SET projects_base_permission = EXCLUDED.projects_base_permission,
+        DO UPDATE SET base_repository_permission = EXCLUDED.base_repository_permission,
+                      projects_base_permission = EXCLUDED.projects_base_permission,
                       projects_enabled = EXCLUDED.projects_enabled,
                       members_can_change_repository_visibility = EXCLUDED.members_can_change_repository_visibility
         "#,
@@ -2045,7 +2081,7 @@ async fn project_settings_read_contract_filters_private_repositories_and_permiss
     assert_eq!(body["viewerPermissions"]["canChangeVisibility"], false);
     assert_eq!(
         body["repositories"].as_array().expect("repositories").len(),
-        2
+        1
     );
     assert!(body["repositories"]
         .as_array()
@@ -2074,7 +2110,7 @@ async fn project_settings_read_contract_filters_private_repositories_and_permiss
     assert_eq!(body["viewerPermissions"]["canPublishStatus"], false);
     assert_eq!(
         body["repositories"].as_array().expect("repositories").len(),
-        2
+        1
     );
 
     let (status, _, body) = get_json(
@@ -3038,6 +3074,14 @@ async fn project_field_options_create_update_reorder_delete_and_sync_values() {
         .expect("options")
         .iter()
         .any(|option| option["name"] == "Ready" && option["color"] == "blue"));
+    let ready_option = body["fields"][0]["options"]
+        .as_array()
+        .expect("options")
+        .iter()
+        .find(|option| option["name"] == "Ready")
+        .and_then(|option| option["id"].as_str())
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .expect("ready option id should be returned");
 
     let (status, _, body) = post_json(
         app.clone(),
@@ -3088,7 +3132,7 @@ async fn project_field_options_create_update_reorder_delete_and_sync_values() {
         app.clone(),
         &format!("/api/projects/{project_id}/fields/{status_field}/options/reorder"),
         Some(&owner_cookie),
-        json!({ "optionIds": [done_option, todo_option] }),
+        json!({ "optionIds": [done_option, todo_option, ready_option] }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");

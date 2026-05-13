@@ -822,10 +822,10 @@ describe("ProjectWorkspacePage", () => {
       "/orgs/namuh/projects/12/views/1?sort=manual&group=Status",
     );
 
-    fireEvent.change(screen.getByLabelText("Filter project items"), {
+    fireEvent.change(screen.getByLabelText("Filter items"), {
       target: { value: "label:frontend" },
     });
-    fireEvent.submit(screen.getByLabelText("Filter project items"));
+    fireEvent.submit(screen.getByLabelText("Filter items"));
     expect(assign).toHaveBeenCalledWith(
       "/orgs/namuh/projects/12/views/1?q=label%3Afrontend&sort=manual&group=Status",
     );
@@ -854,13 +854,18 @@ describe("ProjectWorkspacePage", () => {
       "href",
       "/mona/projects/12/insights",
     );
-    expect(screen.getByRole("button", { name: "Settings" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/mona/projects/12/settings",
+    );
     expect(screen.getByRole("button", { name: "+ View" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
     expect(screen.getByRole("button", { name: /Table/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Board/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Roadmap/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Add item" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Add linked item" }),
+    ).toBeDisabled();
   });
 
   it("saves view-state changes through the same-origin project view route", async () => {
@@ -880,7 +885,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
     fireEvent.change(screen.getByLabelText("Filter query"), {
       target: { value: "is:open label:frontend" },
     });
@@ -891,7 +896,7 @@ describe("ProjectWorkspacePage", () => {
       target: { value: "Status" },
     });
     fireEvent.click(screen.getByLabelText("Secret"));
-    fireEvent.submit(screen.getByRole("form", { name: "View configuration" }));
+    fireEvent.submit(screen.getByRole("form", { name: "Saved view state" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -928,7 +933,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
     expect(screen.getByRole("button", { name: /Table/ })).toHaveTextContent(
       "t",
     );
@@ -991,8 +996,8 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
-    fireEvent.submit(screen.getByRole("form", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.submit(screen.getByRole("form", { name: "Saved view state" }));
     expect(await screen.findByText("sort must be supported")).toHaveClass(
       "chip",
       "err",
@@ -1116,7 +1121,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add linked item" }));
     fireEvent.change(screen.getByLabelText("Issue or pull request URL"), {
       target: { value: "/namuh/opengithub/pull/44" },
     });
@@ -1183,7 +1188,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add linked item" }));
     fireEvent.click(screen.getByRole("button", { name: "Bulk add" }));
     fireEvent.change(
       screen.getByLabelText("Bulk issue and pull request URLs"),
