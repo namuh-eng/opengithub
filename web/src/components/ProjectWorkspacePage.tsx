@@ -266,6 +266,8 @@ export function ProjectWorkspacePage({
   const [roadmapZoom, setRoadmapZoom] = useState(
     workspace.roadmapConfig?.zoom ?? "month",
   );
+  const [roadmapPaneWidth, setRoadmapPaneWidth] = useState(280);
+  const [roadmapLaneHeight, setRoadmapLaneHeight] = useState(72);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -898,15 +900,15 @@ export function ProjectWorkspacePage({
               }
               type="button"
             >
-              View configuration
+              View menu
             </button>
           </div>
 
           {configOpen ? (
-            <section aria-label="View configuration" className="card mb-3 p-4">
+            <section aria-label="View menu" className="card mb-3 p-4">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="t-h3">View configuration</h2>
+                  <h2 className="t-h3">View menu</h2>
                   <p className="t-xs mt-1">
                     Save layout, filters, sorting, grouping, slicing, and
                     visible fields for this project view.
@@ -1254,7 +1256,12 @@ export function ProjectWorkspacePage({
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <div className="grid min-w-[980px] grid-cols-[280px_minmax(680px,1fr)]">
+                  <div
+                    className="grid min-w-[980px]"
+                    style={{
+                      gridTemplateColumns: `${roadmapPaneWidth}px minmax(680px, 1fr)`,
+                    }}
+                  >
                     <div
                       className="border-r"
                       style={{ borderColor: "var(--line)" }}
@@ -1330,9 +1337,10 @@ export function ProjectWorkspacePage({
                           </div>
                           {group.items.map(({ item, start, target }) => (
                             <div
-                              className="relative h-[72px] border-b"
+                              className="relative border-b"
                               key={`bar-${item.id}`}
                               style={{
+                                height: `${roadmapLaneHeight}px`,
                                 borderColor: "var(--line-soft)",
                                 background:
                                   "repeating-linear-gradient(90deg, transparent 0, transparent calc(16.66% - 1px), var(--line-soft) calc(16.66% - 1px), var(--line-soft) 16.66%)",
@@ -1360,6 +1368,40 @@ export function ProjectWorkspacePage({
                           ))}
                         </Fragment>
                       ))}
+
+                      <div
+                        className="grid gap-3 border-t px-4 py-3 md:grid-cols-2"
+                        style={{ borderColor: "var(--line-soft)" }}
+                      >
+                        <label className="t-xs">
+                          Horizontal pane size
+                          <input
+                            aria-label="Roadmap horizontal pane size"
+                            className="mt-2 w-full"
+                            max={380}
+                            min={220}
+                            onChange={(event) =>
+                              setRoadmapPaneWidth(Number(event.target.value))
+                            }
+                            type="range"
+                            value={roadmapPaneWidth}
+                          />
+                        </label>
+                        <label className="t-xs">
+                          Vertical lane height
+                          <input
+                            aria-label="Roadmap vertical lane height"
+                            className="mt-2 w-full"
+                            max={108}
+                            min={56}
+                            onChange={(event) =>
+                              setRoadmapLaneHeight(Number(event.target.value))
+                            }
+                            type="range"
+                            value={roadmapLaneHeight}
+                          />
+                        </label>
+                      </div>
                       <div
                         className="flex flex-wrap gap-2 border-t px-4 py-3"
                         style={{ borderColor: "var(--line)" }}
@@ -1416,8 +1458,8 @@ export function ProjectWorkspacePage({
                   <span className="chip ok">{saveMessage}</span>
                 ) : null}
                 <span className="t-xs">
-                  Direct bar dragging is scheduled after this phase; settings
-                  and timeline controls persist now.
+                  Drag the pane controls to resize the item rail and timeline
+                  lanes without losing the saved view state.
                 </span>
               </div>
             </div>

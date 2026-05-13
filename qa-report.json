@@ -5842,5 +5842,57 @@
       "ralph/screenshots/build/projects-002-final-mobile.jpg"
     ],
     "qa_pass": true
+  },
+  {
+    "feature_id": "projects-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Projects v2 board and roadmap layouts verified with real Postgres-backed API contract tests, component tests, and Playwright browser smoke using TEST_DATABASE_URL from .env.test and /usr/bin/google-chrome. Fixed in-scope gaps: the saved-view control now uses the PRD-required View menu name, roadmap exposes draggable horizontal/vertical pane controls, and the browser fixture seeds a real projects workspace instead of relying on stale org list state."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{project_id}/workspace",
+          "PATCH /api/projects/{project_id}/views/{view_id}/layout",
+          "PATCH /api/projects/{project_id}/views/{view_id}/roadmap-settings",
+          "PATCH /api/projects/{project_id}/items/{item_id}/position",
+          "PATCH /api/projects/{project_id}/items/{item_id}/fields/{field_id}"
+        ],
+        "notes": "crates/api/tests/projects_workspace_contract.rs passed against the real test database and covers layout choices, board config/limits/swimlanes, roadmap settings persistence, item field updates, invalid filters, permissions, and audit events."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authz_private_project_guard",
+          "forbidden_outsider_workspace",
+          "error_redaction"
+        ],
+        "notes": "Focused DB-backed workspace contract asserts outsider access is forbidden and validation responses do not leak SESSION_SECRET/test-session-secret. No new unauthenticated route bypass introduced."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Component and Playwright checks exercise accessible names for visible buttons, View menu region semantics, roadmap settings form, and board move controls."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy; opengithub-postgres-test reachable; .env.test present; Cargo target dir writable at .scratch/cargo-target.",
+      "Inspected crates/api/src/domain/projects.rs, crates/api/src/routes/projects.rs, crates/api/tests/projects_workspace_contract.rs, web/src/components/ProjectWorkspacePage.tsx, web/tests/project-workspace-page.test.tsx, and web/tests/e2e/projects-board-roadmap.spec.ts.",
+      "Ran TEST_DATABASE_URL-backed Rust contract: set -a; source ./.env.test; set +a; export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture (15 passed, 0 failed).",
+      "Ran focused component test: cd web; source ../.env.test; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm test -- --run tests/project-workspace-page.test.tsx (19 passed).",
+      "Ran focused real browser E2E: cd web; source ../.env.test; CARGO_TARGET_DIR=$PWD/../.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e -- --project=chromium tests/e2e/projects-board-roadmap.spec.ts (2 passed, setup plus chromium smoke).",
+      "Ran Editorial banned source scan: rg '#0969da|#1f883d|#cf222e|@primer|Octicon|primer' web/src returned no matches.",
+      "Ran make check with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran make test with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: Cargo tests passed; Web tests passed (667 passed)."
+    ],
+    "bugs_found": [
+      "Projects board/roadmap E2E did not enable PROJECTS_WORKSPACE_E2E, so it opened an org project list with zero projects despite a real DB.",
+      "Workspace saved-view control used 'View configuration' instead of the PRD-required 'View menu' naming/region.",
+      "Roadmap rendered fixed panes with copy saying dragging was scheduled later, leaving the PRD draggable horizontal/vertical pane requirement unrepresented."
+    ],
+    "fix_description": "Renamed the workspace configuration control and region to View menu; added draggable roadmap pane range controls for horizontal item rail size and vertical lane height; made focused browser E2E seed and navigate to the real projects workspace fixture and assert persisted board/roadmap state after reloads."
   }
 ]
