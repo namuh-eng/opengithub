@@ -9,6 +9,7 @@ use opengithub_api::{
     domain::{
         identity::{upsert_session, upsert_user_by_email, User},
         permissions::RepositoryRole,
+        projects::{run_project_item_automation, ProjectAutomationEvent, ProjectAutomationInput},
         repositories::{
             create_organization, create_repository, grant_repository_permission,
             CreateOrganization, CreateRepository, RepositoryOwner, RepositoryVisibility,
@@ -2423,6 +2424,346 @@ async fn project_workflow_engine_moves_closed_issue_to_done_idempotently() {
 }
 
 #[tokio::test]
+async fn project_workflow_auto_archive_completed_items_after_done_wait_period() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects workflow auto-archive scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workflowarchive{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let writer = create_user(&pool, &format!("{marker}-writer")).await;
+    let writer_cookie = cookie_header(&pool, &config, &writer).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("workflow-archive-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects
+          (owner_user_id, number, title, short_description, visibility, default_repository_id, created_by_user_id)
+        VALUES ($1, 85, 'Workflow archive project', 'Auto-archive contract', 'private', $2, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(writer.id)
+    .execute(&pool)
+    .await
+    .expect("project permission should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'status', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    sqlx::query(
+        "INSERT INTO project_field_options (project_field_id, name, color, position) VALUES ($1, 'Done', 'green', 1)",
+    )
+    .bind(status_field)
+    .execute(&pool)
+    .await
+    .expect("done option should insert");
+    let stale_issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 51, 'Already done', 'Should be archived by workflow', 'closed', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("stale issue should insert");
+    let stale_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 1) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(stale_issue_id)
+    .fetch_one(&pool)
+    .await
+    .expect("stale project item should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_item_field_values
+          (project_item_id, project_field_id, value, updated_by_user_id, updated_at)
+        VALUES ($1, $2, $3, $4, now() - interval '2 days')
+        "#,
+    )
+    .bind(stale_item_id)
+    .bind(status_field)
+    .bind(json!("Done"))
+    .bind(writer.id)
+    .execute(&pool)
+    .await
+    .expect("stale done value should insert");
+    let trigger_issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 52, 'Trigger archive pass', 'Closing this item runs workflow maintenance', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("trigger issue should insert");
+    sqlx::query(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 2)",
+    )
+    .bind(project_id)
+    .bind(trigger_issue_id)
+    .execute(&pool)
+    .await
+    .expect("trigger project item should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let workflow = body["workflows"]
+        .as_array()
+        .expect("workflows")
+        .iter()
+        .find(|workflow| workflow["workflowKey"] == "auto-archive-completed-items")
+        .expect("auto-archive workflow should exist");
+    let workflow_id = Uuid::parse_str(workflow["id"].as_str().expect("workflow id"))
+        .expect("workflow id should parse");
+    let workflow_updated_at = workflow["updatedAt"]
+        .as_str()
+        .expect("workflow updatedAt should be present");
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows/{workflow_id}"),
+        Some(&writer_cookie),
+        json!({
+            "enabled": true,
+            "archiveAfterDays": 1,
+            "expectedUpdatedAt": workflow_updated_at,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, _, body) = patch_json(
+        app,
+        &format!("/api/repos/{}/{}/issues/52", repo.owner_login, repo.name),
+        Some(&writer_cookie),
+        json!({ "state": "closed" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let archived_at: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT archived_at FROM project_items WHERE id = $1")
+            .bind(stale_item_id)
+            .fetch_one(&pool)
+            .await
+            .expect("archive marker should load");
+    assert!(archived_at.is_some());
+    let archive_log_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_execution_logs WHERE project_id = $1 AND project_item_id = $2 AND event_type = 'archive_completed' AND status = 'success'",
+    )
+    .bind(project_id)
+    .bind(stale_item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("archive workflow log count should load");
+    assert_eq!(archive_log_count, 1);
+}
+
+#[tokio::test]
+async fn project_workflow_engine_moves_merged_pull_request_to_done_idempotently() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects workflow merged pull request scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workflowmerged{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let writer = create_user(&pool, &format!("{marker}-writer")).await;
+    let writer_cookie = cookie_header(&pool, &config, &writer).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("workflow-merged-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects
+          (owner_user_id, number, title, short_description, visibility, default_repository_id, created_by_user_id)
+        VALUES ($1, 86, 'Workflow merged PR project', 'Merged PR automation contract', 'private', $2, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(writer.id)
+    .execute(&pool)
+    .await
+    .expect("project permission should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'status', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    let done_option: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_field_options (project_field_id, name, color, position) VALUES ($1, 'Done', 'green', 1) RETURNING id",
+    )
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("done option should insert");
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 61, 'Pull request issue', 'Backs the pull request', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+    let pull_request_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO pull_requests
+          (repository_id, issue_id, number, title, author_user_id, head_ref, base_ref, head_repository_id, base_repository_id)
+        VALUES ($1, $2, 62, 'Merge project workflow', $3, 'feature/project-workflow', 'main', $1, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(issue_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("pull request should insert");
+    let item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, pull_request_id, position) VALUES ($1, 'pull_request', $2, 1) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(pull_request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("project item should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app,
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["workflows"][1]["workflowKey"], "merged-pr-to-done",
+        "{body}"
+    );
+    assert_eq!(
+        body["workflows"][1]["configuration"]["target"]["optionId"],
+        done_option.to_string()
+    );
+
+    run_project_item_automation(
+        &pool,
+        ProjectAutomationInput {
+            actor_user_id: writer.id,
+            repository_id: repo.id,
+            issue_id: None,
+            pull_request_id: Some(pull_request_id),
+            event: ProjectAutomationEvent::PullRequestMerged,
+        },
+    )
+    .await
+    .expect("merged PR workflow should run");
+    let status_value: Value = sqlx::query_scalar(
+        "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
+    )
+    .bind(item_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow field value should persist");
+    assert_eq!(status_value, json!("Done"));
+
+    run_project_item_automation(
+        &pool,
+        ProjectAutomationInput {
+            actor_user_id: writer.id,
+            repository_id: repo.id,
+            issue_id: None,
+            pull_request_id: Some(pull_request_id),
+            event: ProjectAutomationEvent::PullRequestMerged,
+        },
+    )
+    .await
+    .expect("merged PR workflow should remain idempotent");
+    let success_log_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_execution_logs WHERE project_id = $1 AND project_item_id = $2 AND event_type = 'pull_request_merged' AND status = 'success'",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow log count should load");
+    assert_eq!(success_log_count, 2);
+}
+
+#[tokio::test]
 async fn project_automation_invocation_records_actions_and_graphql_attribution() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects automation invocation scenario; set TEST_DATABASE_URL");
@@ -2651,6 +2992,156 @@ async fn project_automation_invocation_records_actions_and_graphql_attribution()
     .await
     .expect("audit count should load");
     assert_eq!(audit_count, 2);
+}
+
+#[tokio::test]
+async fn project_workflow_auto_add_sets_done_and_closes_linked_issue() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects workflow auto-add scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workflowautoadd{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let writer = create_user(&pool, &format!("{marker}-writer")).await;
+    let writer_cookie = cookie_header(&pool, &config, &writer).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("workflow-auto-add-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects
+          (owner_user_id, number, title, short_description, visibility, default_repository_id, created_by_user_id)
+        VALUES ($1, 84, 'Workflow auto-add project', 'Auto-add and close-on-status contract', 'private', $2, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(writer.id)
+    .execute(&pool)
+    .await
+    .expect("project permission should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'single_select', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    let done_option: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_field_options (project_field_id, name, color, position) VALUES ($1, 'Done', 'green', 1) RETURNING id",
+    )
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("done option should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let workflow = body["workflows"]
+        .as_array()
+        .expect("workflows")
+        .iter()
+        .find(|workflow| workflow["workflowKey"] == "item-added-default-status")
+        .expect("item-added workflow should exist");
+    let workflow_id = Uuid::parse_str(workflow["id"].as_str().expect("workflow id"))
+        .expect("workflow id should parse");
+    let workflow_updated_at = workflow["updatedAt"]
+        .as_str()
+        .expect("workflow updatedAt should be present");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows/{workflow_id}"),
+        Some(&writer_cookie),
+        json!({
+            "enabled": true,
+            "condition": "is:issue state:open",
+            "statusFieldId": status_field,
+            "statusOptionId": done_option,
+            "repositoryTargetIds": [repo.id],
+            "closeOnStatus": true,
+            "expectedUpdatedAt": workflow_updated_at,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, _, body) = post_json(
+        app,
+        &format!("/api/repos/{}/{}/issues", repo.owner_login, repo.name),
+        Some(&writer_cookie),
+        json!({
+            "title": "Auto-add and close me",
+            "body": "The project workflow should add this item and close it."
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let issue_id =
+        Uuid::parse_str(body["id"].as_str().expect("issue id")).expect("issue id should parse");
+
+    let item_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM project_items WHERE project_id = $1 AND issue_id = $2")
+            .bind(project_id)
+            .bind(issue_id)
+            .fetch_one(&pool)
+            .await
+            .expect("workflow should auto-add issue to project");
+    let status_value: Value = sqlx::query_scalar(
+        "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
+    )
+    .bind(item_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow field value should persist");
+    assert_eq!(status_value, json!("Done"));
+    let issue_state: String = sqlx::query_scalar("SELECT state FROM issues WHERE id = $1")
+        .bind(issue_id)
+        .fetch_one(&pool)
+        .await
+        .expect("issue state should load");
+    assert_eq!(issue_state, "closed");
+    let success_logs: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_execution_logs WHERE project_id = $1 AND project_item_id = $2 AND event_type IN ('item_added', 'close_on_status') AND status = 'success'",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow logs should count");
+    assert_eq!(success_logs, 2);
 }
 
 #[tokio::test]

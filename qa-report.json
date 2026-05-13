@@ -6066,5 +6066,56 @@
       "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
     ],
     "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
+  },
+  {
+    "feature_id": "projects-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "System-Chrome Playwright workflow settings smoke passed with .env.test after fixing the projects workspace seed, stable button accessibility enumeration, mobile reload determinism, and stale :3015 listener handling."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{projectId}/workflows",
+          "PATCH /api/projects/{projectId}/workflows/{workflowId}",
+          "POST /api/projects/{projectId}/automation-invocations",
+          "POST /api/repos/{owner}/{repo}/issues",
+          "PATCH /api/repos/{owner}/{repo}/issues/{number}"
+        ],
+        "notes": "Rust contract tests verified workflow settings/update, item-added auto-add, auto-archive, merged/closed Done transitions, and Actions/GraphQL automation invocation attribution."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "repository/project permission enforcement",
+          "repository target filtering",
+          "no stale app on :3015 for browser gate"
+        ],
+        "notes": "Workflow targets require linked repositories and actor write permission; auto-add only considers projects the actor can write and matching repository targets, so automation does not bypass repository/project permissions."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright smoke asserts no dead links, accessible names for visible role=button controls, and no horizontal overflow on desktop and 390px mobile."
+      }
+    },
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor (pass)",
+      "set -a; . ./.env.test; set +a; make check (Cargo check, Web typecheck, Clippy, Biome passed)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api project_workflow --test projects_workspace_contract -- --nocapture (5 passed, 13 filtered)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api project_automation_invocation --test projects_workspace_contract -- --nocapture (1 passed, 17 filtered)",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium (2 passed)"
+    ],
+    "bugs_found": [
+      "projects-workflows E2E seed did not request PROJECTS_WORKSPACE_E2E, leaving zero project rows.",
+      "Playwright button:visible enumeration could hang under system Chrome/Next dev; switched to role-based button enumeration while preserving accessible-name coverage.",
+      "Projects workspace seed created single_select fields without options, so workflow target value selection could not save.",
+      "Repository issue creation did not auto-add matching project items or apply close-on-status workflow behavior.",
+      "Mobile reload used load waiting and could consume the test timeout in Next dev."
+    ],
+    "fix_description": "Added project workspace status/priority options to the E2E seed, enabled projects workspace seeding in the workflow smoke, made the control scan role-based, implemented permission-scoped repository issue auto-add plus close-on-status workflow execution, and made the mobile smoke wait on domcontentloaded with a 60s acceptance timeout."
   }
 ]
