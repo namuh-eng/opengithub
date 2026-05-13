@@ -149,7 +149,7 @@ export function ProjectSettingsPage({
     { key: "access", label: "Access", disabled: false },
     { key: "fields", label: "Fields", disabled: false },
     { key: "workflows", label: "Workflows", disabled: false },
-    { key: "templates", label: "Templates", disabled: true },
+    { key: "templates", label: "Templates", disabled: false },
     { key: "danger", label: "Danger Zone", disabled: false },
   ];
 

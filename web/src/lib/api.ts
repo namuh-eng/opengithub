@@ -9976,7 +9976,20 @@ async function getProjectWorkspaceByNumberFromCookie(
   ];
   const project = candidates.find((item) => item.number === projectNumber);
 
-  if (!project) {
+  const templateProject = !project
+    ? [
+        ...(openProjects.ok ? openProjects.projects.templates.items : []),
+        ...(closedProjects?.ok ? closedProjects.projects.templates.items : []),
+      ].find(
+        (item) =>
+          item.projectHref.match(/\/projects\/(\d+)(?:\/|$)/)?.[1] ===
+          String(projectNumber),
+      )
+    : null;
+
+  const projectId = project?.id ?? templateProject?.projectId;
+
+  if (!projectId) {
     const failure = !openProjects.ok ? openProjects : closedProjects;
     return {
       ok: false,
@@ -9989,7 +10002,7 @@ async function getProjectWorkspaceByNumberFromCookie(
     };
   }
 
-  return getProjectWorkspaceFromCookie(cookie, project.id, query);
+  return getProjectWorkspaceFromCookie(cookie, projectId, query);
 }
 
 async function getProjectFieldSettingsByNumberFromCookie(
@@ -10017,7 +10030,20 @@ async function getProjectFieldSettingsByNumberFromCookie(
   ];
   const project = candidates.find((item) => item.number === projectNumber);
 
-  if (!project) {
+  const templateProject = !project
+    ? [
+        ...(openProjects.ok ? openProjects.projects.templates.items : []),
+        ...(closedProjects?.ok ? closedProjects.projects.templates.items : []),
+      ].find(
+        (item) =>
+          item.projectHref.match(/\/projects\/(\d+)(?:\/|$)/)?.[1] ===
+          String(projectNumber),
+      )
+    : null;
+
+  const projectId = project?.id ?? templateProject?.projectId;
+
+  if (!projectId) {
     const failure = !openProjects.ok ? openProjects : closedProjects;
     return {
       ok: false,
@@ -10030,7 +10056,7 @@ async function getProjectFieldSettingsByNumberFromCookie(
     };
   }
 
-  return getProjectFieldSettingsFromCookie(cookie, project.id);
+  return getProjectFieldSettingsFromCookie(cookie, projectId);
 }
 
 async function getProjectSettingsByNumberFromCookie(
@@ -10058,7 +10084,20 @@ async function getProjectSettingsByNumberFromCookie(
   ];
   const project = candidates.find((item) => item.number === projectNumber);
 
-  if (!project) {
+  const templateProject = !project
+    ? [
+        ...(openProjects.ok ? openProjects.projects.templates.items : []),
+        ...(closedProjects?.ok ? closedProjects.projects.templates.items : []),
+      ].find(
+        (item) =>
+          item.projectHref.match(/\/projects\/(\d+)(?:\/|$)/)?.[1] ===
+          String(projectNumber),
+      )
+    : null;
+
+  const projectId = project?.id ?? templateProject?.projectId;
+
+  if (!projectId) {
     const failure = !openProjects.ok ? openProjects : closedProjects;
     return {
       ok: false,
@@ -10071,7 +10110,7 @@ async function getProjectSettingsByNumberFromCookie(
     };
   }
 
-  return getProjectSettingsFromCookie(cookie, project.id);
+  return getProjectSettingsFromCookie(cookie, projectId);
 }
 
 async function getProjectWorkflowSettingsByNumberFromCookie(

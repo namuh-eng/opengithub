@@ -5907,7 +5907,7 @@ async fn project_settings_repositories(
                repositories.visibility,
                COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
                project_repositories.link_type,
-               projects.default_repository_id = repositories.id AS is_default,
+               COALESCE(projects.default_repository_id = repositories.id, false) AS is_default,
                project_repositories.created_at,
                project_repositories.updated_at,
                linked_by.id AS linked_by_id,

@@ -2269,6 +2269,305 @@ async fn project_lifecycle_close_reopen_and_delete_are_confirmed_and_private() {
 }
 
 #[tokio::test]
+async fn project_settings_mutations_enforce_permissions_policy_and_audit_events() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects settings mutation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("settingsmut{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let admin = create_user(&pool, &format!("{marker}-admin")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let collaborator = create_user(&pool, &format!("{marker}-collab")).await;
+    let admin_cookie = cookie_header(&pool, &config, &admin).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Project Settings Mutations Org".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role)
+        VALUES ($1, $2, 'owner'), ($1, $3, 'member'), ($1, $4, 'member'), ($1, $5, 'member')
+        ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role
+        "#,
+    )
+    .bind(org.id)
+    .bind(owner.id)
+    .bind(admin.id)
+    .bind(reader.id)
+    .bind(collaborator.id)
+    .execute(&pool)
+    .await
+    .expect("organization memberships should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (
+          organization_id, projects_enabled, projects_base_permission, members_can_change_repository_visibility
+        )
+        VALUES ($1, true, 'read', false)
+        ON CONFLICT (organization_id)
+        DO UPDATE SET projects_enabled = EXCLUDED.projects_enabled,
+                      projects_base_permission = EXCLUDED.projects_base_permission,
+                      members_can_change_repository_visibility = EXCLUDED.members_can_change_repository_visibility
+        "#,
+    )
+    .bind(org.id)
+    .execute(&pool)
+    .await
+    .expect("organization policy should upsert");
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("primary-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, admin.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("admin repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (
+          owner_organization_id, number, title, short_description, readme, visibility, created_by_user_id
+        )
+        VALUES ($1, 93, 'Mutable project', 'Before', '## Before', 'private', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(org.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'admin'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(admin.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("project permissions should insert");
+    let team_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO teams (organization_id, slug, name) VALUES ($1, 'qa', 'QA') RETURNING id",
+    )
+    .bind(org.id)
+    .fetch_one(&pool)
+    .await
+    .expect("team should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        None,
+        json!({ "title": "Anonymous edit" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(body["error"]["code"], "not_authenticated");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&reader_cookie),
+        json!({ "title": "Reader edit" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&admin_cookie),
+        json!({
+            "title": "Mutable project renamed",
+            "description": "After",
+            "readme": "## After",
+            "visibility": "public",
+            "defaultRepositoryId": repo.id
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"]["code"], "forbidden");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/repositories/{}", repo.id),
+        Some(&admin_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["repositories"][0]["repositoryId"], repo.id.to_string());
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&admin_cookie),
+        json!({
+            "title": "Mutable project renamed",
+            "description": "After",
+            "readme": "## After",
+            "visibility": "private",
+            "defaultRepositoryId": repo.id
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["general"]["title"], "Mutable project renamed");
+    assert_eq!(body["general"]["defaultRepositoryId"], repo.id.to_string());
+    assert_eq!(body["general"]["readmeRevisionCount"], 1);
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/status-updates"),
+        Some(&admin_cookie),
+        json!({
+            "status": "off_track",
+            "body": "Review the launch blocker.",
+            "startDate": "2026-05-10",
+            "targetDate": "2026-05-01"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/status-updates"),
+        Some(&admin_cookie),
+        json!({
+            "status": "complete",
+            "body": "Launch settings verified.",
+            "startDate": "2026-05-01",
+            "targetDate": "2026-05-10"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["statusUpdates"][0]["status"], "complete");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/template"),
+        Some(&admin_cookie),
+        json!({
+            "isTemplate": true,
+            "title": "Launch template",
+            "description": "Reusable launch board",
+            "isPublic": true
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["template"]["title"], "Launch template");
+    assert_eq!(body["template"]["isPublic"], true);
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/access-grants"),
+        Some(&admin_cookie),
+        json!({ "targetType": "user", "targetId": collaborator.id, "role": "write" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let user_grant_id = body["accessGrants"]
+        .as_array()
+        .expect("access grants")
+        .iter()
+        .find(|grant| grant["user"]["id"] == collaborator.id.to_string())
+        .and_then(|grant| grant["id"].as_str())
+        .expect("collaborator grant id")
+        .to_owned();
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/access-grants/{user_grant_id}"),
+        Some(&admin_cookie),
+        json!({ "role": "admin" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["accessGrants"]
+        .as_array()
+        .expect("access grants")
+        .iter()
+        .any(|grant| grant["id"] == user_grant_id && grant["role"] == "admin"));
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/access-grants"),
+        Some(&admin_cookie),
+        json!({ "targetType": "team", "targetId": team_id, "role": "read" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let team_grant_id = body["teamGrants"][0]["id"]
+        .as_str()
+        .expect("team grant id")
+        .to_owned();
+
+    let (status, _, body) = delete_json_body(
+        app.clone(),
+        &format!("/api/projects/{project_id}/access-grants/{team_grant_id}"),
+        Some(&admin_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["teamGrants"].as_array().expect("team grants").is_empty());
+
+    let (status, _, body) = delete_json_body(
+        app,
+        &format!("/api/projects/{project_id}/repositories/{}", repo.id),
+        Some(&admin_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["repositories"]
+        .as_array()
+        .expect("repositories")
+        .iter()
+        .all(|repository| repository["repositoryId"] != repo.id.to_string()));
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE target_id = $1 AND event_type LIKE 'project.%'",
+    )
+    .bind(project_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should count");
+    assert!(
+        audit_count >= 8,
+        "expected settings/access/template/status/repository audit events, got {audit_count}"
+    );
+}
+
+#[tokio::test]
 async fn project_workflow_engine_moves_closed_issue_to_done_idempotently() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects workflow execution scenario; set TEST_DATABASE_URL");

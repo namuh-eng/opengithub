@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectAccessSettingsPage } from "@/components/ProjectAccessSettingsPage";
 import { ProjectDangerZonePage } from "@/components/ProjectDangerZonePage";
 import { ProjectSettingsPage } from "@/components/ProjectSettingsPage";
+import { ProjectTemplateSettingsPage } from "@/components/ProjectTemplateSettingsPage";
 import type { ProjectSettings } from "@/lib/api";
 
 const mockRouterPush = vi.hoisted(() => vi.fn());
@@ -172,7 +173,10 @@ describe("ProjectSettingsPage", () => {
       "href",
       "/orgs/namuh/projects/12/settings/access",
     );
-    expect(screen.getByRole("button", { name: "Templates" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/settings/templates",
+    );
     expect(screen.getByRole("link", { name: "Danger Zone" })).toHaveAttribute(
       "href",
       "/orgs/namuh/projects/12/settings/danger",
@@ -624,5 +628,66 @@ describe("ProjectSettingsPage", () => {
         }),
       ),
     );
+  });
+
+  it("renders the dedicated templates settings page and saves copy-source metadata", async () => {
+    const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () =>
+        settings({
+          template: {
+            isTemplate: true,
+            templateId: "template-2",
+            title: "QA launch template",
+            description: "Copy the verified launch board.",
+            isPublic: true,
+            createdAt: "2026-05-06T00:00:00Z",
+          },
+        }),
+    } as Response);
+
+    render(
+      <ProjectTemplateSettingsPage
+        owner="namuh"
+        scope="organization"
+        settings={settings({
+          template: {
+            isTemplate: false,
+            templateId: null,
+            title: null,
+            description: null,
+            isPublic: false,
+            createdAt: null,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/settings",
+    );
+    expect(screen.getByText("Copy-source settings")).toBeVisible();
+    fireEvent.click(screen.getByLabelText("Set this project as a template"));
+    fireEvent.change(screen.getByLabelText("Template title"), {
+      target: { value: "QA launch template" },
+    });
+    fireEvent.change(screen.getByLabelText("Copy-source information"), {
+      target: { value: "Copy the verified launch board." },
+    });
+    fireEvent.click(screen.getByLabelText("Allow copies from visible users"));
+    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/template",
+        expect.objectContaining({
+          body: expect.stringContaining("QA launch template"),
+          method: "PATCH",
+        }),
+      ),
+    );
+    expect(await screen.findByText("Template settings saved.")).toBeVisible();
+    expect(screen.getByText("Template template-2")).toBeVisible();
   });
 });

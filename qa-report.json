@@ -6117,5 +6117,43 @@
       "The focused E2E used raw cargo and list-page discovery, which could consume the test timeout or hit a stale app on port 3015 before reaching the save assertion."
     ],
     "fix_description": "Added a persistent live status region for workflow saves, seeded selectable field options, and made the focused browser smoke use the repo cargo wrapper plus the seeded project workflow URL while preserving the exact Playwright save assertion."
+  },
+  {
+    "feature_id": "projects-007",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified project settings with DB-backed Rust contract mutation test, React component tests, broad make test, and focused Playwright browser smoke against this worktree on port 3015 using system Chrome."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "Rust API contract covers unauthenticated 401, read-only 403, org policy visibility 403, repository link/unlink, metadata/default repository update, status update validation/persistence, template update, access grant create/update/delete, and audit events."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Mutating API actions require authenticated actor and project admin/write permissions; focused test verified anonymous settings PATCH returns 401 and reader settings PATCH returns 403. Audit events asserted for settings, access, template, status, repository, and lifecycle mutations."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Component and Playwright checks assert concrete links/no dead controls and accessible button names on project settings surfaces. Fixed workflow heading accessible name regression found by broad test run."
+      }
+    },
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor \u2014 pass: local verification stack healthy.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_settings_mutations_enforce_permissions_policy_and_audit_events -- --nocapture \u2014 pass: 1 passed; 0 failed.",
+      "cd web && npx vitest run tests/project-workflow-settings-page.test.tsx tests/project-settings-page.test.tsx \u2014 pass: 2 files passed; 18 tests passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check \u2014 pass: Cargo check, Web typecheck, Clippy, Biome passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make test \u2014 pass: Cargo tests passed; Web tests passed (668 passed).",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-settings.spec.ts --project=chromium \u2014 pass: 2 passed (setup + chromium projects settings smoke)."
+    ],
+    "bugs_found": [
+      "Project settings routes could not load a project after it was marked as a template because the list API moved it out of items and into templates.",
+      "Project settings repository links decoded NULL is_default values for linked repositories when no default repository was present.",
+      "Dedicated /settings/templates pages were missing even though navigation helpers and PRD required them.",
+      "Workflow settings h1 accessible name included hidden prefix and broke existing broad component test."
+    ],
+    "fix_description": "Added dedicated template settings pages, linked Templates nav, template-aware project lookup by number, NULL-safe repository is_default query, a DB mutation contract for settings/access/template/status/repository audit behavior, and a focused projects settings Playwright scenario. Full make test-e2e was resource-prohibitive for this lane; the focused feature-domain E2E subset covers projects-007 acceptance paths with real DB and browser."
   }
 ]
