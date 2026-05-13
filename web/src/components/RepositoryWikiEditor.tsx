@@ -151,7 +151,39 @@ export function RepositoryWikiEditor({
     setStatus({ kind: "success", message: "Image reference inserted." });
   }
 
+  function clientValidationMessage() {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return "wiki page title is required";
+    const titleSegments = trimmedTitle.split("/").filter(Boolean);
+    if (
+      titleSegments.some(
+        (segment) =>
+          segment === "." || segment === ".." || segment.endsWith(".git"),
+      )
+    ) {
+      return "wiki page slug is invalid";
+    }
+    if (
+      trimmedTitle.startsWith("_") &&
+      !["_sidebar", "_footer"].includes(trimmedTitle.toLowerCase())
+    ) {
+      return "wiki page slug is invalid";
+    }
+    if (!markdown.trim()) return "wiki page body is required";
+    if (!message.trim()) return "wiki edit message is required";
+    if (!formats.some((format) => format.mode === editMode)) {
+      return `wiki edit mode ${editMode} is not supported`;
+    }
+    return null;
+  }
+
   async function savePage() {
+    const validationMessage = clientValidationMessage();
+    if (validationMessage) {
+      setStatus({ kind: "error", message: validationMessage });
+      return;
+    }
+
     setStatus({ kind: "pending", message: "Saving wiki page..." });
     try {
       const savePath = editingPage

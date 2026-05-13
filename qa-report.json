@@ -6266,5 +6266,72 @@
       "cd web && export CARGO_TARGET_DIR=\"/home/jaeyunha/dev/namuh/opengithub-visible/wiki-001-visible-retry-20260513122648/.scratch/cargo-target\"; set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-wiki.spec.ts --reporter=line"
     ],
     "confidence": "high"
+  },
+  {
+    "feature_id": "wiki-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed Rust contract and system-Chrome Playwright coverage verified wiki page list, create, client/API validation, preview, save, edit, stale conflict handling, image insertion, redirects, and mobile layout. Broad make test was attempted and failed in unrelated projects_list_contract expected org href shape; focused wiki Rust/API and browser evidence passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/wiki/_pages",
+          "POST /api/repos/{owner}/{repo}/wiki/pages",
+          "POST /api/repos/{owner}/{repo}/wiki/preview",
+          "GET /api/repos/{owner}/{repo}/wiki/{slug}/edit",
+          "PATCH /api/repos/{owner}/{repo}/wiki/{slug}"
+        ],
+        "notes": "repository_wiki_write_contract passed against TEST_DATABASE_URL and now asserts unauthenticated create returns 401, blank commit message and invalid title/slug return 422, unsupported edit mode returns 422, duplicate and stale writes return 409, reader write returns 403, preview sanitizes script without persisting revisions, wiki_assets/wiki_git_commits/audit rows are written, and the local bare {owner}-{repo}.wiki.git publishes the page to master/default branch."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "xss_sanitization",
+          "data_exposure"
+        ],
+        "notes": "Focused contract rejects anonymous write with 401 and reader write with 403; preview strips script tags; stale write conflicts do not leak secrets; broad auth/security tests ran until unrelated projects failure with earlier auth/security suites passing."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright checked accessible button names/no dead controls and horizontal overflow on desktop and mobile. Editor form uses visible labels, role=toolbar, Write/Preview tabs, status/alert flash regions, and Editorial tokens/primitives."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md and web/AGENTS.md; verified Editorial design constraints before touching UI.",
+      "Ran make doctor with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: local Postgres test container and .env.test healthy.",
+      "Inspected wiki routes/components/tests: web/src/app/[owner]/[repo]/wiki, web/src/app/api/repos/[owner]/[repo]/wiki, RepositoryWikiPagesIndex, RepositoryWikiEditor, repository-wiki-editing.spec.ts, and crates/api/tests/repository_wiki_write_contract.rs.",
+      "Probed TEST_DATABASE_URL schema via podman psql: wiki_pages, wiki_page_revisions, wiki_repositories, wiki_git_commits, wiki_assets, rendered_markdown_cache, users, repository_permissions present with expected FKs/checks.",
+      "Ran make doctor, then set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract -- --nocapture: 2 passed after aligning invalid title/slug validation message; DB-backed create/preview/update/revert/write validation and git publishing verified.",
+      "Reran required system-Chrome browser command from web/: set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=/home/jaeyunha/dev/namuh/opengithub-visible/wiki-002-visible-20260513130537/.scratch/cargo-target PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test repository-wiki-editing.spec.ts --reporter=line: 2 passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Attempted broad make test: Cargo built/runs progressed for many suites but failed at unrelated crates/api/tests/projects_list_contract.rs expected href /projects... vs actual /orgs/projects...; not same-domain wiki-002."
+    ],
+    "bugs_found": [
+      {
+        "severity": "medium",
+        "description": "Next wiki mutation proxy routes collapsed Rust API errors to 400/502 instead of preserving underlying 401/403/409/422 JSON status envelopes.",
+        "fix": "Propagated ApiErrorEnvelope causes/statuses through create/update/preview route handlers."
+      },
+      {
+        "severity": "medium",
+        "description": "Wiki editor allowed invalid title/slug and blank commit-message submissions to enter pending network save instead of showing immediate validation feedback.",
+        "fix": "Added client-side validation matching Rust guardrails for title/slug, body, supported edit mode, and non-empty edit message."
+      },
+      {
+        "severity": "low",
+        "description": "Focused browser test missed invalid title/slug/blank commit-message UX and had ambiguous heading locators on rendered wiki pages.",
+        "fix": "Extended Playwright coverage for validation flashes and switched rendered-page heading assertions to #repository-wiki-title."
+      }
+    ],
+    "fix_description": "Preserved Rust API status envelopes in Next wiki mutation proxy routes; added editor-side validation/error flashes aligned to Rust title/slug guardrails; expanded DB-backed Rust and Playwright coverage for wiki-002 validation and Git-backed publishing.",
+    "confidence": "high",
+    "timestamp": "2026-05-13T13:39:00-07:00"
   }
 ]

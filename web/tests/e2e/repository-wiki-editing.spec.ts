@@ -140,6 +140,19 @@ test("signed-in repository wiki supports pages index, create, preview, save, edi
   await page
     .getByLabel("Wiki page source")
     .fill(`# ${title}\n\nInitial release notes.`);
+  await page.getByLabel("Edit message").fill("   ");
+  await page.getByRole("button", { name: "Save Page" }).click();
+  await expect(page.locator('.card [role="alert"]')).toContainText(
+    "wiki edit message is required",
+  );
+  await expect(page).toHaveURL(/\/wiki\/_new$/);
+  await page.getByLabel("Page title").fill(".");
+  await page.getByLabel("Edit message").fill(`Create invalid ${unique}`);
+  await page.getByRole("button", { name: "Save Page" }).click();
+  await expect(page.locator('.card [role="alert"]')).toContainText(
+    "wiki page slug is invalid",
+  );
+  await page.getByLabel("Page title").fill(title);
   await page.getByLabel("Image URL").fill("https://images.example/release.png");
   await page.getByLabel("Alt text").fill("Release diagram");
   await page.getByRole("button", { name: "Insert image" }).click();
@@ -154,7 +167,7 @@ test("signed-in repository wiki supports pages index, create, preview, save, edi
   await expect(page).toHaveURL(
     new RegExp(`/wiki/${encodeURIComponent(title)}$`),
   );
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(page.locator("#repository-wiki-title")).toHaveText(title);
   await expect(page.getByAltText("Release diagram")).toBeVisible();
 
   await page.goto(
@@ -226,7 +239,7 @@ test("signed-in repository wiki supports pages index, create, preview, save, edi
   await expectNoHorizontalOverflow(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${seeded.repositoryWikiHref}/${encodeURIComponent(title)}`);
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(page.locator("#repository-wiki-title")).toHaveText(title);
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({

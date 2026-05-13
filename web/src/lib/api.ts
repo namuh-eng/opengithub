@@ -16736,7 +16736,13 @@ export async function previewRepositoryWikiFromCookie(
     throw new Error(
       envelope?.error.message ?? "Repository wiki preview failed.",
       {
-        cause: envelope,
+        cause: envelope ?? {
+          error: {
+            code: "wiki_preview_failed",
+            message: "Repository wiki preview failed.",
+          },
+          status: response.status,
+        },
       },
     );
   }
@@ -16767,7 +16773,13 @@ export async function createRepositoryWikiPageFromCookie(
     throw new Error(
       envelope?.error.message ?? "Repository wiki page save failed.",
       {
-        cause: envelope,
+        cause: envelope ?? {
+          error: {
+            code: "wiki_page_save_failed",
+            message: "Repository wiki page save failed.",
+          },
+          status: response.status,
+        },
       },
     );
   }
@@ -16804,7 +16816,13 @@ export async function updateRepositoryWikiPageFromCookie(
     throw new Error(
       envelope?.error.message ?? "Repository wiki page save failed.",
       {
-        cause: envelope,
+        cause: envelope ?? {
+          error: {
+            code: "wiki_page_save_failed",
+            message: "Repository wiki page save failed.",
+          },
+          status: response.status,
+        },
       },
     );
   }

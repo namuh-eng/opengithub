@@ -15,7 +15,7 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
-use std::sync::LazyLock;
+use std::{process::Command, sync::LazyLock};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -175,6 +175,67 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
 
     let create_uri = format!("/api/repos/{}/{}/wiki/pages", owner_login, repository.name);
+    let (status, unauth_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &create_uri,
+        None,
+        json!({
+            "title": "No Auth Page",
+            "markdown": "# No Auth",
+            "message": "No auth should fail",
+            "editMode": "markdown"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{unauth_body}");
+
+    let (status, empty_message_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &create_uri,
+        Some(&owner_cookie),
+        json!({
+            "title": "Empty Message Page",
+            "markdown": "# Empty Message",
+            "message": "   ",
+            "editMode": "markdown"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{empty_message_body}"
+    );
+    assert!(empty_message_body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("wiki edit message is required"));
+
+    let (status, invalid_title_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &create_uri,
+        Some(&owner_cookie),
+        json!({
+            "title": ".",
+            "markdown": "# Invalid Title",
+            "message": "Try invalid title",
+            "editMode": "markdown"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{invalid_title_body}"
+    );
+    assert!(invalid_title_body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("wiki page slug is invalid"));
+
     let (status, create_body) = json_request(
         app.clone(),
         Method::POST,
@@ -205,9 +266,27 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
     .await
     .expect("commit count should query");
     assert_eq!(commit_count, 1);
-    assert!(storage_dir
-        .join(format!("{}-{}.wiki.git", owner_login, repository.name))
-        .exists());
+    let wiki_bare_path = storage_dir.join(format!("{}-{}.wiki.git", owner_login, repository.name));
+    assert!(wiki_bare_path.exists());
+    let published_branch = Command::new("git")
+        .arg("--git-dir")
+        .arg(&wiki_bare_path)
+        .args(["rev-parse", "--verify", "master"])
+        .output()
+        .expect("git rev-parse should run");
+    assert!(
+        published_branch.status.success(),
+        "wiki commit should publish to the wiki default branch: {}",
+        String::from_utf8_lossy(&published_branch.stderr)
+    );
+    let published_file = Command::new("git")
+        .arg("--git-dir")
+        .arg(&wiki_bare_path)
+        .args(["show", "master:Operations Guide.md"])
+        .output()
+        .expect("git show should run");
+    assert!(published_file.status.success());
+    assert!(String::from_utf8_lossy(&published_file.stdout).contains("Run the deploy checklist."));
     let asset_row = sqlx::query(
         "SELECT source_url, alt_text, storage_kind FROM wiki_assets WHERE page_id = $1 AND revision_id = $2",
     )

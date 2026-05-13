@@ -44,8 +44,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     );
     return NextResponse.json(result);
   } catch (error) {
+    const envelope = (error instanceof Error ? error.cause : null) as {
+      error: { code: string; message: string };
+      status: number;
+    } | null;
     return NextResponse.json(
-      {
+      envelope ?? {
         error: {
           code: "wiki_page_save_failed",
           message:
@@ -53,8 +57,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               ? error.message
               : "Repository wiki page failed to save.",
         },
+        status: 502,
       },
-      { status: 400 },
+      { status: envelope?.status ?? 502 },
     );
   }
 }
