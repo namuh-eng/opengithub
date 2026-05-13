@@ -170,7 +170,6 @@ export function RepositoryWikiEditor({
       return "wiki page slug is invalid";
     }
     if (!markdown.trim()) return "wiki page body is required";
-    if (!message.trim()) return "wiki edit message is required";
     if (!formats.some((format) => format.mode === editMode)) {
       return `wiki edit mode ${editMode} is not supported`;
     }

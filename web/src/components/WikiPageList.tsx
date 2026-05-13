@@ -29,6 +29,23 @@ type TocResponse = {
   error?: { message?: string };
 };
 
+function wikiPageHref(
+  owner: string,
+  repo: string,
+  page: RepositoryWikiPageSummary,
+) {
+  const repositoryWikiPrefix = `/${owner}/${repo}/wiki`;
+  if (page.href.startsWith(repositoryWikiPrefix)) {
+    return page.href;
+  }
+  const encodedSlug = page.slug
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `${repositoryWikiPrefix}/${encodedSlug}`;
+}
+
 function pageTocEndpoint(owner: string, repo: string, slug: string) {
   const encodedSlug = slug
     .split("/")
@@ -194,7 +211,7 @@ export function WikiPageList({
                 className={`min-w-0 rounded-md px-2 py-2 t-sm hover:underline ${
                   page.active ? "font-semibold" : ""
                 }`}
-                href={page.href}
+                href={wikiPageHref(owner, repo, page)}
                 id={labelId}
                 style={{
                   color: page.active ? "var(--ink-1)" : "var(--ink-3)",

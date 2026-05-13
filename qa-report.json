@@ -6415,5 +6415,58 @@
     ],
     "fix_description": "Preserved upstream revert API error envelopes/statuses in the Next route, added route tests, made the historical revision label a real heading, and aligned the focused E2E with the 201 Created wiki-page API contract. Controller cleared the stale port 3015 conflict and reran the required DB-backed Rust contracts, make check, and focused system-Chrome wiki history Playwright gate; all passed, so wiki-003 is qa_pass=true.",
     "timestamp": "2026-05-13T14:52:26-07:00"
+  },
+  {
+    "feature_id": "labels-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified repository Labels page search/count, sort radio menu, permissioned New/Edit/Delete label controls, and issue/pull request/discussion sidebar apply flows in focused real-browser Playwright against the .env.test Postgres-backed Rust API. Added E2E fixture usage and delete coverage; screenshots written under ralph/screenshots/build during the run."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/labels?q=&sort=&direction=",
+          "POST /api/repos/:owner/:repo/labels",
+          "PATCH /api/repos/:owner/:repo/labels/:labelId",
+          "DELETE /api/repos/:owner/:repo/labels/:labelId",
+          "issue/pull request/discussion metadata label update routes"
+        ],
+        "notes": "DB-backed Rust repository_labels_contract ran with TEST_DATABASE_URL from .env.test and did not self-skip; it verified counts, search/sort, create/update/delete, permission errors, private repository access boundaries, and label event persistence. Focused component tests covered issue/PR/discussion label picker payloads."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "permission_boundaries",
+          "input_validation",
+          "data_exposure"
+        ],
+        "notes": "Existing focused Rust contract exercises reader/outsider mutation denial and private repository access boundaries. Label mutation errors are structured; no stack traces or secrets observed in focused tests."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser run checked accessible names for visible buttons and no dead anchors on Labels, issue, pull request, and discussion surfaces; component tests cover labelled search fields and sidebars."
+      }
+    },
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target && make doctor",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -c \"select to_regclass('public.repositories'); select tablename from pg_tables where schemaname='public' and tablename ilike '%label%';\"",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_labels_contract -- --nocapture",
+      "cd web && npx vitest run tests/repository-labels-page.test.tsx tests/repository-issue-detail.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-discussion-detail-page.test.tsx",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome ./node_modules/.bin/playwright test tests/e2e/repository-labels.spec.ts --project=chromium --reporter=list --timeout=120000",
+      "export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target && make all"
+    ],
+    "issues_found": [
+      "Focused labels Playwright spec used bespoke seeding/psql and stale selectors; updated it to use the shared auth fixture, container psql fallback, exact headings, role-based Sort click, real create/edit/delete assertions, and Save labels in sidebars.",
+      "Full make test exposed unrelated wiki regressions from the merged wiki work; fixed wiki page-list href fallback and server-authoritative wiki save validation so the full suite passes."
+    ],
+    "remaining_risks": [
+      "Concurrent label edit/delete races and notification fanout were not manually stress-tested beyond the DB contract and browser sweep."
+    ],
+    "completed_at": "2026-05-13"
   }
 ]
