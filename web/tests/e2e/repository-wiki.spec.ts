@@ -97,11 +97,12 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
   await signIn(page, seeded);
 
   await page.goto(seeded.repositoryWikiHref);
-  await expect(page.getByRole("link", { name: "Wiki" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { exact: true, name: "Wiki" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Home" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "Wiki pages" }),
   ).toBeVisible();
@@ -116,7 +117,7 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
   await page.getByRole("link", { name: "Architecture Guide" }).click();
   await expect(page).toHaveURL(/\/wiki\/Architecture%20Guide$/);
   await expect(
-    page.getByRole("heading", { name: "Architecture Guide" }),
+    page.getByRole("heading", { exact: true, name: "Architecture Guide" }),
   ).toBeVisible();
   await page
     .getByRole("button", {
@@ -138,7 +139,7 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Architecture Guide" }),
+    page.getByRole("heading", { exact: true, name: "Architecture Guide" }),
   ).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);

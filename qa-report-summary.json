@@ -8,7 +8,7 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 89,
+    "features_passed": 90,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
@@ -3004,10 +3004,40 @@
       "feature_id": "wiki-001",
       "description": "Render repository wiki home and page-reading experience with Markdown content, p",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "DB-backed contract, component, and real browser Playwright acceptance passed for wiki home/page reading. Browser path used seeded repository wiki with Home rendering, slug navigation, active Wiki tab, page sidebar, lazy TOC expansion, clone copy, mobile no-overflow, and no self-skip."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/:owner/:repo/wiki",
+            "GET /api/repos/:owner/:repo/wiki/:slug",
+            "GET /api/repos/:owner/:repo/wiki/:slug/_history/:revision",
+            "GET /api/repos/:owner/:repo/wiki/_compare",
+            "PATCH /api/repos/:owner/:repo/wiki/:slug"
+          ],
+          "notes": "Ran repository_wiki_contract and repository_wiki_write_contract with .env.test loaded against the test Postgres; no DB self-skip. Verified JSON content type, ready/disabled/missing/private states, sidebar/footer, outline, clone URL, private wiki not-found behavior, compare validation envelope, and write contract coverage for wiki save/revert routes."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "data_exposure",
+            "input_sanitization"
+          ],
+          "notes": "DB-backed contract verified private repository wiki returns not_found to anonymous viewers, unauthorized readers do not receive edit permission, sanitized rendered Markdown omits script tags, and responses do not leak OAuth/session secrets."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Component and browser gates verified named Wiki navigation/sidebar regions, accessible copy/status control, accessible TOC expander buttons, no dead controls, and no horizontal overflow on desktop or 390px mobile viewport."
+        }
+      }
     },
     {
       "feature_id": "wiki-002",

@@ -2241,6 +2241,12 @@ fn revision_from_row(
 ) -> WikiRevisionSummary {
     let commit_oid: Option<String> = row.get("commit_oid");
     let revision_id: Uuid = row.get("revision_id");
+    let href = commit_oid
+        .as_deref()
+        .map(|oid| wiki_revision_history_href(repository, page_slug, Some(oid)))
+        .unwrap_or_else(|| {
+            wiki_revision_history_href(repository, page_slug, Some(&revision_id.to_string()))
+        });
     WikiRevisionSummary {
         id: revision_id,
         author: row.get::<Option<Uuid>, _>("author_id").map(|id| {
@@ -2259,11 +2265,7 @@ fn revision_from_row(
             .map(|oid| oid.chars().take(7).collect::<String>()),
         commit_oid,
         created_at: row.get("created_at"),
-        href: format!(
-            "{}/_compare/{}",
-            wiki_page_href(repository, page_slug),
-            revision_id
-        ),
+        href,
     }
 }
 
@@ -2346,6 +2348,10 @@ fn wiki_page_href(repository: &Repository, slug: &str) -> String {
     if slug.eq_ignore_ascii_case("home") {
         return wiki_home_href(repository);
     }
+    wiki_page_scoped_href(repository, slug)
+}
+
+fn wiki_page_scoped_href(repository: &Repository, slug: &str) -> String {
     format!(
         "{}/{}",
         wiki_home_href(repository),
@@ -2360,7 +2366,7 @@ fn wiki_history_href(
     page_size: i64,
 ) -> String {
     let base = slug
-        .map(|slug| format!("{}/_history", wiki_page_href(repository, slug)))
+        .map(|slug| format!("{}/_history", wiki_page_scoped_href(repository, slug)))
         .unwrap_or_else(|| format!("{}/_history", wiki_home_href(repository)));
     let mut params = Vec::new();
     if page > 1 {
@@ -2384,7 +2390,7 @@ fn wiki_revision_history_href(
     let revision = commit_oid.unwrap_or("unknown");
     format!(
         "{}/_history/{}",
-        wiki_page_href(repository, slug),
+        wiki_page_scoped_href(repository, slug),
         percent_encode_segment(revision)
     )
 }
