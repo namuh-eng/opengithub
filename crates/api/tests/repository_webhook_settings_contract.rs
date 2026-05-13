@@ -461,7 +461,15 @@ async fn send_json(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        // Keep anonymous webhook auth assertions independent from the shared
+        // integration-test anonymous rate-limit bucket.
+        .header(
+            "x-forwarded-for",
+            format!("repository-webhook-contract-{}", Uuid::new_v4()),
+        );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }

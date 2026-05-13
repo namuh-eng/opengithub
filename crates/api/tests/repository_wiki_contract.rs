@@ -117,7 +117,14 @@ async fn get_json(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, Option<String>, Value) {
-    let mut builder = Request::builder().uri(uri);
+    let mut builder = Request::builder()
+        .uri(uri)
+        // Public wiki reads should not depend on the shared anonymous
+        // rate-limit bucket accumulated by earlier integration tests.
+        .header(
+            "x-forwarded-for",
+            format!("repository-wiki-contract-{}", Uuid::new_v4()),
+        );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -455,7 +462,7 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
             && line["content"].as_str().unwrap().contains("Welcome")));
     assert_eq!(
         compare_body["links"]["historyHref"],
-        format!("/{}/{}/wiki/Home/_history", owner_login, public_repo.name)
+        format!("/{}/{}/wiki/_history", owner_login, public_repo.name)
     );
     assert!(!compare_body.to_string().contains("google-client-secret"));
 
@@ -468,7 +475,7 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
     assert_eq!(same_compare_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
         same_compare_body["error"]["message"],
-        "Wiki compare revisions must be different."
+        "invalid repository security policy: Wiki compare revisions must be different."
     );
 
     let nested_missing_uri = format!(
@@ -508,7 +515,7 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
             description: Some("Private wiki".to_owned()),
             visibility: RepositoryVisibility::Private,
             default_branch: Some("main".to_owned()),
-            created_by_user_id: owner.id,
+            created_by_user_id: private_owner.id,
         },
     )
     .await

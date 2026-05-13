@@ -121,7 +121,14 @@ async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String
 }
 
 async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().uri(uri);
+    let mut builder = Request::builder()
+        .uri(uri)
+        // Avoid coupling anonymous auth assertions to rate-limit buckets
+        // persisted by other broad workspace tests in the shared test DB.
+        .header(
+            "x-forwarded-for",
+            format!("security-advisory-contract-{}", Uuid::new_v4()),
+        );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -148,6 +155,10 @@ async fn patch_json(
     let mut builder = Request::builder()
         .method("PATCH")
         .uri(uri)
+        .header(
+            "x-forwarded-for",
+            format!("security-advisory-contract-{}", Uuid::new_v4()),
+        )
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
@@ -179,6 +190,10 @@ async fn post_json(
     let mut builder = Request::builder()
         .method("POST")
         .uri(uri)
+        .header(
+            "x-forwarded-for",
+            format!("security-advisory-contract-{}", Uuid::new_v4()),
+        )
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
@@ -515,7 +530,23 @@ async fn repository_security_advisories_hide_drafts_and_return_detail_metadata()
         app.clone(),
         &base,
         Some(&owner_cookie),
-        json!({ "title": "" }),
+        json!({
+            "title": "",
+            "summary": "Invalid advisory should reach domain validation.",
+            "detailsMarkdown": "Invalid advisory should not persist.",
+            "cveId": null,
+            "severity": "high",
+            "packageEcosystem": "cargo",
+            "packageName": "opengithub-api",
+            "affectedVersions": "< 4.0.0",
+            "patchedVersions": ">= 4.0.0",
+            "cvssVector": null,
+            "cvssScore": null,
+            "cvssMetrics": null,
+            "cwes": [],
+            "credits": [],
+            "collaborators": []
+        }),
     )
     .await;
     assert_eq!(invalid_create_status, StatusCode::UNPROCESSABLE_ENTITY);

@@ -8,8 +8,8 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 84,
-    "features_failed": 1,
+    "features_passed": 85,
+    "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
@@ -2781,7 +2781,7 @@
       "sub_phases": {
         "functional": {
           "status": "pass",
-          "notes": "Fixed the visible QA smoke so it seeds and opens the authorized Projects workspace deterministically, exposes the required View menu label, verifies Board and Roadmap layout switching with real DB-backed Playwright, and keeps roadmap save feedback visible without a full reload. Board cards, columns, swimlanes/limits text, add item affordance, roadmap selectors, markers, and zoom controls were exercised. Broad cargo workspace is documented separately and is not claimed as clean because it currently stops in an unrelated release-management contract after Projects tests pass."
+          "notes": "Fixed the visible QA smoke so it seeds and opens the authorized Projects workspace deterministically, exposes the required View menu label, verifies Board and Roadmap layout switching with real DB-backed Playwright, and keeps roadmap save feedback visible without a full reload. Board cards, columns, swimlanes/limits text, add item affordance, roadmap selectors, markers, and zoom controls were exercised. The required broad cargo workspace gate now passes after stabilizing stale repository contract fixtures and shared test-DB rate-limit buckets."
         },
         "api_contract": {
           "status": "pass",
@@ -2805,7 +2805,8 @@
           "violations": [],
           "notes": "Focused Playwright smoke checks accessible button names/no dead controls on the touched Board/Roadmap paths; View configuration control is now exposed as the required View menu region/button."
         }
-      }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "projects-004",
@@ -3408,6 +3409,6 @@
   "projects-003": {
     "status": "pass",
     "qa_pass": true,
-    "notes": "DB-backed Projects Board/Roadmap layout switching verified; focused Chrome Playwright passed; make check and full web vitest passed."
+    "notes": "DB-backed Projects Board/Roadmap layout switching verified; broad cargo workspace, focused Chrome Playwright, make check, and full web vitest passed."
   }
 }

@@ -253,8 +253,8 @@ async fn request_logs_tokens_and_api_envelopes_keep_contracts_stable() {
 
     sqlx::query(
         r#"
-        INSERT INTO personal_access_tokens (user_id, name, prefix, token_hash, scopes)
-        VALUES ($1, 'local automation', $2, $3, ARRAY['repo', 'workflow'])
+        INSERT INTO personal_access_tokens (user_id, resource_owner_user_id, name, prefix, token_hash, scopes)
+        VALUES ($1, $1, 'local automation', $2, $3, ARRAY['repo', 'workflow'])
         "#,
     )
     .bind(user.id)
@@ -265,8 +265,8 @@ async fn request_logs_tokens_and_api_envelopes_keep_contracts_stable() {
     .expect("personal access token hash should insert");
     let duplicate = sqlx::query(
         r#"
-        INSERT INTO personal_access_tokens (user_id, name, prefix, token_hash, scopes)
-        VALUES ($1, 'duplicate', $2, $3, ARRAY[]::text[])
+        INSERT INTO personal_access_tokens (user_id, resource_owner_user_id, name, prefix, token_hash, scopes)
+        VALUES ($1, $1, 'duplicate', $2, $3, ARRAY[]::text[])
         "#,
     )
     .bind(user.id)

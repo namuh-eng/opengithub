@@ -95,7 +95,10 @@ async fn get_json(
     let mut builder = Request::builder()
         .method(Method::GET)
         .uri(uri)
-        .header("x-forwarded-for", "10.200.0.42");
+        .header(
+            "x-forwarded-for",
+            format!("package-detail-contract-{}", Uuid::new_v4()),
+        );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -128,7 +131,10 @@ async fn patch_json(
             Request::builder()
                 .method(Method::PATCH)
                 .uri(uri)
-                .header("x-forwarded-for", "10.200.0.43")
+                .header(
+                    "x-forwarded-for",
+                    format!("package-detail-contract-{}", Uuid::new_v4()),
+                )
                 .header(header::COOKIE, cookie)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(body.to_string()))
@@ -159,7 +165,10 @@ async fn patch_raw(
     let mut builder = Request::builder()
         .method(Method::PATCH)
         .uri(uri)
-        .header("x-forwarded-for", "10.200.0.44")
+        .header(
+            "x-forwarded-for",
+            format!("package-detail-contract-{}", Uuid::new_v4()),
+        )
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);

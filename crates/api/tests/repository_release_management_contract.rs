@@ -76,7 +76,8 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     seed_merged_pull_request(&pool, repo.id, &owner, target_commit, 1).await;
     seed_release_webhook(&pool, repo.id, &owner).await;
 
-    let manage_uri = format!("/api/repos/{}/{}/releases/manage", owner.email, repo.name);
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let manage_uri = format!("/api/repos/{owner_login}/{}/releases/manage", repo.name);
     let (anonymous_context_status, _, anonymous_context_body) =
         send_json(app.clone(), Method::GET, &manage_uri, None, None).await;
     assert_eq!(anonymous_context_status, StatusCode::UNAUTHORIZED);
@@ -214,7 +215,7 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     assert_eq!(invalid_intent_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_intent_body["error"]["code"], "validation_failed");
 
-    let release_uri = format!("/api/repos/{}/{}/releases", owner.email, repo.name);
+    let release_uri = format!("/api/repos/{owner_login}/{}/releases", repo.name);
     let (anonymous_create_status, _, anonymous_create_body) = send_json(
         app.clone(),
         Method::POST,
@@ -293,7 +294,7 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
         Method::GET,
         &format!(
             "/api/repos/{}/{}/releases/assets/{asset_id}",
-            owner.email, repo.name
+            owner_login, repo.name
         ),
         Some(&owner_cookie),
         None,
@@ -472,7 +473,7 @@ fn app_config() -> AppConfig {
 }
 
 async fn create_user(pool: &PgPool, login: &str) -> User {
-    let user = upsert_user_by_email(
+    let mut user = upsert_user_by_email(
         pool,
         &format!("{login}-{}@opengithub.local", Uuid::new_v4()),
         Some(&format!("{login} display")),
@@ -486,6 +487,7 @@ async fn create_user(pool: &PgPool, login: &str) -> User {
         .execute(pool)
         .await
         .expect("username should update");
+    user.username = Some(login.to_owned());
     user
 }
 
@@ -610,7 +612,12 @@ async fn send_json(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        // Keep anonymous guard assertions independent from rate-limit buckets
+        // left by prior broad workspace runs against the shared test database.
+        .header("x-forwarded-for", format!("release-contract-{}", Uuid::new_v4()));
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }

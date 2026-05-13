@@ -118,7 +118,14 @@ async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String
 }
 
 async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
-    let mut builder = Request::builder().uri(uri);
+    let mut builder = Request::builder()
+        .uri(uri)
+        // Keep anonymous auth expectations independent from rate-limit buckets
+        // accumulated by earlier integration tests in the shared test DB.
+        .header(
+            "x-forwarded-for",
+            format!("security-policy-contract-{}", Uuid::new_v4()),
+        );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -146,6 +153,10 @@ async fn send_json(
     let mut builder = Request::builder()
         .method(method)
         .uri(uri)
+        .header(
+            "x-forwarded-for",
+            format!("security-policy-contract-{}", Uuid::new_v4()),
+        )
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);

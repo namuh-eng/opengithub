@@ -380,7 +380,10 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     )
     .await;
     assert_eq!(anonymous_reaction_status, StatusCode::UNAUTHORIZED);
-    assert_eq!(anonymous_reaction_body["error"]["code"], "unauthorized");
+    assert_eq!(
+        anonymous_reaction_body["error"]["code"],
+        "not_authenticated"
+    );
 
     let (reaction_status, _, reaction_body) = send_json(
         app.clone(),

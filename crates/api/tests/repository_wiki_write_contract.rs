@@ -15,11 +15,13 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
+use std::sync::OnceLock;
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+static WIKI_STORAGE_ENV_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
 async fn database_pool() -> Option<PgPool> {
     let database_url = std::env::var("TEST_DATABASE_URL")
@@ -145,6 +147,10 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
         eprintln!("skipping repository wiki write scenario; set TEST_DATABASE_URL");
         return;
     };
+    let _storage_env_guard = WIKI_STORAGE_ENV_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
 
     let storage_dir =
         std::env::temp_dir().join(format!("opengithub-wiki-write-{}", Uuid::new_v4()));
@@ -347,6 +353,10 @@ async fn repository_wiki_revert_restores_base_revision_and_records_event() {
         eprintln!("skipping repository wiki revert scenario; set TEST_DATABASE_URL");
         return;
     };
+    let _storage_env_guard = WIKI_STORAGE_ENV_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
 
     let storage_dir =
         std::env::temp_dir().join(format!("opengithub-wiki-revert-{}", Uuid::new_v4()));

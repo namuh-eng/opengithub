@@ -1848,7 +1848,9 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": true
+    "qa_pass": true,
+    "qa_status": "pass",
+    "qa_notes": "QA passed with make doctor, make check, broad cargo workspace tests, web vitest, and focused DB-backed Chrome Playwright for Projects board/roadmap layout switching."
   },
   {
     "id": "projects-004",

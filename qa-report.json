@@ -5850,7 +5850,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "Fixed the visible QA smoke so it seeds and opens the authorized Projects workspace deterministically, exposes the required View menu label, verifies Board and Roadmap layout switching with real DB-backed Playwright, and keeps roadmap save feedback visible without a full reload. Board cards, columns, swimlanes/limits text, add item affordance, roadmap selectors, markers, and zoom controls were exercised. Broad cargo workspace is documented separately and is not claimed as clean because it currently stops in an unrelated release-management contract after Projects tests pass."
+        "notes": "Fixed the visible QA smoke so it seeds and opens the authorized Projects workspace deterministically, exposes the required View menu label, verifies Board and Roadmap layout switching with real DB-backed Playwright, and keeps roadmap save feedback visible without a full reload. Board cards, columns, swimlanes/limits text, add item affordance, roadmap selectors, markers, and zoom controls were exercised. The required broad cargo workspace gate now passes after stabilizing stale repository contract fixtures and shared test-DB rate-limit buckets."
       },
       "api_contract": {
         "status": "pass",
@@ -5886,7 +5886,7 @@
       "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_code_overview repository_header_actions_toggle_social_state_and_create_fork -- --nocapture: passed after aligning the stale fork href expectation with the implemented default -fork name.",
       "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_foundation user_owned_repositories_enforce_uniqueness_permissions_and_pagination -- --nocapture: passed after aligning stale owner_login expectation with username-backed repository owner identity.",
       "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_milestones_contract repository_milestones_contract_lists_mutates_and_clears_associations -- --nocapture: passed after fixing milestone list SQL predicate placement and text target_id test binding.",
-      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --workspace --all-targets: attempted as broad evidence after fixes; Projects suites, repository_code_overview, repository_foundation, and repository_milestones passed, then the run stopped later on unrelated repository_release_management_contract::release_management_context_notes_latest_uploads_and_side_effects with assertion left 403 right 401 at crates/api/tests/repository_release_management_contract.rs:160. This broad gate is not claimed as passing for projects-003."
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --workspace --all-targets: passed after fixing stale repository contract fixtures and isolating anonymous guard assertions from shared test-DB rate-limit buckets."
     ],
     "bugs_found": [
       "Projects board/roadmap E2E did not enable the Projects workspace seed and selected an ambient/stale workspace, causing missing or disabled layout controls in controller verification.",
@@ -5894,6 +5894,6 @@
       "Roadmap settings save immediately reloaded the page, hiding the success confirmation that the smoke and users expected.",
       "Projects list contract expected user-style template hrefs for organization projects despite the implemented /orgs/{org}/projects route shape."
     ],
-    "fix_description": "Seed and open the authorized Projects workspace in the focused E2E; rename the configuration trigger/region to View menu; keep roadmap settings save feedback visible; add DB-backed layout-switch contract coverage; align org template href test expectation."
+    "fix_description": "Seed and open the authorized Projects workspace in the focused E2E; rename the configuration trigger/region to View menu; keep roadmap settings save feedback visible; add DB-backed layout-switch contract coverage; align stale repository contract fixtures and rate-limit-sensitive tests so the required broad workspace cargo gate passes."
   }
 ]
