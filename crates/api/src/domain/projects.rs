@@ -5798,7 +5798,11 @@ fn workspace_role_from_row(row: &sqlx::postgres::PgRow) -> Result<Option<String>
     let org_base_role = org_role
         .as_ref()
         .and_then(|_| org_base_role.filter(|role| role != "none"));
-    Ok(project_role.or(org_role).or(org_base_role))
+    Ok(strongest_workspace_role([
+        project_role.as_deref(),
+        org_role.as_deref(),
+        org_base_role.as_deref(),
+    ]))
 }
 
 async fn project_settings_general(
@@ -12156,6 +12160,48 @@ fn status_label(status: &str) -> String {
     .to_owned()
 }
 
+fn workspace_role_rank(role: &str) -> i32 {
+    match role {
+        "owner" => 4,
+        "admin" => 3,
+        "write" => 2,
+        "member" | "read" => 1,
+        _ => 0,
+    }
+}
+
+fn strongest_workspace_role<'a>(
+    roles: impl IntoIterator<Item = Option<&'a str>>,
+) -> Option<String> {
+    roles
+        .into_iter()
+        .flatten()
+        .filter(|role| !role.is_empty() && *role != "none")
+        .max_by_key(|role| workspace_role_rank(role))
+        .map(str::to_owned)
+}
+
 fn can_write_project_role(role: &str) -> bool {
     matches!(role, "owner" | "admin" | "write")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strongest_workspace_role;
+
+    #[test]
+    fn strongest_workspace_role_preserves_org_write_over_project_read() {
+        assert_eq!(
+            strongest_workspace_role([Some("read"), Some("owner"), None]),
+            Some("owner".to_owned())
+        );
+        assert_eq!(
+            strongest_workspace_role([Some("read"), Some("member"), Some("write")]),
+            Some("write".to_owned())
+        );
+        assert_eq!(
+            strongest_workspace_role([None, Some("member"), Some("none")]),
+            Some("member".to_owned())
+        );
+    }
 }

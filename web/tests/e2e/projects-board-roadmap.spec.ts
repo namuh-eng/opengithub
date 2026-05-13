@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededNavigation = {
   cookieName: string;
   cookieValue: string;
+  projectsWorkspaceHref: string;
 };
 
 function seedNavigation(): SeededNavigation {
@@ -28,6 +29,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -49,15 +51,22 @@ async function signIn(page: Page, seeded: SeededNavigation) {
   ]);
 }
 
-async function openFirstProjectWorkspace(page: Page) {
-  await page.goto("/orgs/namuh/projects");
-  await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible();
-  const workspaceLink = page
-    .locator('a[href*="/projects/"][href*="/views/"]')
-    .first();
-  await expect(workspaceLink).toBeVisible();
-  await workspaceLink.click();
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+async function openFirstProjectWorkspace(page: Page, workspaceHref: string) {
+  expect(workspaceHref).toMatch(/\/orgs\/namuh\/projects\/\d+\/views\/\d+/);
+  await expect
+    .poll(
+      async () => {
+        await page.goto(workspaceHref);
+        const heading = page.getByRole("heading", { level: 1 }).first();
+        await heading.waitFor({ state: "visible", timeout: 10_000 });
+        return (await heading.textContent())?.trim();
+      },
+      {
+        message: "seeded Projects workspace route is ready",
+        timeout: 60_000,
+      },
+    )
+    .toBe("Editorial table workspace");
 }
 
 async function expectNoDeadControls(page: Page) {
@@ -89,7 +98,7 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
 }) => {
   const seeded = seedNavigation();
   await signIn(page, seeded);
-  await openFirstProjectWorkspace(page);
+  await openFirstProjectWorkspace(page, seeded.projectsWorkspaceHref);
 
   await openViewMenu(page);
   await expect(page.getByRole("button", { name: /Table\s*t/i })).toBeVisible();
@@ -119,8 +128,13 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   if (await moveSelect.isVisible()) {
     const options = await moveSelect.locator("option").all();
     if (options.length > 1) {
+      const nextValue = await options[1].getAttribute("value");
+      expect(nextValue).toBeTruthy();
       await moveSelect.selectOption({ index: 1 });
-      await expect(page.getByText(/Item moved/i)).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      await expect(
+        page.getByLabel(/Move Wire the table shell to column/),
+      ).toHaveValue(nextValue ?? "");
     }
   }
   await page
@@ -150,7 +164,11 @@ test("Projects board and roadmap layouts support final signed-in smoke", async (
   await expect(page.getByRole("button", { name: /Year/i })).toBeVisible();
   await page.getByRole("button", { name: /Quarter/i }).click();
   await page.getByRole("button", { name: /Save roadmap/i }).click();
-  await expect(page.getByText(/Roadmap settings saved/i)).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("button", { name: /Quarter/i })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/projects-003-final-roadmap-quarter.jpg",

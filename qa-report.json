@@ -5842,5 +5842,49 @@
       "ralph/screenshots/build/projects-002-final-mobile.jpg"
     ],
     "qa_pass": true
+  },
+  {
+    "feature_id": "projects-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified Projects v2 board and roadmap layouts against real test Postgres and Chrome. Fixed workspace role precedence so organization owner/write privileges are not shadowed by weaker direct grants, restored the View menu contract, seeded the dedicated projectsWorkspace scene, and opened /orgs/namuh/projects/1/views/1 directly. The focused Playwright spec exercised enabled layout switching, board cards/column move persistence, add-item affordance, roadmap date settings, Quarter/Year zoom, pane controls, reload/mobile preservation, no dead controls, and no page overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workspace",
+          "PATCH /api/projects/:project_id/views/:view_id/layout",
+          "PATCH /api/projects/:project_id/items/:item_id/position",
+          "PATCH /api/projects/:project_id/views/:view_id/roadmap-settings",
+          "POST /api/projects/:project_id/items"
+        ],
+        "notes": "Browser flow used the real Next route handlers and Rust API with signed session cookies. Direct API inspection confirmed viewerPermissions.canChangeLayout=true and layoutChoices Table/Board/Roadmap enabled for the seeded organization owner. Cargo workspace contract tests also covered Projects workspace mutations and private guards."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authz_role_precedence",
+          "private_project_signed_session",
+          "no_self_skip"
+        ],
+        "notes": "Private project workspace was accessed with a minted signed session only. The role precedence fix keeps strongest effective project role for organization owners/base roles rather than permitting weaker direct grants to disable authorized writes. No anonymous/self-skipped browser evidence was accepted."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright assertions verified accessible View menu/region names, button names, form names, select labels, no dead controls, and responsive no-overflow behavior."
+      }
+    },
+    "evidence": [
+      "make doctor -> Local verification stack is healthy (podman postgres-test reachable, .env/.env.test present, Cargo target writable).",
+      "make check -> Cargo check passed; Web typecheck passed; Clippy passed; Biome passed.",
+      "./hack/cargo_locked.sh test --workspace --all-targets -> passed, including domain::projects::tests::strongest_workspace_role_preserves_org_write_over_project_read and projects_workspace_contract (15 tests).",
+      "cd web && npx vitest run -> 109 files / 667 tests passed.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-board-roadmap.spec.ts -> 2 passed; target Projects board/roadmap smoke ran and did not self-skip."
+    ],
+    "updated_at": "2026-05-13T01:40:00Z"
   }
 ]

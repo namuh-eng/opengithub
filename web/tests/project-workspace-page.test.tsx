@@ -859,7 +859,7 @@ describe("ProjectWorkspacePage", () => {
       "/mona/projects/12/settings",
     );
     expect(screen.getByRole("button", { name: "+ View" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     expect(screen.getByRole("button", { name: /Table/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Board/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Roadmap/ })).toBeDisabled();
@@ -885,7 +885,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     fireEvent.change(screen.getByLabelText("Filter query"), {
       target: { value: "is:open label:frontend" },
     });
@@ -933,7 +933,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     expect(screen.getByRole("button", { name: /Table/ })).toHaveTextContent(
       "t",
     );
@@ -996,7 +996,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     fireEvent.submit(screen.getByRole("form", { name: "Saved view state" }));
     expect(await screen.findByText("sort must be supported")).toHaveClass(
       "chip",
@@ -1473,6 +1473,12 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByText("May 1 - May 20")).toBeInTheDocument();
     expect(screen.getAllByText("Missing dates")[0]).toHaveClass("chip", "warn");
     expect(screen.getByText("Jan")).toHaveClass("t-label");
+    expect(
+      screen.getByLabelText("Roadmap horizontal pane size"),
+    ).toHaveAttribute("type", "range");
+    expect(
+      screen.getByLabelText("Roadmap vertical lane height"),
+    ).toHaveAttribute("type", "range");
 
     fireEvent.change(screen.getByLabelText("Roadmap target date field"), {
       target: { value: "field-start" },
