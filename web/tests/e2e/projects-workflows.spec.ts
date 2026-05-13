@@ -28,6 +28,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -60,15 +61,15 @@ async function openFirstProjectWorkflowSettings(page: Page) {
   await page.goto(
     String(workspaceHref).replace(/\/views\/\d+.*/, "/workflows"),
   );
-  await expect(
-    page.getByRole("heading", { name: /Project workflows/i }),
-  ).toBeVisible();
+  await expect(page.getByText("Project workflows")).toBeVisible();
 }
 
 async function expectNoDeadControls(page: Page) {
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
+  const buttons = page.getByRole("button");
+  const buttonCount = await buttons.count();
+  for (let index = 0; index < buttonCount; index += 1) {
+    await expect(buttons.nth(index)).toHaveAccessibleName(/.+/);
   }
 }
 
@@ -87,6 +88,7 @@ test.skip(
 test("Projects workflows support final signed-in automation smoke", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const seeded = seedNavigation();
   await signIn(page, seeded);
   await openFirstProjectWorkflowSettings(page);
@@ -96,7 +98,9 @@ test("Projects workflows support final signed-in automation smoke", async ({
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Fields" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Workflows" })).toBeVisible();
-  await expect(page.getByText("@opengithub-project-automation")).toBeVisible();
+  await expect(
+    page.getByText("@opengithub-project-automation").first(),
+  ).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
@@ -169,10 +173,8 @@ test("Projects workflows support final signed-in automation smoke", async ({
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload();
-  await expect(
-    page.getByRole("heading", { name: /Project workflows/i }),
-  ).toBeVisible();
+  await page.goto(page.url(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Project workflows")).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({

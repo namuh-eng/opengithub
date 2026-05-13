@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 86,
+    "features_passed": 87,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 82,
+      "pass": 83,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 78,
+      "pass": 79,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 79,
+      "pass": 80,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 44,
+      "pass": 45,
       "fail": 0,
       "skip": 39
     }
@@ -2904,10 +2904,41 @@
       "feature_id": "projects-006",
       "description": "Implement built-in project workflows and automation for status updates, add-item",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "System-Chrome Playwright workflow settings smoke passed with .env.test after fixing the projects workspace seed, stable button accessibility enumeration, mobile reload determinism, and stale :3015 listener handling."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/projects/{projectId}/workflows",
+            "PATCH /api/projects/{projectId}/workflows/{workflowId}",
+            "POST /api/projects/{projectId}/automation-invocations",
+            "POST /api/repos/{owner}/{repo}/issues",
+            "PATCH /api/repos/{owner}/{repo}/issues/{number}"
+          ],
+          "notes": "Rust contract tests verified workflow settings/update, item-added auto-add, auto-archive, merged/closed Done transitions, and Actions/GraphQL automation invocation attribution."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "repository/project permission enforcement",
+            "repository target filtering",
+            "no stale app on :3015 for browser gate"
+          ],
+          "notes": "Workflow targets require linked repositories and actor write permission; auto-add only considers projects the actor can write and matching repository targets, so automation does not bypass repository/project permissions."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright smoke asserts no dead links, accessible names for visible role=button controls, and no horizontal overflow on desktop and 390px mobile."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "projects-007",

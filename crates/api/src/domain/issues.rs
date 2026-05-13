@@ -15,7 +15,10 @@ use super::{
         NotificationDeliveryCheck,
     },
     permissions::RepositoryRole,
-    projects::{run_project_item_automation, ProjectAutomationEvent, ProjectAutomationInput},
+    projects::{
+        run_project_item_automation, run_project_repository_item_added_automation,
+        ProjectAutomationEvent, ProjectAutomationInput,
+    },
     repositories::{
         get_repository, get_repository_by_owner_name, repository_permission_for_user, Repository,
         RepositoryVisibility, RepositoryWatchEvent,
@@ -848,6 +851,21 @@ pub async fn create_issue(pool: &PgPool, input: CreateIssue) -> Result<Issue, Co
     )
     .await?;
     notify_issue_assignees(pool, &issue, actor_user_id, &assignee_user_ids).await?;
+    run_project_repository_item_added_automation(
+        pool,
+        ProjectAutomationInput {
+            actor_user_id,
+            repository_id: issue.repository_id,
+            issue_id: Some(issue.id),
+            pull_request_id: None,
+            event: ProjectAutomationEvent::ItemAdded,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::projects::ProjectsError::Sqlx(error) => CollaborationError::Sqlx(error),
+        _ => CollaborationError::IssueNotFound,
+    })?;
     index_issue_search_document(pool, &issue, actor_user_id).await?;
     Ok(issue)
 }

@@ -979,6 +979,20 @@ async fn seed_projects_workspace_fixture(
     .bind(project_id)
     .fetch_one(pool)
     .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_field_options (project_field_id, name, color, position, description)
+        VALUES ($1, 'Backlog', 'gray', 1, 'Not started'),
+               ($1, 'In progress', 'blue', 2, 'Actively moving'),
+               ($1, 'Done', 'green', 3, 'Completed work'),
+               ($2, 'P1', 'red', 1, 'Highest priority'),
+               ($2, 'P2', 'orange', 2, 'Normal priority')
+        "#,
+    )
+    .bind(status_field)
+    .bind(priority_field)
+    .execute(pool)
+    .await?;
     let iteration_field: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO project_fields (project_id, name, field_type, position, settings)
