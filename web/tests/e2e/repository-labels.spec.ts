@@ -91,9 +91,16 @@ function seedDiscussion(repositoryHref: string, labelId: string) {
   const discussionNumber = 980 + Math.floor(Math.random() * 10);
 
   execFileSync(
-    "psql",
+    "docker",
     [
-      databaseUrl,
+      "exec",
+      "-i",
+      "opengithub-postgres-test",
+      "psql",
+      "-U",
+      "opengithub",
+      "-d",
+      "opengithub_test",
       "-v",
       "ON_ERROR_STOP=1",
       "-c",
@@ -222,12 +229,14 @@ test("signed-in repository labels manage and apply across issues, pull requests,
   );
 
   await page.goto(`/${ownerLogin}/${repoName}/labels`);
-  await expect(page.getByRole("heading", { name: "Labels" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Labels", exact: true }),
+  ).toBeVisible();
   await page
     .getByPlaceholder("Search all labels")
     .fill(label.label.name.slice(0, 6));
   await expect(page.getByText(label.label.name)).toBeVisible();
-  await page.getByText("Sort").click();
+  await page.getByRole("button", { name: "Sort" }).click();
   await expect(
     page.getByRole("menuitemradio", { name: /Total issue count/ }),
   ).toHaveAttribute("href", /sort=total_issue_count/);
@@ -251,13 +260,16 @@ test("signed-in repository labels manage and apply across issues, pull requests,
 
   await page.goto(`/${ownerLogin}/${repoName}/issues/${issue.number}`);
   await page
-    .locator("section", { has: page.getByRole("heading", { name: "Labels" }) })
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Labels", exact: true }),
+    })
     .getByRole("button", { name: "Edit" })
     .click();
   await page.getByLabel("Search labels").fill(label.label.name.slice(0, 6));
   await page
-    .getByRole("button", { name: new RegExp(`Add ${label.label.name}`) })
-    .click();
+    .getByRole("checkbox", { name: new RegExp(label.label.name) })
+    .check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Issue metadata updated.")).toBeVisible();
   await expect(
     page.locator(".chip", { hasText: label.label.name }),
@@ -265,13 +277,16 @@ test("signed-in repository labels manage and apply across issues, pull requests,
 
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
   await page
-    .locator("section", { has: page.getByRole("heading", { name: "Labels" }) })
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Labels", exact: true }),
+    })
     .getByRole("button", { name: "Edit" })
     .click();
   await page.getByLabel("Search labels").fill(label.label.name.slice(0, 6));
   await page
-    .getByRole("button", { name: new RegExp(`Add ${label.label.name}`) })
-    .click();
+    .getByRole("checkbox", { name: new RegExp(label.label.name) })
+    .check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Pull request metadata updated.")).toBeVisible();
   await expect(
     page.locator(".chip", { hasText: label.label.name }),
@@ -285,20 +300,25 @@ test("signed-in repository labels manage and apply across issues, pull requests,
     page.locator(".chip", { hasText: label.label.name }),
   ).toBeVisible();
   await page
-    .locator("section", { has: page.getByRole("heading", { name: "Labels" }) })
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Labels", exact: true }),
+    })
     .getByRole("button", { name: "Edit" })
     .click();
   await page.getByLabel("Search labels").fill("docs");
   await page
-    .getByRole("button", { name: new RegExp(`Add docs ${unique}`) })
-    .click();
+    .getByRole("checkbox", { name: new RegExp(`docs ${unique}`) })
+    .check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Discussion metadata updated.")).toBeVisible();
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
 
   await page.goto(`/${ownerLogin}/${repoName}/labels`);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "Labels" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Labels", exact: true }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,

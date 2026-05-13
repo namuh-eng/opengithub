@@ -6415,5 +6415,73 @@
     ],
     "fix_description": "Preserved upstream revert API error envelopes/statuses in the Next route, added route tests, made the historical revision label a real heading, and aligned the focused E2E with the 201 Created wiki-page API contract. Controller cleared the stale port 3015 conflict and reran the required DB-backed Rust contracts, make check, and focused system-Chrome wiki history Playwright gate; all passed, so wiki-003 is qa_pass=true.",
     "timestamp": "2026-05-13T14:52:26-07:00"
+  },
+  {
+    "feature_id": "labels-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "System Chrome Playwright acceptance for /{owner}/{repo}/labels passed end-to-end, covering create/edit/delete and applying labels to issues, pull requests, and discussions."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET/POST /api/repos/:owner/:repo/labels",
+          "PATCH/DELETE /api/repos/:owner/:repo/labels/:label_id",
+          "PATCH issue/pull/discussion metadata label assignment paths"
+        ],
+        "notes": "repository_labels_contract passed with .env.test and localhost:55433 test Postgres; no DB-backed self-skips."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_required_for_mutations",
+          "repository_scoped_label_ids",
+          "error_envelopes"
+        ],
+        "notes": "Contract and E2E covered authenticated write flows and same-repository label application; unauthorized/cross-repository protections are covered by the Rust contract."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Playwright acceptance asserted no dead controls, accessible visible buttons, and no horizontal overflow on desktop/mobile labels flows."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local verification stack healthy; postgres-test container reachable and .env.test present.",
+      "Inspected prior failed Playwright artifact: save remained pending after label edit while the Sort menu stayed open and E2E depended on host psql for discussion setup.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_labels_contract -- --nocapture: 1 passed, 0 failed.",
+      "Ran cd web && npx vitest run tests/repository-labels-page.test.tsx tests/repository-issue-detail.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-discussion-detail-page.test.tsx: 4 files passed, 43 tests passed.",
+      "Ran exact required system-Chrome Playwright command with absolute CARGO_TARGET_DIR: 2 passed, 0 failed.",
+      "Ran make check with worktree CARGO_TARGET_DIR: cargo check, web typecheck, clippy, and biome passed.",
+      "Ran CARGO_TARGET_DIR=$PWD/.scratch/cargo-target make test: Cargo tests passed; Web tests passed (671 passed).",
+      "Fixed broad web regression surfaced by make test: wiki editor now lets server validation handle empty edit-message saves, and wiki page list canonicalizes repository page hrefs from owner/repo/slug instead of trusting relative /wiki API hrefs."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Labels page did not show mutation success feedback or immediately reflect saved label details, leaving the browser acceptance path vulnerable to stale UI after edit.",
+        "fix": "Use the mutation response label for optimistic local list updates, close the editor, and show Label created/updated/deleted status chips before router.refresh."
+      },
+      {
+        "severity": "major",
+        "description": "Open Sort menu could intercept clicks on label row actions, causing Playwright and users to be stuck when moving from sort inspection to Edit.",
+        "fix": "Dismiss the sort menu on outside pointerdown."
+      },
+      {
+        "severity": "major",
+        "description": "labels E2E seeded discussions through a host psql binary that is not guaranteed in the verification lane.",
+        "fix": "Seed discussions through the committed test Postgres container using docker exec psql against opengithub-postgres-test."
+      },
+      {
+        "severity": "minor",
+        "description": "Labels E2E used ambiguous text/heading locators and stale Add-button expectations for checkbox-based label pickers.",
+        "fix": "Use role/exact locators and Save labels checkbox flow matching the product UI."
+      }
+    ],
+    "fix_description": "Stabilized repository label mutation UX and acceptance coverage without weakening assertions: optimistic response-backed updates, status feedback, sort menu outside-click dismissal, portable DB-backed E2E discussion seeding, and broad make test regressions fixed so the full deterministic test gate is green.",
+    "timestamp": "2026-05-13T16:14:00-07:00"
   }
 ]
