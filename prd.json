@@ -2016,7 +2016,9 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true,
+    "qa_notes": "Controller verified wiki history/revision compare/revert with DB-backed Rust contracts, make check, and focused system-Chrome Playwright repository-wiki-history.spec.ts on 2026-05-13.",
+    "qa_verified_at": "2026-05-13T14:52:26-07:00"
   },
   {
     "id": "labels-001",

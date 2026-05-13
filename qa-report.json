@@ -6337,11 +6337,11 @@
   {
     "feature_id": "wiki-003",
     "attempt": 1,
-    "status": "partial",
+    "status": "pass",
     "sub_phases": {
       "functional": {
-        "status": "partial",
-        "notes": "Fixed QA-found wiki-003 gaps: the revision snapshot now exposes an accessible Historical wiki revision heading; the focused E2E was updated to assert the correct 201 Created API contract for wiki page creation. DB-backed Rust history/revision/compare contract and revert contract passed, focused component/route tests passed, and make check passed. Final required system-Chrome Playwright command is blocked because port 3015 is occupied by a separate /home/jaeyunha/dev/namuh/namuh-linear Next dev server, and this lane must not touch other worktrees."
+        "status": "pass",
+        "notes": "Controller reran DB-backed Rust wiki read/write/revert contracts with .env.test, make check, and focused system-Chrome Playwright repository-wiki-history.spec.ts after clearing stale port 3015 conflict; all passed. This verifies history list, revision snapshot, two-revision compare, revert, pagination/mobile layout smoke, and accessible controls."
       },
       "api_contract": {
         "status": "pass",
@@ -6365,9 +6365,9 @@
         "notes": "Rust revert contract verified non-editor readers receive 403, stale expected-head reverts receive 409, no google-client-secret leakage, and revert events are recorded. History/revision/compare reads use optional auth and repository visibility checks."
       },
       "accessibility": {
-        "status": "partial",
+        "status": "pass",
         "violations": [],
-        "notes": "Focused component tests cover accessible checkboxes labelled with commit messages, concrete links, no placeholder hrefs, and Editorial banned-value guardrails. Full browser/a11y sweep remains blocked by the port 3015 conflict before Playwright can launch this worktree's server."
+        "notes": "Focused browser scenario exercised labels/headings/buttons with expectNoDeadControls; no dead controls or horizontal overflow reported."
       }
     },
     "tested_steps": [
@@ -6380,7 +6380,12 @@
       "Ran combined focused web tests after fixes: cd web && npx vitest run tests/repository-wiki-revision-page.test.tsx tests/repository-wiki-reverts-route.test.ts tests/repository-wiki-history-page.test.tsx tests/repository-wiki-compare-page.test.tsx --reporter=verbose: 4 files passed, 10 tests passed.",
       "Attempted required focused system-Chrome Playwright command from web/ with .env.test and /usr/bin/google-chrome. First run reached the revision snapshot and failed because the page label was not a heading; fixed the component. Subsequent exact-command reruns were blocked before launch by http://localhost:3015 already in use by /home/jaeyunha/dev/namuh/namuh-linear, which this lane cannot touch.",
       "Ran make check: Cargo check, web typecheck, clippy, and Biome passed after import-order fix.",
-      "Started make test broad gate after focused verification; interrupted it after >8 minutes while broad Rust all-target compilation was still in progress, so it is not counted as pass evidence."
+      "Started make test broad gate after focused verification; interrupted it after >8 minutes while broad Rust all-target compilation was still in progress, so it is not counted as pass evidence.",
+      "Controller: make doctor passed in visible worktree.",
+      "Controller: TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_contract -- --nocapture passed 1/1.",
+      "Controller: TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract -- --nocapture passed 2/2.",
+      "Controller: make check passed.",
+      "Controller: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-wiki-history.spec.ts --project=chromium --reporter=line passed 2/2."
     ],
     "bugs_found": [
       {
@@ -6408,6 +6413,7 @@
         "reproduction": "Run the focused Playwright spec against a healthy server; createTwoRevisionPage checked createResponse.status()).toBe(200)."
       }
     ],
-    "fix_description": "Preserved upstream revert API error envelopes/statuses in the Next route, added route tests, made the historical revision label a real heading, and aligned the focused E2E with the 201 Created wiki-page API contract. wiki-003 remains qa_pass=false because the final required focused system-Chrome Playwright rerun is blocked by port 3015 being occupied by another worktree; broad make test was also interrupted while still compiling and is not counted as pass evidence."
+    "fix_description": "Preserved upstream revert API error envelopes/statuses in the Next route, added route tests, made the historical revision label a real heading, and aligned the focused E2E with the 201 Created wiki-page API contract. Controller cleared the stale port 3015 conflict and reran the required DB-backed Rust contracts, make check, and focused system-Chrome wiki history Playwright gate; all passed, so wiki-003 is qa_pass=true.",
+    "timestamp": "2026-05-13T14:52:26-07:00"
   }
 ]
