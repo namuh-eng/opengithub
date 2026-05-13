@@ -522,7 +522,7 @@ pub async fn repository_wiki_for_actor_by_owner_name(
         }));
     };
 
-    let pages = wiki_page_summaries(pool, wiki_repository_id, slug).await?;
+    let pages = wiki_page_summaries(pool, &repository, wiki_repository_id, slug).await?;
     let page = wiki_page(pool, &repository, wiki_repository_id, slug, can_edit_wiki).await?;
     let sidebar = wiki_special_block(
         pool,
@@ -782,7 +782,8 @@ pub async fn repository_wiki_revision_for_actor_by_owner_name(
 
     let row = wiki_revision_page_row(pool, page_summary.id, revision).await?;
     let page = wiki_page_from_row(pool, &repository, row, false).await?;
-    let pages = wiki_page_summaries(pool, wiki_repository_id, Some(&page.slug)).await?;
+    let pages =
+        wiki_page_summaries(pool, &repository, wiki_repository_id, Some(&page.slug)).await?;
     let permission = viewer_permission(pool, &repository, actor_user_id).await?;
     let can_edit_wiki = match actor_user_id {
         Some(user_id) => {
@@ -973,7 +974,7 @@ pub async fn repository_wiki_pages_for_actor_by_owner_name(
         return Ok(None);
     };
     let wiki_repository_id = ensure_wiki_repository(pool, &repository).await?;
-    let pages = wiki_page_summaries(pool, wiki_repository_id, None).await?;
+    let pages = wiki_page_summaries(pool, &repository, wiki_repository_id, None).await?;
     Ok(Some(WikiPagesIndex {
         repository: repository_summary,
         viewer,
@@ -1621,6 +1622,7 @@ async fn wiki_repository_id(
 
 async fn wiki_page_summaries(
     pool: &PgPool,
+    repository: &Repository,
     wiki_repository_id: Uuid,
     active_slug: Option<&str>,
 ) -> Result<Vec<WikiPageSummary>, RepositoryError> {
@@ -1658,7 +1660,7 @@ async fn wiki_page_summaries(
             WikiPageSummary {
                 id: row.get("id"),
                 title: row.get("title"),
-                href: wiki_page_href_from_parts(&slug),
+                href: wiki_page_href(repository, &slug),
                 active: active_slug
                     .as_deref()
                     .map(|active| active.eq_ignore_ascii_case(&slug))
@@ -1777,7 +1779,7 @@ async fn wiki_page_from_row(
         content_sha: rendered.content_sha,
         outline,
         edit_href: can_edit.then(|| format!("{}/_edit", wiki_page_href(repository, &slug))),
-        history_href: format!("{}/_history", wiki_page_href(repository, &slug)),
+        history_href: wiki_page_history_href(repository, &slug),
     })
 }
 
@@ -2353,6 +2355,14 @@ fn wiki_page_href(repository: &Repository, slug: &str) -> String {
     )
 }
 
+fn wiki_page_history_href(repository: &Repository, slug: &str) -> String {
+    format!(
+        "{}/{}/_history",
+        wiki_home_href(repository),
+        percent_encode_path(slug)
+    )
+}
+
 fn wiki_history_href(
     repository: &Repository,
     slug: Option<&str>,
@@ -2360,7 +2370,7 @@ fn wiki_history_href(
     page_size: i64,
 ) -> String {
     let base = slug
-        .map(|slug| format!("{}/_history", wiki_page_href(repository, slug)))
+        .map(|slug| wiki_page_history_href(repository, slug))
         .unwrap_or_else(|| format!("{}/_history", wiki_home_href(repository)));
     let mut params = Vec::new();
     if page > 1 {
@@ -2383,18 +2393,10 @@ fn wiki_revision_history_href(
 ) -> String {
     let revision = commit_oid.unwrap_or("unknown");
     format!(
-        "{}/_history/{}",
-        wiki_page_href(repository, slug),
+        "{}/{}",
+        wiki_page_history_href(repository, slug),
         percent_encode_segment(revision)
     )
-}
-
-fn wiki_page_href_from_parts(slug: &str) -> String {
-    if slug.eq_ignore_ascii_case("home") {
-        "/wiki".to_owned()
-    } else {
-        format!("/wiki/{}", percent_encode_path(slug))
-    }
 }
 
 fn percent_encode_path(path: &str) -> String {

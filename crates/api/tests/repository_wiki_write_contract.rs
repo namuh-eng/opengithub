@@ -15,11 +15,14 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
+use std::sync::LazyLock;
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+static WIKI_WRITE_ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 async fn database_pool() -> Option<PgPool> {
     let database_url = std::env::var("TEST_DATABASE_URL")
@@ -141,6 +144,7 @@ async fn json_request(
 
 #[tokio::test]
 async fn repository_wiki_write_contract_creates_previews_updates_and_records_git_metadata() {
+    let _env_guard = WIKI_WRITE_ENV_LOCK.lock().await;
     let Some(pool) = database_pool().await else {
         eprintln!("skipping repository wiki write scenario; set TEST_DATABASE_URL");
         return;
@@ -343,6 +347,7 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
 
 #[tokio::test]
 async fn repository_wiki_revert_restores_base_revision_and_records_event() {
+    let _env_guard = WIKI_WRITE_ENV_LOCK.lock().await;
     let Some(pool) = database_pool().await else {
         eprintln!("skipping repository wiki revert scenario; set TEST_DATABASE_URL");
         return;

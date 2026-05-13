@@ -97,11 +97,12 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
   await signIn(page, seeded);
 
   await page.goto(seeded.repositoryWikiHref);
-  await expect(page.getByRole("link", { name: "Wiki" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Repository" })
+      .getByRole("link", { name: "Wiki", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#repository-wiki-title")).toHaveText("Home");
   await expect(
     page.getByRole("navigation", { name: "Wiki pages" }),
   ).toBeVisible();
@@ -113,11 +114,20 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
     path: "../ralph/screenshots/build/wiki-001-final-home.jpg",
   });
 
-  await page.getByRole("link", { name: "Architecture Guide" }).click();
+  const wikiPagesNav = page.getByRole("navigation", { name: "Wiki pages" });
+  const architecturePageLink = wikiPagesNav.getByRole("link", {
+    name: "Architecture Guide",
+  });
+  await architecturePageLink.click();
   await expect(page).toHaveURL(/\/wiki\/Architecture%20Guide$/);
+  await expect(page.locator("#repository-wiki-title")).toHaveText(
+    "Architecture Guide",
+  );
   await expect(
-    page.getByRole("heading", { name: "Architecture Guide" }),
-  ).toBeVisible();
+    page
+      .getByRole("navigation", { name: "Wiki pages" })
+      .getByRole("link", { name: "Architecture Guide" }),
+  ).toHaveAttribute("aria-current", "page");
   await page
     .getByRole("button", {
       name: "Expand Architecture Guide table of contents",
@@ -137,9 +147,9 @@ test("signed-in repository wiki supports Home, slug navigation, TOC expansion, c
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "Architecture Guide" }),
-  ).toBeVisible();
+  await expect(page.locator("#repository-wiki-title")).toHaveText(
+    "Architecture Guide",
+  );
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({

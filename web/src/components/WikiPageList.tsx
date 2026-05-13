@@ -6,7 +6,6 @@ import type {
   RepositoryWikiHeading,
   RepositoryWikiPageSummary,
 } from "@/lib/api";
-import { repositoryWikiHref } from "@/lib/navigation";
 
 type WikiPageListProps = {
   owner: string;
@@ -190,19 +189,19 @@ export function WikiPageList({
               >
                 <Chevron expanded={isExpanded} />
               </button>
-              <Link
+              <a
                 aria-current={page.active ? "page" : undefined}
                 className={`min-w-0 rounded-md px-2 py-2 t-sm hover:underline ${
                   page.active ? "font-semibold" : ""
                 }`}
-                href={repositoryWikiHref(owner, repo, page.slug)}
+                href={page.href}
                 id={labelId}
                 style={{
                   color: page.active ? "var(--ink-1)" : "var(--ink-3)",
                 }}
               >
                 {page.title}
-              </Link>
+              </a>
             </div>
             {isExpanded ? (
               <div id={panelId}>

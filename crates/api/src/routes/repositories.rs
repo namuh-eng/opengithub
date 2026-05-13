@@ -1226,7 +1226,7 @@ async fn wiki_home(
         &state.config.app_url,
     )
     .await
-    .map_err(map_repository_error)?
+    .map_err(map_wiki_repository_error)?
     .ok_or_else(|| {
         error_response(
             StatusCode::NOT_FOUND,
@@ -1260,6 +1260,17 @@ fn wiki_history_bounds(query: &WikiHistoryQuery) -> (i64, i64) {
     )
 }
 
+fn map_wiki_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        RepositoryError::InvalidSecurityPolicy(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        error => map_repository_error(error),
+    }
+}
+
 async fn wiki_compare(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1278,7 +1289,7 @@ async fn wiki_compare(
         &query.head,
     )
     .await
-    .map_err(map_repository_error)?
+    .map_err(map_wiki_repository_error)?
     .ok_or_else(|| {
         error_response(
             StatusCode::NOT_FOUND,
@@ -1309,7 +1320,7 @@ async fn wiki_history(
         page_size,
     )
     .await
-    .map_err(map_repository_error)?
+    .map_err(map_wiki_repository_error)?
     .ok_or_else(|| {
         error_response(
             StatusCode::NOT_FOUND,
@@ -1339,7 +1350,7 @@ async fn wiki_page(
             revision_ref,
         )
         .await
-        .map_err(map_repository_error)?
+        .map_err(map_wiki_repository_error)?
         .ok_or_else(|| {
             error_response(
                 StatusCode::NOT_FOUND,
@@ -1365,7 +1376,7 @@ async fn wiki_page(
             page_size,
         )
         .await
-        .map_err(map_repository_error)?
+        .map_err(map_wiki_repository_error)?
         .ok_or_else(|| {
             error_response(
                 StatusCode::NOT_FOUND,
@@ -1385,7 +1396,7 @@ async fn wiki_page(
             edit_slug.trim_end_matches('/'),
         )
         .await
-        .map_err(map_repository_error)?
+        .map_err(map_wiki_repository_error)?
         .ok_or_else(|| {
             error_response(
                 StatusCode::NOT_FOUND,
@@ -1405,7 +1416,7 @@ async fn wiki_page(
         &state.config.app_url,
     )
     .await
-    .map_err(map_repository_error)?
+    .map_err(map_wiki_repository_error)?
     .ok_or_else(|| {
         error_response(
             StatusCode::NOT_FOUND,
@@ -1426,7 +1437,7 @@ async fn wiki_pages(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pages = repository_wiki_pages_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
         .await
-        .map_err(map_repository_error)?
+        .map_err(map_wiki_repository_error)?
         .ok_or_else(|| {
             error_response(
                 StatusCode::NOT_FOUND,
@@ -1449,7 +1460,7 @@ async fn preview_wiki_page(
     let preview =
         preview_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, request)
             .await
-            .map_err(map_repository_error)?
+            .map_err(map_wiki_repository_error)?
             .ok_or_else(|| {
                 error_response(
                     StatusCode::NOT_FOUND,
@@ -1471,7 +1482,7 @@ async fn create_wiki_page(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let page = create_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, request)
         .await
-        .map_err(map_repository_error)?
+        .map_err(map_wiki_repository_error)?
         .ok_or_else(|| {
             error_response(
                 StatusCode::NOT_FOUND,
@@ -1494,7 +1505,7 @@ async fn revert_wiki_page(
     let result =
         revert_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, request)
             .await
-            .map_err(map_repository_error)?
+            .map_err(map_wiki_repository_error)?
             .ok_or_else(|| {
                 error_response(
                     StatusCode::NOT_FOUND,
@@ -1517,7 +1528,7 @@ async fn update_wiki_page(
     let page =
         update_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, &slug, request)
             .await
-            .map_err(map_repository_error)?
+            .map_err(map_wiki_repository_error)?
             .ok_or_else(|| {
                 error_response(
                     StatusCode::NOT_FOUND,

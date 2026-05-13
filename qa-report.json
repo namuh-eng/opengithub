@@ -6216,5 +6216,55 @@
       "ralph/screenshots/build/projects-008-final-mobile.jpg"
     ],
     "confidence": "high"
+  },
+  {
+    "feature_id": "wiki-001",
+    "attempt": 1,
+    "status": "pass",
+    "timestamp": "2026-05-13T19:45:13Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Required browser gate passed against real Next/Rust dev stack with .env.test and system Chrome. The wiki pages sidebar Architecture Guide link navigates to /wiki/Architecture%20Guide, the page title updates, and the sidebar link receives aria-current=page."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "repository_wiki_contract and repository_wiki_write_contract passed against TEST_DATABASE_URL with no self-skip."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Contract coverage includes private wiki not-found visibility, disabled wiki state, authenticated write/revert paths, and no secret leakage in exercised responses."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused E2E verifies accessible repository/wiki navigation, named controls, no dead controls, and no horizontal overflow on desktop and mobile."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: local verification stack healthy, Postgres test container reachable, .env.test present.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_contract -- --nocapture: 1 passed, 0 failed, no self-skip.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract -- --nocapture: 2 passed, 0 failed, no self-skip.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Identified stale non-OpenGitHub listener on port 3015 via ss -ltnp and /proc/<pid>/cwd (/home/jaeyunha/dev/namuh/namuh-linear), killed only that listener, then reran browser gate.",
+      "Ran cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-wiki.spec.ts --reporter=line with absolute CARGO_TARGET_DIR exported: 2 passed.",
+      "After removing stale generated web/.next output from failed dev runs, reran make check and the required browser gate again; both passed with the native wiki page-list anchor fix."
+    ],
+    "bugs_found": [
+      "Wiki page summaries returned ownerless hrefs for sidebar page links, allowing the browser acceptance path to remain on /wiki instead of navigating to the selected slug in controller reproduction.",
+      "Home page history/compare links collapsed the Home slug to /wiki/_history, while the contract and page-scoped history route require /wiki/Home/_history.",
+      "Wiki API validation errors exposed the generic InvalidSecurityPolicy display prefix instead of the API contract's direct validation message.",
+      "repository_wiki_write_contract tests mutated OPENGITHUB_GIT_STORAGE_DIR concurrently, making real Git metadata assertions race between test cases.",
+      "Focused wiki E2E selectors were ambiguous with Markdown-generated headings/links and did not explicitly assert the sidebar active state.",
+      "Next client-side Link handling in the hydrated wiki sidebar could focus the Architecture Guide link without committing navigation under the controller browser gate; switching the page-list item to a native anchor preserves deterministic route navigation."
+    ],
+    "fix_description": "Use native anchors with canonical API-provided wiki page hrefs in the sidebar, generate repository-qualified page summary hrefs, preserve explicit Home slugs for page-scoped history/revision links, normalize wiki validation error messages, serialize the write-contract Git storage env var, and strengthen the browser spec to click the Wiki pages sidebar link and assert URL, title, and aria-current active state.",
+    "commands": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_contract -- --nocapture",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_wiki_write_contract -- --nocapture",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "cd web && export CARGO_TARGET_DIR=\"/home/jaeyunha/dev/namuh/opengithub-visible/wiki-001-visible-retry-20260513122648/.scratch/cargo-target\"; set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-wiki.spec.ts --reporter=line"
+    ],
+    "confidence": "high"
   }
 ]
