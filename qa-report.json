@@ -6066,5 +6066,120 @@
       "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
     ],
     "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
+  },
+  {
+    "feature_id": "projects-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified the workflows settings UI with focused component coverage and an env-loaded system-Chrome Playwright smoke against the real local app/test DB. The browser path signs in with the seeded Projects workspace, opens /orgs/namuh/projects/1/workflows directly, verifies settings navigation/default workflow cards/automation attribution, edits condition/status/archive criteria, saves, views activity, and repeats mobile overflow/dead-control checks."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workflows",
+          "PATCH /api/projects/:project_id/workflows/:workflow_id",
+          "POST /api/projects/:project_id/automation/invocations",
+          "PATCH /api/repos/:owner/:repo/issues/:number state close automation hook"
+        ],
+        "notes": "DB-backed projects_workspace_contract workflow scenarios passed with .env.test loaded and no self-skip: default workflow seeding, repository target filtering, writer/reader/outsider permissions, optimistic concurrency, audit/log writes, closed issue -> Done execution idempotency, and Actions/GraphQL invocation attribution."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "project permission enforcement",
+          "repository target permission filtering",
+          "optimistic concurrency guard",
+          "idempotent automation execution",
+          "audit/event attribution",
+          "no secret leakage in forbidden response"
+        ],
+        "notes": "Reader PATCH returns 403, outsider GET returns forbidden without session-secret leakage, repository targets are filtered to selectable repositories, workflow invocations require the authenticated actor and project permissions, and execution logs/audit events preserve @opengithub-project-automation attribution."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Component and browser coverage verify named settings links/buttons, labeled Event/Condition/Target field/Target value/Archive criteria controls, no dead href controls, visible button accessible names, and no horizontal overflow on desktop or mobile."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, prd.json projects-006, prior QA reports, ProjectWorkflowSettingsPage, workflows pages/proxy routes, Rust Projects routes/domain, migrations, DB contract tests, component test, and Playwright workflow spec.",
+      "Ran make doctor first and verified the local DB/schema before accepting DB-backed tests.",
+      "Found focused Playwright did not seed PROJECTS_WORKSPACE_E2E and navigated through an unseeded Projects list/slow route; changed it to seed and open the canonical projectsWorkspaceHref workflow route directly.",
+      "Found the shared Projects E2E fixture had no status/select options, preventing real workflow Save from selecting a target status; added Status and Priority options to dashboard_e2e_seed.",
+      "Aligned the workflow browser assertions with the current Editorial page hierarchy and non-unique automation attribution text.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor: passed; postgres-test container up, Postgres reachable, .env/.env.test present, per-worktree Cargo target writable.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -c \"select table_name ...\": passed; project_workflows, project_workflow_rules, and workflow_execution_logs present in localhost:55433 test schema.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_workflow -- --nocapture: passed; 2 passed, 0 failed, no self-skip.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_automation_invocation -- --nocapture: passed; 1 passed, 0 failed, no self-skip.",
+      "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx vitest run tests/project-workflow-settings-page.test.tsx: passed; 1 file / 6 tests passed.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium: passed; 2 passed including auth setup, system Chrome, real TEST_DATABASE_URL, no self-skip.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed; Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make test: passed; Cargo tests passed and Web tests passed (667 passed)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "The projects-workflows E2E did not enable the Projects workspace seed and discovered the workflow page through the organization projects list, causing timeouts or stale navigation instead of exercising the deterministic feature route.",
+        "file": "web/tests/e2e/projects-workflows.spec.ts"
+      },
+      {
+        "severity": "major",
+        "description": "The seeded Projects workspace created single-select fields without options, so the workflow editor could not choose a target status value and real Save returned \"A target status option is required.\"",
+        "file": "crates/api/examples/dashboard_e2e_seed.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "The focused browser spec expected Project workflows as a heading and used strict getByText for repeated automation attribution, while the Editorial UI renders Project workflows as the kicker and repeats the automation actor on cards/activity.",
+        "file": "web/tests/e2e/projects-workflows.spec.ts"
+      }
+    ],
+    "fix_description": "Hardened the workflows Playwright acceptance path to seed/open the canonical Projects workspace, added real single-select options to the shared Projects E2E fixture so workflow saves can select a target value, and aligned assertions with the Editorial hierarchy/repeated automation attribution.",
+    "commands": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor: passed; postgres-test container up, Postgres reachable, .env/.env.test present, per-worktree Cargo target writable.",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -c \"select table_name ...\": passed; project_workflows, project_workflow_rules, and workflow_execution_logs present in localhost:55433 test schema.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_workflow -- --nocapture: passed; 2 passed, 0 failed, no self-skip.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_automation_invocation -- --nocapture: passed; 1 passed, 0 failed, no self-skip.",
+      "cd web && set -a; . ../.env.test; set +a; CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx vitest run tests/project-workflow-settings-page.test.tsx: passed; 1 file / 6 tests passed.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome CARGO_TARGET_DIR=\"$PWD/../.scratch/cargo-target\" npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium: passed; 2 passed including auth setup, system Chrome, real TEST_DATABASE_URL, no self-skip.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed; Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make test: passed; Cargo tests passed and Web tests passed (667 passed)."
+    ],
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/projects-006-final-workflows-list.jpg",
+        "label": "Default workflow cards and automation attribution"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-006-final-edit-dialog.jpg",
+        "label": "Workflow editor controls"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-006-final-repository-selector.jpg",
+        "label": "Repository selector"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-006-final-archive-criteria.jpg",
+        "label": "Archive criteria before save"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-006-final-activity-log.jpg",
+        "label": "Recent automation panel"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-006-final-mobile.jpg",
+        "label": "Mobile workflows page"
+      }
+    ],
+    "artifacts": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json",
+      "crates/api/examples/dashboard_e2e_seed.rs",
+      "web/tests/e2e/projects-workflows.spec.ts"
+    ],
+    "timestamp": "2026-05-13T08:31:37.121772Z"
   }
 ]

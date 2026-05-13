@@ -989,6 +989,28 @@ async fn seed_projects_workspace_fixture(
     .bind(project_id)
     .fetch_one(pool)
     .await?;
+    for (field_id, options) in [
+        (
+            status_field,
+            vec![("Backlog", "gray"), ("In progress", "yellow"), ("Done", "green")],
+        ),
+        (priority_field, vec![("P1", "red"), ("P2", "yellow"), ("P3", "gray")]),
+    ] {
+        for (position, (name, color)) in options.into_iter().enumerate() {
+            sqlx::query(
+                r#"
+                INSERT INTO project_field_options (project_field_id, name, color, position)
+                VALUES ($1, $2, $3, $4)
+                "#,
+            )
+            .bind(field_id)
+            .bind(name)
+            .bind(color)
+            .bind((position + 1) as i32)
+            .execute(pool)
+            .await?;
+        }
+    }
     sqlx::query(
         r#"
         INSERT INTO project_iterations (project_field_id, name, start_date, duration_days, position)
