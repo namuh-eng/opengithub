@@ -17,9 +17,21 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
+
+static REQUEST_SUBJECT_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn isolated_forwarded_for() -> String {
+    let id = REQUEST_SUBJECT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("2001:db8:projects::{id:x}")
+}
+
+fn with_isolated_subject(builder: axum::http::request::Builder) -> axum::http::request::Builder {
+    builder.header("x-forwarded-for", isolated_forwarded_for())
+}
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
@@ -457,7 +469,7 @@ async fn get_json(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    let mut builder = with_isolated_subject(Request::builder().method(Method::GET).uri(uri));
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -480,10 +492,12 @@ async fn patch_json(
     cookie: Option<&str>,
     body: Value,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder()
-        .method(Method::PATCH)
-        .uri(uri)
-        .header(header::CONTENT_TYPE, "application/json");
+    let mut builder = with_isolated_subject(
+        Request::builder()
+            .method(Method::PATCH)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json"),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -510,10 +524,12 @@ async fn post_json(
     cookie: Option<&str>,
     body: Value,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder()
-        .method(Method::POST)
-        .uri(uri)
-        .header(header::CONTENT_TYPE, "application/json");
+    let mut builder = with_isolated_subject(
+        Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json"),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -539,7 +555,7 @@ async fn delete_json(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder().method(Method::DELETE).uri(uri);
+    let mut builder = with_isolated_subject(Request::builder().method(Method::DELETE).uri(uri));
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -562,10 +578,12 @@ async fn delete_json_body(
     cookie: Option<&str>,
     body: Value,
 ) -> (StatusCode, HeaderMap, Value) {
-    let mut builder = Request::builder()
-        .method(Method::DELETE)
-        .uri(uri)
-        .header(header::CONTENT_TYPE, "application/json");
+    let mut builder = with_isolated_subject(
+        Request::builder()
+            .method(Method::DELETE)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json"),
+    );
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }

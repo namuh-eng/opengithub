@@ -889,6 +889,7 @@ export function ProjectWorkspacePage({
               </select>
             </label>
             <button
+              aria-label="View menu"
               className="btn sm"
               onClick={() => setConfigOpen((open) => !open)}
               title={
@@ -898,12 +899,12 @@ export function ProjectWorkspacePage({
               }
               type="button"
             >
-              View configuration
+              View menu
             </button>
           </div>
 
           {configOpen ? (
-            <section aria-label="View configuration" className="card mb-3 p-4">
+            <section aria-label="View menu" className="card mb-3 p-4">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="t-h3">View configuration</h2>

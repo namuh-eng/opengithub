@@ -5842,5 +5842,91 @@
       "ralph/screenshots/build/projects-002-final-mobile.jpg"
     ],
     "qa_pass": true
+  },
+  {
+    "feature_id": "projects-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified Projects v2 board and roadmap layout switching on the real local app/test DB. The browser smoke signs in with a seeded Projects workspace, opens /orgs/namuh/projects/1/views/1 directly, opens the accessible View menu, switches to Board and Roadmap, checks cards/columns/add affordance, roadmap date/marker/zoom controls, screenshots, no dead controls, and no page overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/workspace",
+          "PATCH /api/projects/:project_id/views/:view_id/layout",
+          "PATCH /api/projects/:project_id/views/:view_id/roadmap-settings",
+          "PATCH /api/projects/:project_id/items/:item_id/position",
+          "PATCH /api/projects/:project_id/items/:item_id/fields/:field_id",
+          "POST /api/projects/:project_id/items",
+          "POST /api/projects/:project_id/items/bulk",
+          "DELETE /api/projects/:project_id/items/:item_id"
+        ],
+        "notes": "Env-loaded DB-backed projects_workspace_contract passed 15/15 without self-skip. Request helpers attach unique X-Forwarded-For subjects so anonymous/not-found assertions are not polluted by shared rate-limit buckets."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "anonymous_private_project_not_found_without_rate_limit_pollution",
+          "private_repository_link_non_leakage",
+          "outsider_forbidden_guards",
+          "authorized_layout_mutation_required"
+        ],
+        "notes": "Focused Rust contract covers private guards, repository visibility filtering, forbidden outsider settings access, and not_found anonymous behavior with isolated rate-limit subjects."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "The layout switcher is exposed as an accessible View menu region with named Table/Board/Roadmap buttons and keyboard hints. Browser smoke verifies all visible buttons have accessible names and no dead href controls."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy, postgres-test reachable on :55433, .env/.env.test present, per-worktree Cargo target writable.",
+      "Inspected prd.json projects-003, qa-report history, ProjectWorkspacePage, Projects API/domain routes, projects_workspace_contract, and projects-board-roadmap E2E.",
+      "Fixed the controller browser timeout by aligning the product control to the PRD-accessible name View menu and region name View menu.",
+      "Made the Projects board/roadmap browser spec seed PROJECTS_WORKSPACE_E2E=1, navigate to the seeded projectsWorkspaceHref directly, and use hack/cargo_locked.sh for seeding.",
+      "Isolated projects_workspace_contract helper requests with unique X-Forwarded-For subjects to avoid deterministic rate-limit contamination while preserving the real rate limiter."
+    ],
+    "bugs_found": [
+      "The visible workspace control was named View configuration while the PRD/controller browser gate expected an accessible View menu, causing getByRole('button', { name: 'View menu' }) to time out.",
+      "The board/roadmap E2E did not enable PROJECTS_WORKSPACE_E2E, so the seeder returned an empty projectsWorkspaceHref and the test navigated to the landing page instead of the project workspace.",
+      "The browser spec selected the first org project through list navigation rather than the seeded workspace href, leaving it vulnerable to stale DB ordering and route compilation races.",
+      "projects_workspace_contract anonymous assertions shared the default rate-limit subject and could receive 403 rate_limited instead of the expected private-resource not_found under polluted test DB state."
+    ],
+    "fix_description": "Exposed the project layout control as the PRD View menu, hardened the board/roadmap E2E to seed and open the canonical workspace directly through the locked Cargo wrapper, and isolated Rust contract request subjects from shared rate-limit buckets.",
+    "commands": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor: passed; local verification stack healthy.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check: passed; Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract -- --nocapture: passed; 15 passed, 0 failed, no self-skip.",
+      "cd web && npx vitest run tests/project-workspace-page.test.tsx: passed; 1 file / 19 tests passed.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/projects-board-roadmap.spec.ts: passed; 2 passed including auth setup, no self-skip."
+    ],
+    "screenshots": [
+      {
+        "path": "ralph/screenshots/build/projects-003-final-view-menu.jpg",
+        "label": "View menu layout choices"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-003-final-board-default.jpg",
+        "label": "Board columns and cards"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-003-final-roadmap-quarter.jpg",
+        "label": "Roadmap quarter zoom"
+      },
+      {
+        "path": "ralph/screenshots/build/projects-003-final-mobile.jpg",
+        "label": "Mobile workspace smoke"
+      }
+    ],
+    "artifacts": [
+      "prd.json",
+      "qa-report.json",
+      "qa-report-summary.json",
+      "web/tests/e2e/projects-board-roadmap.spec.ts"
+    ],
+    "timestamp": "2026-05-13T04:55:55.367167Z"
   }
 ]

@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 83,
+    "features_passed": 84,
     "features_failed": 1,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 79,
+      "pass": 80,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 75,
+      "pass": 76,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 76,
+      "pass": 77,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 41,
+      "pass": 42,
       "fail": 0,
       "skip": 39
     }
@@ -2775,10 +2775,44 @@
       "feature_id": "projects-003",
       "description": "Implement Projects v2 board and roadmap layouts with layout switching, columns, ",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Verified Projects v2 board and roadmap layout switching on the real local app/test DB. The browser smoke signs in with a seeded Projects workspace, opens /orgs/namuh/projects/1/views/1 directly, opens the accessible View menu, switches to Board and Roadmap, checks cards/columns/add affordance, roadmap date/marker/zoom controls, screenshots, no dead controls, and no page overflow."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/projects/:project_id/workspace",
+            "PATCH /api/projects/:project_id/views/:view_id/layout",
+            "PATCH /api/projects/:project_id/views/:view_id/roadmap-settings",
+            "PATCH /api/projects/:project_id/items/:item_id/position",
+            "PATCH /api/projects/:project_id/items/:item_id/fields/:field_id",
+            "POST /api/projects/:project_id/items",
+            "POST /api/projects/:project_id/items/bulk",
+            "DELETE /api/projects/:project_id/items/:item_id"
+          ],
+          "notes": "Env-loaded DB-backed projects_workspace_contract passed 15/15 without self-skip. Request helpers attach unique X-Forwarded-For subjects so anonymous/not-found assertions are not polluted by shared rate-limit buckets."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "anonymous_private_project_not_found_without_rate_limit_pollution",
+            "private_repository_link_non_leakage",
+            "outsider_forbidden_guards",
+            "authorized_layout_mutation_required"
+          ],
+          "notes": "Focused Rust contract covers private guards, repository visibility filtering, forbidden outsider settings access, and not_found anonymous behavior with isolated rate-limit subjects."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "The layout switcher is exposed as an accessible View menu region with named Table/Board/Roadmap buttons and keyboard hints. Browser smoke verifies all visible buttons have accessible names and no dead href controls."
+        }
+      }
     },
     {
       "feature_id": "projects-004",
