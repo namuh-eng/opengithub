@@ -28,6 +28,7 @@ function seedNavigation(): SeededNavigation {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        PROJECTS_WORKSPACE_E2E: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -147,7 +148,7 @@ test("Projects Insights supports final chart exploration and custom chart smoke"
     });
     await createButton.click();
     await expect(page.getByRole("status")).toHaveText("Chart created.");
-    await page.getByText("Edit").click();
+    await page.getByText("Edit", { exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Save chart" }),
     ).toBeVisible();

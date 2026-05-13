@@ -6155,5 +6155,66 @@
       "Workflow settings h1 accessible name included hidden prefix and broke existing broad component test."
     ],
     "fix_description": "Added dedicated template settings pages, linked Templates nav, template-aware project lookup by number, NULL-safe repository is_default query, a DB mutation contract for settings/access/template/status/repository audit behavior, and a focused projects settings Playwright scenario. Full make test-e2e was resource-prohibitive for this lane; the focused feature-domain E2E subset covers projects-007 acceptance paths with real DB and browser."
+  },
+  {
+    "feature_id": "projects-008",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Reproduced controller's real browser failure from this clean origin/main worktree: the Projects list showed zero projects because the Projects workspace seeder was not enabled for the Insights E2E. Fixed the deterministic browser setup, route-backed Insights state synchronization, empty optional chart mutation payloads, status live-region ambiguity, and Playwright port contamination by disabling reuseExistingServer. Final real browser acceptance passed with .env.test loaded and ports 3015/3016 clear before launch."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/:project_id/insights",
+          "POST /api/projects/:project_id/charts",
+          "PATCH /api/projects/:project_id/charts/:chart_id",
+          "DELETE /api/projects/:project_id/charts/:chart_id"
+        ],
+        "notes": "DB-backed Rust Projects Insights contract passed against .env.test without self-skip. Browser acceptance exercised chart create, edit, share, and delete through real Next API routes and Rust API listeners."
+      },
+      "security": {
+        "status": "skip",
+        "checks": [],
+        "notes": "Not selected for this visible retry lane; no new auth or permission semantics were introduced. Existing chart mutations still use authenticated API routes and project roles."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Acceptance path verified reachable Insights navigation, named chart img region, accessible chart data table, button accessible names, no dead links, and no horizontal overflow including mobile viewport."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: local verification stack healthy; Postgres test container reachable; CARGO_TARGET_DIR writable at .scratch/cargo-target.",
+      "Reproduced rejected browser failure with: cd web; set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-insights.spec.ts --project=chromium --reporter=list. Initial failure matched missing a[href*='/projects/'][href$='/insights']; artifact: web/test-results/projects-insights-Projects-5e088-tion-and-custom-chart-smoke-chromium/error-context.md.",
+      "Ran DB-backed focused contract with .env.test loaded: set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test projects_workspace_contract project_insights_read_contract_filters_private_items_and_returns_burnup_data -- --nocapture (1 passed, no self-skip).",
+      "Ran web component gate: cd web && npm run test -- project-insights-page.test.tsx (11/11 passed).",
+      "Ran make check after fixes (Cargo check, web typecheck, Clippy, Biome all passed).",
+      "Killed stale non-OpenGitHub Linear listener on :3015 and verified ports 3015/3016 were clear before final browser acceptance.",
+      "Ran real browser acceptance with .env.test loaded and system Chrome: cd web; set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-insights.spec.ts --project=chromium --reporter=list (2 passed).",
+      "Ran broader make test: Cargo tests passed and web tests passed (669 passed)."
+    ],
+    "bugs_found": [
+      "projects-insights.spec.ts did not enable PROJECTS_WORKSPACE_E2E, so the dashboard_e2e_seed fixture produced a valid session but no seeded namuh project for /orgs/namuh/projects.",
+      "ProjectInsightsPage kept initial insights in client state and did not sync route-backed server props, so navigating to table=true left the chart view rendered.",
+      "Custom chart creation sent empty string for expectedUpdatedAt and optional UUID fields, causing Rust JSON/date deserialization validation failures on create.",
+      "Share status and mutation status could both render role=status, making status assertions and screen-reader announcements ambiguous.",
+      "Playwright reuseExistingServer allowed a stale non-OpenGitHub app on :3015 to satisfy the webServer probe and contaminate browser acceptance."
+    ],
+    "fix_description": "Enabled the Projects workspace seed in the Insights browser spec, made Playwright fail rather than reuse stale servers, synchronized ProjectInsightsPage state when route props change, normalized empty optional chart mutation fields to null, cleared stale status messages before share/mutation updates, and tightened deterministic E2E selectors without reducing coverage.",
+    "artifacts": [
+      "web/test-results/projects-insights-Projects-5e088-tion-and-custom-chart-smoke-chromium/error-context.md (initial reproduced failure and later transient failures)",
+      "web/test-results/projects-insights-Projects-5e088-tion-and-custom-chart-smoke-chromium/trace.zip (failed-run traces retained by Playwright)",
+      "ralph/screenshots/build/projects-008-final-burn-up.jpg",
+      "ralph/screenshots/build/projects-008-final-filter-range.jpg",
+      "ralph/screenshots/build/projects-008-final-custom-range.jpg",
+      "ralph/screenshots/build/projects-008-final-data-table.jpg",
+      "ralph/screenshots/build/projects-008-final-custom-chart-form.jpg",
+      "ralph/screenshots/build/projects-008-final-shared-chart.jpg",
+      "ralph/screenshots/build/projects-008-final-mobile.jpg"
+    ],
+    "confidence": "high"
   }
 ]

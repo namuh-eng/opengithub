@@ -271,6 +271,35 @@ describe("ProjectInsightsPage", () => {
     );
   });
 
+  it("syncs route-backed table exploration when server props change", async () => {
+    const { rerender } = render(
+      <ProjectInsightsPage
+        insights={insights()}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Burn up chart" })).toBeVisible();
+
+    rerender(
+      <ProjectInsightsPage
+        insights={insights({
+          selectedChart: {
+            ...insights().selectedChart,
+            configuration: { table: true },
+          },
+        })}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    expect(
+      await screen.findByRole("table", { name: "Burn up chart data table" }),
+    ).toBeVisible();
+  });
+
   it("renders custom date selection as a real route-backed form", () => {
     render(
       <ProjectInsightsPage

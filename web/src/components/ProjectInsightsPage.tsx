@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProjectInsights, ProjectInsightsChartSummary } from "@/lib/api";
 import {
   organizationProjectInsightsHref,
@@ -117,6 +117,11 @@ function maxSeriesValue(insights: ProjectInsights) {
 
 function stringConfig(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function optionalFormString(formData: FormData, key: string) {
+  const value = String(formData.get(key) ?? "").trim();
+  return value ? value : null;
 }
 
 function ChartMutationFields({
@@ -239,8 +244,13 @@ export function ProjectInsightsPage({
     activeQuery(currentInsights),
   );
 
+  useEffect(() => {
+    setCurrentInsights(insights);
+  }, [insights]);
+
   async function copyShareLink() {
     const href = `${window.location.origin}${selectedShareHref}`;
+    setMutationState({ status: "idle", message: null });
     try {
       await navigator.clipboard?.writeText(href);
       setShareState("Share link copied.");
@@ -263,14 +273,17 @@ export function ProjectInsightsPage({
         ? { expectedUpdatedAt: String(formData.get("expectedUpdatedAt") ?? "") }
         : {
             title: String(formData.get("title") ?? ""),
-            description: String(formData.get("description") ?? ""),
+            description: optionalFormString(formData, "description"),
             chartType: String(formData.get("chartType") ?? "bar"),
-            filter: String(formData.get("filter") ?? ""),
-            xFieldId: String(formData.get("xFieldId") ?? ""),
-            yFieldId: String(formData.get("yFieldId") ?? ""),
-            groupFieldId: String(formData.get("groupFieldId") ?? ""),
+            filter: optionalFormString(formData, "filter"),
+            xFieldId: optionalFormString(formData, "xFieldId"),
+            yFieldId: optionalFormString(formData, "yFieldId"),
+            groupFieldId: optionalFormString(formData, "groupFieldId"),
             visibility: String(formData.get("visibility") ?? "private"),
-            expectedUpdatedAt: String(formData.get("expectedUpdatedAt") ?? ""),
+            expectedUpdatedAt: optionalFormString(
+              formData,
+              "expectedUpdatedAt",
+            ),
           };
     setMutationState({ status: "saving", message: "Saving chart..." });
     const response = await fetch(endpoint, {
@@ -281,6 +294,7 @@ export function ProjectInsightsPage({
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
+      setShareState(null);
       setMutationState({
         status: "error",
         message:
@@ -291,6 +305,7 @@ export function ProjectInsightsPage({
       });
       return;
     }
+    setShareState(null);
     setCurrentInsights(payload as ProjectInsights);
     setMutationState({
       status: "success",
