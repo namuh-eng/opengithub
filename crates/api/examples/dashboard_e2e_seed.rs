@@ -938,6 +938,14 @@ async fn seed_projects_workspace_fixture(
     .execute(pool)
     .await?;
 
+    sqlx::query("DELETE FROM workflow_execution_logs WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM project_workflows WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
     sqlx::query("DELETE FROM project_items WHERE project_id = $1")
         .bind(project_id)
         .execute(pool)
@@ -978,6 +986,20 @@ async fn seed_projects_workspace_fixture(
     )
     .bind(project_id)
     .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_field_options (project_field_id, name, color, position)
+        VALUES ($1, 'Backlog', 'gray', 1),
+               ($1, 'In progress', 'yellow', 2),
+               ($1, 'Done', 'green', 3),
+               ($2, 'P1', 'orange', 1),
+               ($2, 'P2', 'blue', 2)
+        "#,
+    )
+    .bind(status_field)
+    .bind(priority_field)
+    .execute(pool)
     .await?;
     let iteration_field: Uuid = sqlx::query_scalar(
         r#"

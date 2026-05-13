@@ -6066,5 +6066,55 @@
       "projects-workspace E2E expected stale View configuration button name while the UI exposes View menu and then the View configuration section."
     ],
     "fix_description": "Seed the Projects workspace explicitly in the side-panel E2E, wait for real item-route side panels while preserving lifecycle assertions, generate organization-aware project view hrefs from the project href, and align the broad workspace E2E with the current accessible View menu label."
+  },
+  {
+    "feature_id": "projects-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "System-Chrome Playwright workflow settings smoke passed from this worktree after killing a stale :3015 listener; the seeded workflow page loaded directly, Save workflow produced the role=status confirmation \"Workflow configuration saved.\", and desktop/mobile no-overflow checks passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/projects/{projectId}/workflows",
+          "PATCH /api/projects/{projectId}/workflows/{workflowId}",
+          "POST /api/projects/{projectId}/automation-invocations",
+          "POST /api/repos/{owner}/{repo}/issues",
+          "PATCH /api/repos/{owner}/{repo}/issues/{number}"
+        ],
+        "notes": "Rust contract filters verified project workflow defaults/target filtering, closed issue -> Done idempotency, and Actions/GraphQL automation invocation attribution."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "project workflow save requires project write permission",
+          "workflow repository targets require linked repositories and write access",
+          "browser gate refuses stale existing :3015 servers"
+        ],
+        "notes": "The accepted Playwright run was forced to launch this worktree; stale sibling listeners fail fast until killed instead of being reused."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused smoke asserts visible buttons have accessible names, no dead anchors exist, role=status save feedback appears, and 390px mobile has no horizontal overflow."
+      }
+    },
+    "tested_steps": [
+      "make doctor (pass: local verification stack healthy; .scratch/cargo-target writable)",
+      "set -a; . ./.env.test; set +a; make check (pass: Cargo check, Web typecheck, Clippy, Biome)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api project_workflow --test projects_workspace_contract -- --nocapture (pass: 2 passed; 13 filtered)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api project_automation_invocation --test projects_workspace_contract -- --nocapture (pass: 1 passed; 14 filtered)",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/projects-workflows.spec.ts --project=chromium (pass: 2 passed; killed stale :3015 next-server PID 1201189 first; Playwright launched this worktree with reuseExistingServer=false and system Chrome)"
+    ],
+    "bugs_found": [
+      "The workflow E2E did not set PROJECTS_WORKSPACE_E2E, so /orgs/namuh/projects could render Projects 0 and time out looking for a project view link.",
+      "The workflow spec discovered the project through the organization list instead of the seeder output, making the browser gate sensitive to existing DB state and slow load timing.",
+      "The seeded Projects workspace created status fields without selectable options and retained prior workflow rows, so Save workflow could fail validation with no target option.",
+      "web/playwright.config.ts reused any existing :3015 server, allowing stale sibling checkouts to satisfy or break the system-Chrome gate."
+    ],
+    "fix_description": "Seed projects-006 workspace data explicitly for the workflow spec, navigate via the seeded project href with domcontentloaded waits, seed status/priority options while resetting project workflows/logs for deterministic Save behavior, and force Playwright to launch this worktree instead of reusing stale :3015 listeners."
   }
 ]
