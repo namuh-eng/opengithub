@@ -7,6 +7,10 @@ use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::{
+        actions::{
+            create_workflow, create_workflow_job, create_workflow_run, CreateWorkflow,
+            CreateWorkflowJob, CreateWorkflowRun,
+        },
         identity::{upsert_session, upsert_user_by_email, User},
         issues::{create_issue, ensure_default_labels, CreateComment, CreateIssue},
         pulls::{add_pull_request_comment, create_pull_request, CreatePullRequest},
@@ -1131,4 +1135,319 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
         merge_again_body["details"]["blockers"][0]["code"],
         "already_merged"
     );
+}
+
+#[tokio::test]
+async fn pull_request_checks_sync_actions_jobs_annotations_and_gate_only_required_checks() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping pull request checks integration scenario; set TEST_DATABASE_URL or DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "pull-checks-owner").await;
+    let repo_name = format!("pull-checks-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let pull = create_pull_request(
+        &pool,
+        CreatePullRequest {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            title: "Integrate checks".to_owned(),
+            body: Some("Required checks pass while optional checks fail.".to_owned()),
+            head_ref: "feature/checks".to_owned(),
+            base_ref: "main".to_owned(),
+            head_repository_id: None,
+            is_draft: false,
+            label_ids: vec![],
+            milestone_id: None,
+            assignee_user_ids: vec![],
+            reviewer_user_ids: vec![],
+            template_slug: None,
+        },
+    )
+    .await
+    .expect("pull should create");
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_files (pull_request_id, path, status, additions, deletions, byte_size)
+        VALUES ($1, 'src/checks.rs', 'modified', 8, 1, 512)
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("pull should have a diff snapshot");
+    let rule_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO repository_branch_protection_rules (repository_id, pattern)
+        VALUES ($1, 'main')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("branch protection should create");
+    sqlx::query(
+        "INSERT INTO repository_required_status_checks (branch_protection_rule_id, context) VALUES ($1, 'ci/test')",
+    )
+    .bind(rule_id)
+    .execute(&pool)
+    .await
+    .expect("required check should create");
+
+    let base_commit_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message)
+        VALUES ($1, $2, $3, $3, 'base checks')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(format!("base-checks-{}", Uuid::new_v4().simple()))
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("base commit should create");
+    let head_sha = format!("head-checks-{}", Uuid::new_v4().simple());
+    let head_commit_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message)
+        VALUES ($1, $2, $3, $3, 'head checks')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&head_sha)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("head commit should create");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
+        VALUES ($1, 'refs/heads/main', 'branch', $2),
+               ($1, 'refs/heads/feature/checks', 'branch', $3)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(base_commit_id)
+    .bind(head_commit_id)
+    .execute(&pool)
+    .await
+    .expect("refs should create");
+    sqlx::query(
+        "INSERT INTO pull_request_commits (pull_request_id, commit_id, position) VALUES ($1, $2, 1)",
+    )
+    .bind(pull.pull_request.id)
+    .bind(head_commit_id)
+    .execute(&pool)
+    .await
+    .expect("pull head commit should link");
+
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "CI".to_owned(),
+            path: ".github/workflows/ci.yml".to_owned(),
+            trigger_events: vec!["pull_request".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+    let run = create_workflow_run(
+        &pool,
+        CreateWorkflowRun {
+            workflow_id: workflow.id,
+            actor_user_id: Some(owner.id),
+            head_branch: "feature/checks".to_owned(),
+            head_sha: Some(head_sha.clone()),
+            event: "pull_request".to_owned(),
+        },
+    )
+    .await
+    .expect("run should create");
+    let required_job = create_workflow_job(
+        &pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "ci/test".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await
+    .expect("required job should create");
+    let optional_job = create_workflow_job(
+        &pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "optional/lint".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await
+    .expect("optional job should create");
+    let cancelled_job = create_workflow_job(
+        &pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "optional/cancelled".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await
+    .expect("cancelled job should create");
+    sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'completed', conclusion = 'failure', completed_at = now(), commit_id = $2
+        WHERE id = $1
+        "#,
+    )
+    .bind(run.id)
+    .bind(head_commit_id)
+    .execute(&pool)
+    .await
+    .expect("run should update");
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'completed',
+            conclusion = CASE WHEN id = $1 THEN 'success' ELSE 'failure' END,
+            started_at = now() - interval '2 minutes',
+            completed_at = now() - interval '1 minute'
+        WHERE id IN ($1, $2)
+        "#,
+    )
+    .bind(required_job.id)
+    .bind(optional_job.id)
+    .execute(&pool)
+    .await
+    .expect("completed jobs should update");
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'cancelled',
+            conclusion = 'cancelled',
+            started_at = now() - interval '2 minutes',
+            completed_at = now() - interval '1 minute'
+        WHERE id = $1
+        "#,
+    )
+    .bind(cancelled_job.id)
+    .execute(&pool)
+    .await
+    .expect("cancelled job should update");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_annotations (
+            run_id, job_id, annotation_level, path, start_line, end_line, title, message, raw_details
+        )
+        VALUES ($1, $2, 'failure', 'src/checks.rs', 12, 12, 'Lint failure', 'Optional lint failed', '::error file=src/checks.rs,line=12::Optional lint failed')
+        "#,
+    )
+    .bind(run.id)
+    .bind(optional_job.id)
+    .execute(&pool)
+    .await
+    .expect("annotation should create");
+
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let pull_uri = format!(
+        "/api/repos/{}/{}/pulls/{}",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (detail_status, detail_body) = get_json(app.clone(), &pull_uri, Some(&owner_cookie)).await;
+    assert_eq!(detail_status, StatusCode::OK, "{detail_body:?}");
+    assert_eq!(detail_body["checks"]["status"], "completed");
+    assert_eq!(detail_body["checks"]["conclusion"], "failure");
+    assert_eq!(
+        detail_body["mergeability"]["branchProtection"]["requiredStatusChecks"],
+        json!(["ci/test"])
+    );
+    assert_eq!(detail_body["mergeability"]["canMerge"], true);
+    assert_eq!(detail_body["mergeability"]["blockers"], json!([]));
+
+    let checks_uri = format!("{pull_uri}/checks");
+    let (checks_status, checks_body) = get_json(app.clone(), &checks_uri, Some(&owner_cookie)).await;
+    assert_eq!(checks_status, StatusCode::OK, "{checks_body:?}");
+    assert_eq!(checks_body["summary"]["totalCount"], 3);
+    assert_eq!(checks_body["summary"]["completedCount"], 3);
+    assert_eq!(checks_body["summary"]["failedCount"], 1);
+    assert_eq!(checks_body["summary"]["conclusion"], "failure");
+    assert_eq!(checks_body["requiredStatusChecks"], json!(["ci/test"]));
+    let check_runs = checks_body["checkRuns"]
+        .as_array()
+        .expect("check runs should be an array");
+    let required_check = check_runs
+        .iter()
+        .find(|check| check["name"] == "ci/test")
+        .expect("required check should be present");
+    assert_eq!(required_check["status"], "completed");
+    assert_eq!(required_check["conclusion"], "success");
+    assert_eq!(required_check["required"], true);
+    assert!(required_check["detailsHref"]
+        .as_str()
+        .expect("details href should exist")
+        .contains("/actions/runs/"));
+    assert!(required_check["rerunHref"]
+        .as_str()
+        .expect("rerun href should exist")
+        .ends_with("/rerun"));
+    let cancelled_check = check_runs
+        .iter()
+        .find(|check| check["name"] == "optional/cancelled")
+        .expect("cancelled check should be present");
+    assert_eq!(cancelled_check["status"], "completed");
+    assert_eq!(cancelled_check["conclusion"], "cancelled");
+    let annotated_check = check_runs
+        .iter()
+        .find(|check| check["name"] == "optional/lint")
+        .expect("annotated check should be present");
+    assert_eq!(annotated_check["annotationsCount"], 1);
+    assert_eq!(annotated_check["annotations"][0]["path"], "src/checks.rs");
+    assert_eq!(annotated_check["annotations"][0]["startLine"], 12);
+    assert_eq!(
+        annotated_check["annotations"][0]["message"],
+        "Optional lint failed"
+    );
+
+    let rerun_href = required_check["rerunHref"]
+        .as_str()
+        .expect("rerun href should exist")
+        .replace("/pull/", "/pulls/")
+        .replace(
+            &format!("/{owner_login}/{repo_name}"),
+            &format!("/api/repos/{}/{}", owner.email, repo_name),
+        );
+    let (anonymous_rerun_status, anonymous_rerun_body) =
+        post_json(app.clone(), &rerun_href, None, json!({})).await;
+    assert_eq!(anonymous_rerun_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_rerun_body["error"]["code"], "not_authenticated");
+    let (rerun_status, rerun_body) =
+        post_json(app.clone(), &rerun_href, Some(&owner_cookie), json!({})).await;
+    assert_eq!(rerun_status, StatusCode::OK, "{rerun_body:?}");
+    assert_eq!(rerun_body["run"]["status"], "queued");
+    assert!(rerun_body["jobs"]
+        .as_array()
+        .expect("rerun jobs should be an array")
+        .iter()
+        .any(|job| job["name"] == "ci/test"));
 }

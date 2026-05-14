@@ -2101,6 +2101,7 @@ pub async fn pull_request_detail_view_for_viewer(
     .await?
     .ok_or(CollaborationError::PullRequestNotFound)?;
     let pull_request = pull_request_from_row(row)?;
+    sync_check_runs_for_pull_request(pool, &pull_request).await?;
     let pull_ids = vec![pull_request.id];
     let issue_ids = vec![pull_request.issue_id];
     let authors = pull_list_authors(pool, &pull_ids).await?;
@@ -6667,29 +6668,33 @@ async fn pull_request_mergeability(
             "There are no changed files or commits to merge.",
         ));
     }
-    if !branch_protection.required_status_checks.is_empty() && checks.total_count == 0 {
-        blockers.push(merge_blocker(
-            "required_checks_missing",
-            &format!(
-                "Required status checks have not reported yet: {}.",
-                branch_protection.required_status_checks.join(", ")
-            ),
-        ));
-    } else if checks.failed_count > 0
-        || checks
-            .conclusion
-            .as_deref()
-            .is_some_and(|conclusion| !matches!(conclusion, "success" | "skipped"))
-    {
-        blockers.push(merge_blocker(
-            "required_checks_failed",
-            "Required status checks have failed.",
-        ));
-    } else if checks.total_count > 0 && checks.completed_count < checks.total_count {
-        blockers.push(merge_blocker(
-            "required_checks_pending",
-            "Required status checks are still running.",
-        ));
+    if !branch_protection.required_status_checks.is_empty() {
+        let required_gate = required_check_gate_for_pull_request(
+            pool,
+            pull_request,
+            &branch_protection.required_status_checks,
+            &checks,
+        )
+        .await?;
+        if required_gate.missing_count > 0 {
+            blockers.push(merge_blocker(
+                "required_checks_missing",
+                &format!(
+                    "Required status checks have not reported yet: {}.",
+                    branch_protection.required_status_checks.join(", ")
+                ),
+            ));
+        } else if required_gate.failed_count > 0 || required_gate.has_blocking_conclusion {
+            blockers.push(merge_blocker(
+                "required_checks_failed",
+                "Required status checks have failed.",
+            ));
+        } else if required_gate.completed_count < required_gate.total_count {
+            blockers.push(merge_blocker(
+                "required_checks_pending",
+                "Required status checks are still running.",
+            ));
+        }
     }
     if review.state == "changes_requested" {
         blockers.push(merge_blocker(
@@ -7381,8 +7386,8 @@ async fn sync_check_runs_for_head_sha(
                workflow_runs.head_sha,
                workflow_jobs.name,
                CASE
-                WHEN workflow_jobs.status = 'completed' THEN 'completed'
-                WHEN workflow_jobs.status IN ('in_progress', 'cancelled') THEN 'in_progress'
+                WHEN workflow_jobs.status IN ('completed', 'cancelled') THEN 'completed'
+                WHEN workflow_jobs.status = 'in_progress' THEN 'in_progress'
                 ELSE 'queued'
                END,
                CASE
@@ -7593,6 +7598,75 @@ async fn check_run_summary_for_head_sha(
         total_count: row.get("total_count"),
         completed_count: row.get("completed_count"),
         failed_count: row.get("failed_count"),
+    })
+}
+
+struct RequiredCheckGate {
+    total_count: i64,
+    completed_count: i64,
+    failed_count: i64,
+    missing_count: i64,
+    has_blocking_conclusion: bool,
+}
+
+async fn required_check_gate_for_pull_request(
+    pool: &PgPool,
+    pull_request: &PullRequest,
+    required_status_checks: &[String],
+    fallback_summary: &PullRequestChecksSummary,
+) -> Result<RequiredCheckGate, CollaborationError> {
+    let Some(head_sha) = pull_request_head_sha(pool, pull_request).await? else {
+        return Ok(RequiredCheckGate {
+            total_count: required_status_checks.len() as i64,
+            completed_count: 0,
+            failed_count: 0,
+            missing_count: required_status_checks.len() as i64,
+            has_blocking_conclusion: false,
+        });
+    };
+    let row = sqlx::query(
+        r#"
+        SELECT count(*)::bigint AS all_count,
+               count(*) FILTER (WHERE name = ANY($3))::bigint AS required_count,
+               count(*) FILTER (WHERE name = ANY($3) AND status = 'completed')::bigint AS completed_count,
+               count(*) FILTER (WHERE name = ANY($3) AND conclusion = 'failure')::bigint AS failed_count,
+               count(*) FILTER (
+                   WHERE name = ANY($3)
+                     AND conclusion IS NOT NULL
+                     AND conclusion NOT IN ('success', 'skipped', 'neutral')
+               )::bigint AS blocking_conclusion_count
+        FROM check_runs
+        WHERE repository_id = $1
+          AND head_sha = $2
+        "#,
+    )
+    .bind(pull_request.repository_id)
+    .bind(&head_sha)
+    .bind(required_status_checks)
+    .fetch_one(pool)
+    .await?;
+
+    let all_count: i64 = row.get("all_count");
+    if all_count == 0 && fallback_summary.total_count > 0 {
+        return Ok(RequiredCheckGate {
+            total_count: fallback_summary.total_count,
+            completed_count: fallback_summary.completed_count,
+            failed_count: fallback_summary.failed_count,
+            missing_count: 0,
+            has_blocking_conclusion: fallback_summary
+                .conclusion
+                .as_deref()
+                .is_some_and(|conclusion| !matches!(conclusion, "success" | "skipped" | "neutral")),
+        });
+    }
+
+    let required_count: i64 = row.get("required_count");
+    Ok(RequiredCheckGate {
+        total_count: required_status_checks.len() as i64,
+        completed_count: row.get("completed_count"),
+        failed_count: row.get("failed_count"),
+        missing_count: (required_status_checks.len() as i64 - required_count).max(0),
+        has_blocking_conclusion: row.get::<i64, _>("blocking_conclusion_count") > 0,
     })
 }
 

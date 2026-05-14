@@ -6710,5 +6710,88 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T07:55:00Z",
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract pull_request_checks_sync_actions_jobs_annotations_and_gate_only_required_checks -- --nocapture",
+      "cd web && npm test -- repository-pull-request-checks-page.test.tsx repository-pull-request-detail.test.tsx repository-actions-run.test.tsx",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-pull-request-detail.spec.ts",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make test"
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Branch-protection merge gating used aggregate PR check summary, so an optional failed check could block a merge and failed checks could block even when no required checks were configured.",
+        "file": "crates/api/src/domain/pulls.rs"
+      },
+      {
+        "severity": "major",
+        "description": "Cancelled workflow_jobs synced into check_runs as status=in_progress/conclusion=cancelled, leaving cancelled checks permanently running instead of completed/cancelled.",
+        "file": "crates/api/src/domain/pulls.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "PR detail loaded check summaries before synchronizing Actions jobs to check_runs, so the first PR detail response could show stale pending/no-check status.",
+        "file": "crates/api/src/domain/pulls.rs"
+      },
+      {
+        "severity": "coverage",
+        "description": "No focused DB-backed contract covered the /pulls/{number}/checks API, annotation sync, check rerun route, or required-only merge gate semantics.",
+        "file": "crates/api/tests/api_pull_request_detail_contract.rs"
+      }
+    ],
+    "fix_description": "Added required-check-specific merge gating with legacy summary fallback, corrected cancelled job -> completed/cancelled check-run sync, synchronized check runs before PR detail summaries, and added a DB-backed contract covering check_runs/check_annotations sync, PR Checks API shape, cancelled status, rerun auth/happy path, and required-only merge gating.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "PR Checks component tests passed for required badges, annotations, View details links, and Re-run job feedback. System-Chrome Playwright passed repository Actions run and PR detail flows against the env-loaded test DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/pulls/{number}/checks",
+          "POST /api/repos/{owner}/{repo}/pulls/{number}/checks/{check_run_id}/rerun",
+          "GET /api/repos/{owner}/{repo}/pulls/{number} mergeability/check summary"
+        ],
+        "notes": "Focused Rust contract ran against TEST_DATABASE_URL without self-skip and verified real workflow_jobs/workflow_annotations sync into check_runs/check_annotations, cancelled check completion, requiredStatusChecks, detailsHref/rerunHref, and rerun queueing."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "write_permission_required_for_rerun",
+          "data_exposure"
+        ],
+        "notes": "Focused contract verifies unauthenticated check rerun returns 401 not_authenticated; check APIs expose UI-safe details/annotation data without internal job storage keys."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and existing system-Chrome PR/Actions flows retained no-dead-controls/no-horizontal-overflow coverage and accessible button/link names for Re-run/View details/Checks navigation."
+      }
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make doctor: pass",
+      "focused DB/API contract: pass 1/1 without self-skip",
+      "focused Vitest: pass 27/27",
+      "system-Chrome Playwright repository-actions-run: pass 2/2",
+      "system-Chrome Playwright repository-pull-request-detail: pass 4/4",
+      "make check: pass",
+      "make test: pass (Cargo tests + 671 web tests)"
+    ]
   }
 ]

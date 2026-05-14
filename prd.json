@@ -2122,7 +2122,9 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "QA verified on 2026-05-14: fixed required-check merge gating to consider only branch-protection required check-run names, fixed cancelled Actions jobs syncing to completed/cancelled check runs, and synced PR detail check summaries before rendering. Focused DB/API, component, system-Chrome Playwright, make check, and make test gates passed."
   },
   {
     "id": "actions-010",
