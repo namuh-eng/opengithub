@@ -663,6 +663,13 @@ struct NameAvailabilityQuery {
     name: String,
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ActionsSettingScopeQuery {
+    scope_kind: Option<String>,
+    scope_name: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContentsQuery {
@@ -4023,15 +4030,10 @@ async fn create_release(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
-    let release = create_repository_release_by_owner_name(
-        pool,
-        &owner,
-        &repo,
-        Some(actor.id),
-        request,
-    )
-    .await
-    .map_err(map_releases_error)?;
+    let release =
+        create_repository_release_by_owner_name(pool, &owner, &repo, Some(actor.id), request)
+            .await
+            .map_err(map_releases_error)?;
 
     Ok((StatusCode::CREATED, Json(json!(release))))
 }
@@ -4210,15 +4212,10 @@ async fn publish_release(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
-    let release = publish_repository_release_by_owner_name(
-        pool,
-        &owner,
-        &repo,
-        release_id,
-        Some(actor.id),
-    )
-    .await
-    .map_err(map_releases_error)?;
+    let release =
+        publish_repository_release_by_owner_name(pool, &owner, &repo, release_id, Some(actor.id))
+            .await
+            .map_err(map_releases_error)?;
 
     Ok(Json(json!(release)))
 }
@@ -5136,6 +5133,7 @@ async fn delete_actions_secret(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((owner, repo, secret_name)): Path<(String, String, String)>,
+    Query(scope): Query<ActionsSettingScopeQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
@@ -5145,6 +5143,8 @@ async fn delete_actions_secret(
         &owner,
         &repo,
         &secret_name,
+        scope.scope_kind.as_deref(),
+        scope.scope_name.as_deref(),
     )
     .await
     .map_err(map_actions_secrets_error)?
@@ -5215,6 +5215,7 @@ async fn delete_actions_variable(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((owner, repo, variable_name)): Path<(String, String, String)>,
+    Query(scope): Query<ActionsSettingScopeQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
@@ -5224,6 +5225,8 @@ async fn delete_actions_variable(
         &owner,
         &repo,
         &variable_name,
+        scope.scope_kind.as_deref(),
+        scope.scope_name.as_deref(),
     )
     .await
     .map_err(map_actions_secrets_error)?

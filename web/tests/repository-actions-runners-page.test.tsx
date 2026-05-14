@@ -77,6 +77,16 @@ function settings(
       githubTokenPermission: "read",
       githubTokenScopes: ["contents:read", "metadata:read", "packages:read"],
     },
+    environments: [
+      {
+        deploymentBranchPolicy: {},
+        id: "env-1",
+        name: "production",
+        protectionRulesEnabled: true,
+        requiredReviewers: [],
+        updatedAt: "2026-05-07T00:00:00Z",
+      },
+    ],
     repository: {
       defaultBranch: "main",
       id: "repo-1",
@@ -144,6 +154,12 @@ describe("RepositoryActionsRunnersPage", () => {
       screen.getByRole("button", { name: "Save scheduling settings" }),
     ).toBeEnabled();
     expect(screen.getByText("GITHUB_TOKEN policy")).toBeVisible();
+    expect(screen.getByText("Secret release approval")).toBeVisible();
+    expect(
+      screen.getByLabelText(
+        "Require reviewer approval before environment secrets are released",
+      ),
+    ).toBeChecked();
     expect(
       screen.getByLabelText("Read repository contents and metadata"),
     ).toBeChecked();
@@ -214,6 +230,8 @@ describe("RepositoryActionsRunnersPage", () => {
             allowPullRequestApproval: false,
             cancelInProgress: true,
             concurrencyLimit: 8,
+            environment: "production",
+            environmentProtectionRulesEnabled: true,
             githubTokenPermission: "read",
           }),
         }),
@@ -242,6 +260,8 @@ describe("RepositoryActionsRunnersPage", () => {
             allowPullRequestApproval: true,
             cancelInProgress: true,
             concurrencyLimit: 8,
+            environment: "production",
+            environmentProtectionRulesEnabled: true,
             githubTokenPermission: "write",
           }),
         }),

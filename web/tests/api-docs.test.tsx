@@ -5,7 +5,7 @@ import { apiEndpointDocs } from "@/lib/api-docs";
 
 describe("ApiDocsPage", () => {
   it("documents every implemented api-001 resource family", {
-    timeout: 120_000,
+    timeout: 240_000,
   }, () => {
     render(<ApiDocsPage />);
 

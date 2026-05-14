@@ -113,6 +113,8 @@ pub struct ActionsSecretMutation {
     pub value: String,
     pub scope_kind: Option<String>,
     pub scope_name: Option<String>,
+    pub current_scope_kind: Option<String>,
+    pub current_scope_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -122,6 +124,8 @@ pub struct ActionsVariableMutation {
     pub value: String,
     pub scope_kind: Option<String>,
     pub scope_name: Option<String>,
+    pub current_scope_kind: Option<String>,
+    pub current_scope_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -193,7 +197,7 @@ pub async fn create_repository_actions_secret_by_owner_name(
         mutation.scope_kind.as_deref(),
         mutation.scope_name.as_deref(),
     )?;
-    ensure_secret_name_available(pool, repository.id, &name).await?;
+    ensure_secret_name_available(pool, repository.id, &scope, &name).await?;
     let envelope = encrypt_secret_value(&mutation.value)?;
     let mut transaction = pool.begin().await?;
     sqlx::query(
@@ -244,13 +248,17 @@ pub async fn update_repository_actions_secret_by_owner_name(
     require_repository_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let current_name = normalize_setting_name(Some(secret_name))?;
+    let current_scope = normalize_setting_scope(
+        mutation.current_scope_kind.as_deref(),
+        mutation.current_scope_name.as_deref(),
+    )?;
     let next_name = mutation
         .name
         .as_deref()
         .map(|value| normalize_setting_name(Some(value)))
         .transpose()?
         .unwrap_or_else(|| current_name.clone());
-    let before = secret_audit_state(pool, repository.id, &current_name)
+    let before = secret_audit_state(pool, repository.id, &current_scope, &current_name)
         .await?
         .ok_or(ActionsSecretsError::NotFound)?;
     let envelope = encrypt_secret_value(&mutation.value)?;
@@ -263,7 +271,10 @@ pub async fn update_repository_actions_secret_by_owner_name(
             encrypted_value_nonce = $5,
             value_fingerprint = $6,
             updated_by_user_id = $7
-        WHERE repository_id = $1 AND name = $2
+        WHERE repository_id = $1
+          AND name = $2
+          AND scope_kind = $8
+          AND COALESCE(scope_name, '') = COALESCE($9, '')
         "#,
     )
     .bind(repository.id)
@@ -273,6 +284,8 @@ pub async fn update_repository_actions_secret_by_owner_name(
     .bind(&envelope.nonce)
     .bind(&envelope.fingerprint)
     .bind(actor_user_id)
+    .bind(&current_scope.kind)
+    .bind(&current_scope.name)
     .execute(&mut *transaction)
     .await
     .map_err(map_unique_conflict)?
@@ -287,7 +300,7 @@ pub async fn update_repository_actions_secret_by_owner_name(
         "repository.actions_secret.update",
         vec!["secret".to_owned()],
         before,
-        json!({ "name": next_name, "scope": "repository", "secretConfigured": true }),
+        json!({ "name": next_name, "scope": current_scope.kind, "scopeName": current_scope.name, "secretConfigured": true }),
     )
     .await?;
     transaction.commit().await?;
@@ -300,6 +313,8 @@ pub async fn delete_repository_actions_secret_by_owner_name(
     owner_login: &str,
     repo_name: &str,
     secret_name: &str,
+    scope_kind: Option<&str>,
+    scope_name: Option<&str>,
 ) -> Result<Option<RepositoryActionsSecretsSettings>, ActionsSecretsError> {
     let Some(repository) = get_repository_by_owner_name(pool, owner_login, repo_name).await? else {
         return Ok(None);
@@ -307,13 +322,18 @@ pub async fn delete_repository_actions_secret_by_owner_name(
     require_repository_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let name = normalize_setting_name(Some(secret_name))?;
-    let before = secret_audit_state(pool, repository.id, &name)
+    let scope = normalize_setting_scope(scope_kind, scope_name)?;
+    let before = secret_audit_state(pool, repository.id, &scope, &name)
         .await?
         .ok_or(ActionsSecretsError::NotFound)?;
     let mut transaction = pool.begin().await?;
-    sqlx::query("DELETE FROM actions_secrets WHERE repository_id = $1 AND name = $2")
+    sqlx::query(
+        "DELETE FROM actions_secrets WHERE repository_id = $1 AND name = $2 AND scope_kind = $3 AND COALESCE(scope_name, '') = COALESCE($4, '')",
+    )
         .bind(repository.id)
         .bind(&name)
+        .bind(&scope.kind)
+        .bind(&scope.name)
         .execute(&mut *transaction)
         .await?;
     insert_actions_settings_audit_tx(
@@ -348,7 +368,7 @@ pub async fn create_repository_actions_variable_by_owner_name(
         mutation.scope_kind.as_deref(),
         mutation.scope_name.as_deref(),
     )?;
-    ensure_variable_name_available(pool, repository.id, &name).await?;
+    ensure_variable_name_available(pool, repository.id, &scope, &name).await?;
     let mut transaction = pool.begin().await?;
     sqlx::query(
         r#"
@@ -393,6 +413,10 @@ pub async fn update_repository_actions_variable_by_owner_name(
     require_repository_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let current_name = normalize_setting_name(Some(variable_name))?;
+    let current_scope = normalize_setting_scope(
+        mutation.current_scope_kind.as_deref(),
+        mutation.current_scope_name.as_deref(),
+    )?;
     let next_name = mutation
         .name
         .as_deref()
@@ -400,7 +424,7 @@ pub async fn update_repository_actions_variable_by_owner_name(
         .transpose()?
         .unwrap_or_else(|| current_name.clone());
     let value = normalize_variable_value(&mutation.value)?;
-    let before = variable_audit_state(pool, repository.id, &current_name)
+    let before = variable_audit_state(pool, repository.id, &current_scope, &current_name)
         .await?
         .ok_or(ActionsSecretsError::NotFound)?;
     let mut transaction = pool.begin().await?;
@@ -408,7 +432,10 @@ pub async fn update_repository_actions_variable_by_owner_name(
         r#"
         UPDATE actions_variables
         SET name = $3, value = $4, updated_by_user_id = $5
-        WHERE repository_id = $1 AND name = $2
+        WHERE repository_id = $1
+          AND name = $2
+          AND scope_kind = $6
+          AND COALESCE(scope_name, '') = COALESCE($7, '')
         "#,
     )
     .bind(repository.id)
@@ -416,6 +443,8 @@ pub async fn update_repository_actions_variable_by_owner_name(
     .bind(&next_name)
     .bind(&value)
     .bind(actor_user_id)
+    .bind(&current_scope.kind)
+    .bind(&current_scope.name)
     .execute(&mut *transaction)
     .await
     .map_err(map_unique_conflict)?
@@ -430,7 +459,7 @@ pub async fn update_repository_actions_variable_by_owner_name(
         "repository.actions_variable.update",
         vec!["variable".to_owned()],
         before,
-        json!({ "name": next_name, "scope": "repository", "valueLength": value.len() }),
+        json!({ "name": next_name, "scope": current_scope.kind, "scopeName": current_scope.name, "valueLength": value.len() }),
     )
     .await?;
     transaction.commit().await?;
@@ -443,6 +472,8 @@ pub async fn delete_repository_actions_variable_by_owner_name(
     owner_login: &str,
     repo_name: &str,
     variable_name: &str,
+    scope_kind: Option<&str>,
+    scope_name: Option<&str>,
 ) -> Result<Option<RepositoryActionsSecretsSettings>, ActionsSecretsError> {
     let Some(repository) = get_repository_by_owner_name(pool, owner_login, repo_name).await? else {
         return Ok(None);
@@ -450,13 +481,18 @@ pub async fn delete_repository_actions_variable_by_owner_name(
     require_repository_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let name = normalize_setting_name(Some(variable_name))?;
-    let before = variable_audit_state(pool, repository.id, &name)
+    let scope = normalize_setting_scope(scope_kind, scope_name)?;
+    let before = variable_audit_state(pool, repository.id, &scope, &name)
         .await?
         .ok_or(ActionsSecretsError::NotFound)?;
     let mut transaction = pool.begin().await?;
-    sqlx::query("DELETE FROM actions_variables WHERE repository_id = $1 AND name = $2")
+    sqlx::query(
+        "DELETE FROM actions_variables WHERE repository_id = $1 AND name = $2 AND scope_kind = $3 AND COALESCE(scope_name, '') = COALESCE($4, '')",
+    )
         .bind(repository.id)
         .bind(&name)
+        .bind(&scope.kind)
+        .bind(&scope.name)
         .execute(&mut *transaction)
         .await?;
     insert_actions_settings_audit_tx(
@@ -527,6 +563,26 @@ pub async fn resolve_actions_runtime_context(
     .fetch_all(pool)
     .await?;
 
+    let environment_rows = sqlx::query(
+        r#"
+        SELECT lower(name) AS name, protection_rules_enabled
+        FROM actions_environments
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(request.repository_id)
+    .fetch_all(pool)
+    .await?;
+    let protected_environments = environment_rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<String, _>("name"),
+                row.get::<bool, _>("protection_rules_enabled"),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
     let mut scope_counts = BTreeMap::<String, (usize, usize)>::new();
 
     for row in secret_rows {
@@ -547,10 +603,12 @@ pub async fn resolve_actions_runtime_context(
             push_unique_reason(&mut blocked_reasons, "fork_pull_request");
             continue;
         }
-        if scope_kind == "environment"
-            && (request.environment.as_deref() != scope_name.as_deref()
-                || !request.environment_approved)
-        {
+        if environment_scope_blocked(
+            &scope_kind,
+            scope_name.as_deref(),
+            &request,
+            &protected_environments,
+        ) {
             blocked_secret_count += 1;
             push_unique_reason(&mut blocked_reasons, "environment_not_approved");
             continue;
@@ -568,10 +626,12 @@ pub async fn resolve_actions_runtime_context(
         let scope_kind: String = row.get("scope_kind");
         let scope_name: Option<String> = row.get("scope_name");
         let scope = runtime_scope_label(&scope_kind, scope_name.as_deref());
-        if scope_kind == "environment"
-            && (request.environment.as_deref() != scope_name.as_deref()
-                || !request.environment_approved)
-        {
+        if environment_scope_blocked(
+            &scope_kind,
+            scope_name.as_deref(),
+            &request,
+            &protected_environments,
+        ) {
             blocked_variable_count += 1;
             push_unique_reason(&mut blocked_reasons, "environment_not_approved");
             continue;
@@ -792,16 +852,22 @@ fn actor_from_row(row: &sqlx::postgres::PgRow) -> Result<Option<ActionsSettingAc
 async fn secret_audit_state(
     pool: &PgPool,
     repository_id: Uuid,
+    scope: &NormalizedSettingScope,
     name: &str,
 ) -> Result<Option<serde_json::Value>, sqlx::Error> {
     let row = sqlx::query(
         r#"
         SELECT name, scope_kind, scope_name, storage_kind, visibility_policy, updated_at
         FROM actions_secrets
-        WHERE repository_id = $1 AND name = $2
+        WHERE repository_id = $1
+          AND scope_kind = $2
+          AND COALESCE(scope_name, '') = COALESCE($3, '')
+          AND name = $4
         "#,
     )
     .bind(repository_id)
+    .bind(&scope.kind)
+    .bind(&scope.name)
     .bind(name)
     .fetch_optional(pool)
     .await?;
@@ -821,16 +887,22 @@ async fn secret_audit_state(
 async fn variable_audit_state(
     pool: &PgPool,
     repository_id: Uuid,
+    scope: &NormalizedSettingScope,
     name: &str,
 ) -> Result<Option<serde_json::Value>, sqlx::Error> {
     let row = sqlx::query(
         r#"
         SELECT name, scope_kind, scope_name, visibility_policy, length(value) AS value_length, updated_at
         FROM actions_variables
-        WHERE repository_id = $1 AND name = $2
+        WHERE repository_id = $1
+          AND scope_kind = $2
+          AND COALESCE(scope_name, '') = COALESCE($3, '')
+          AND name = $4
         "#,
     )
     .bind(repository_id)
+    .bind(&scope.kind)
+    .bind(&scope.name)
     .bind(name)
     .fetch_optional(pool)
     .await?;
@@ -932,12 +1004,15 @@ fn normalize_setting_scope(
 async fn ensure_secret_name_available(
     pool: &PgPool,
     repository_id: Uuid,
+    scope: &NormalizedSettingScope,
     name: &str,
 ) -> Result<(), ActionsSecretsError> {
     let exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM actions_secrets WHERE repository_id = $1 AND name = $2)",
+        "SELECT EXISTS (SELECT 1 FROM actions_secrets WHERE repository_id = $1 AND scope_kind = $2 AND COALESCE(scope_name, '') = COALESCE($3, '') AND name = $4)",
     )
     .bind(repository_id)
+    .bind(&scope.kind)
+    .bind(&scope.name)
     .bind(name)
     .fetch_one(pool)
     .await?;
@@ -951,12 +1026,15 @@ async fn ensure_secret_name_available(
 async fn ensure_variable_name_available(
     pool: &PgPool,
     repository_id: Uuid,
+    scope: &NormalizedSettingScope,
     name: &str,
 ) -> Result<(), ActionsSecretsError> {
     let exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM actions_variables WHERE repository_id = $1 AND name = $2)",
+        "SELECT EXISTS (SELECT 1 FROM actions_variables WHERE repository_id = $1 AND scope_kind = $2 AND COALESCE(scope_name, '') = COALESCE($3, '') AND name = $4)",
     )
     .bind(repository_id)
+    .bind(&scope.kind)
+    .bind(&scope.name)
     .bind(name)
     .fetch_one(pool)
     .await?;
@@ -1044,6 +1122,25 @@ fn runtime_scope_label(kind: &str, name: Option<&str>) -> String {
     name.filter(|value| !value.trim().is_empty())
         .map(|value| format!("{kind}:{value}"))
         .unwrap_or_else(|| kind.to_owned())
+}
+
+fn environment_scope_blocked(
+    scope_kind: &str,
+    scope_name: Option<&str>,
+    request: &ActionsRuntimeResolutionRequest,
+    protected_environments: &BTreeMap<String, bool>,
+) -> bool {
+    if scope_kind != "environment" {
+        return false;
+    }
+    if request.environment.as_deref() != scope_name {
+        return true;
+    }
+    let protection_enabled = scope_name
+        .map(|name| name.to_ascii_lowercase())
+        .and_then(|name| protected_environments.get(&name).copied())
+        .unwrap_or(false);
+    protection_enabled && !request.environment_approved
 }
 
 fn push_unique_reason(reasons: &mut Vec<String>, reason: &str) {

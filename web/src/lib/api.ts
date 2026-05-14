@@ -5912,6 +5912,8 @@ export type RepositoryActionsSecretMutationPayload = {
   name?: string;
   scopeKind?: "repository" | "environment";
   scopeName?: string | null;
+  currentScopeKind?: "repository" | "environment";
+  currentScopeName?: string | null;
   value: string;
 };
 
@@ -5919,6 +5921,8 @@ export type RepositoryActionsVariableMutationPayload = {
   name?: string;
   scopeKind?: "repository" | "environment";
   scopeName?: string | null;
+  currentScopeKind?: "repository" | "environment";
+  currentScopeName?: string | null;
   value: string;
 };
 
@@ -5928,13 +5932,23 @@ export type RepositoryActionsSecretsMutation =
       action: "update-secret";
       currentName: string;
     } & RepositoryActionsSecretMutationPayload)
-  | { action: "delete-secret"; name: string }
+  | {
+      action: "delete-secret";
+      name: string;
+      scopeKind?: "repository" | "environment";
+      scopeName?: string | null;
+    }
   | ({ action: "create-variable" } & RepositoryActionsVariableMutationPayload)
   | ({
       action: "update-variable";
       currentName: string;
     } & RepositoryActionsVariableMutationPayload)
-  | { action: "delete-variable"; name: string };
+  | {
+      action: "delete-variable";
+      name: string;
+      scopeKind?: "repository" | "environment";
+      scopeName?: string | null;
+    };
 
 export type RepositoryWebhookMutationPayload = {
   payloadUrl: string;
@@ -7216,6 +7230,15 @@ export type ActionsWorkflowPermissions = {
   githubTokenScopes: string[];
 };
 
+export type ActionsEnvironmentProtection = {
+  id: string;
+  name: string;
+  protectionRulesEnabled: boolean;
+  requiredReviewers: unknown;
+  deploymentBranchPolicy: unknown;
+  updatedAt: string;
+};
+
 export type ActionsRunnerSetup = {
   registrationToken: string | null;
   dockerCommand: string | null;
@@ -7235,6 +7258,7 @@ export type RepositoryActionsRunnerSettings = {
   runners: ActionsRunner[];
   queue: ActionsRunnerQueue;
   workflowPermissions: ActionsWorkflowPermissions;
+  environments: ActionsEnvironmentProtection[];
   setup: ActionsRunnerSetup;
 };
 
@@ -7255,6 +7279,8 @@ export type RepositoryActionsRunnerMutation =
       cancelInProgress: boolean;
       githubTokenPermission: string;
       allowPullRequestApproval: boolean;
+      environment?: string;
+      environmentProtectionRulesEnabled?: boolean;
     }
   | { action: "schedule-jobs" };
 
@@ -18133,6 +18159,9 @@ export async function mutateRepositoryActionsRunnerSettingsFromCookie(
               cancelInProgress: mutation.cancelInProgress,
               githubTokenPermission: mutation.githubTokenPermission,
               allowPullRequestApproval: mutation.allowPullRequestApproval,
+              environment: mutation.environment,
+              environmentProtectionRulesEnabled:
+                mutation.environmentProtectionRulesEnabled,
             }),
             method: "PATCH",
             url: base,
@@ -18279,6 +18308,18 @@ export async function mutateRepositoryActionsSecretsSettingsFromCookie(
   let path = base;
   let method = "POST";
   let body: unknown;
+  const scopedPath = (
+    resource: "secrets" | "variables",
+    name: string,
+    scopeKind?: "repository" | "environment",
+    scopeName?: string | null,
+  ) => {
+    const params = new URLSearchParams();
+    if (scopeKind) params.set("scopeKind", scopeKind);
+    if (scopeName) params.set("scopeName", scopeName);
+    const query = params.toString();
+    return `${base}/${resource}/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
+  };
 
   switch (mutation.action) {
     case "create-secret": {
@@ -18295,7 +18336,12 @@ export async function mutateRepositoryActionsSecretsSettingsFromCookie(
       break;
     }
     case "delete-secret":
-      path = `${base}/secrets/${encodeURIComponent(mutation.name)}`;
+      path = scopedPath(
+        "secrets",
+        mutation.name,
+        mutation.scopeKind,
+        mutation.scopeName,
+      );
       method = "DELETE";
       break;
     case "create-variable": {
@@ -18312,7 +18358,12 @@ export async function mutateRepositoryActionsSecretsSettingsFromCookie(
       break;
     }
     case "delete-variable":
-      path = `${base}/variables/${encodeURIComponent(mutation.name)}`;
+      path = scopedPath(
+        "variables",
+        mutation.name,
+        mutation.scopeKind,
+        mutation.scopeName,
+      );
       method = "DELETE";
       break;
   }

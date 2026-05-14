@@ -31,6 +31,16 @@ function rawStringField(input: Record<string, unknown>, field: string) {
   return typeof value === "string" ? value : "";
 }
 
+function scopeFields(input: Record<string, unknown>) {
+  const scopeKind =
+    stringField(input, "scopeKind") === "environment"
+      ? ("environment" as const)
+      : ("repository" as const);
+  const scopeName =
+    scopeKind === "environment" ? stringField(input, "scopeName") : null;
+  return { scopeKind, scopeName };
+}
+
 function parseMutation(
   input: unknown,
 ): RepositoryActionsSecretsMutation | null {
@@ -45,7 +55,9 @@ function parseMutation(
   if (action === "create-secret" || action === "create-variable") {
     const name = stringField(body, "name");
     const value = rawStringField(body, "value");
-    return name && value.trim() ? { action, name, value } : null;
+    return name && value.trim()
+      ? { action, name, value, ...scopeFields(body) }
+      : null;
   }
 
   if (action === "update-secret" || action === "update-variable") {
@@ -53,13 +65,20 @@ function parseMutation(
     const name = stringField(body, "name");
     const value = rawStringField(body, "value");
     return currentName && name && value.trim()
-      ? { action, currentName, name, value }
+      ? {
+          action,
+          currentName,
+          currentScopeKind: scopeFields(body).scopeKind,
+          currentScopeName: scopeFields(body).scopeName,
+          name,
+          value,
+        }
       : null;
   }
 
   if (action === "delete-secret" || action === "delete-variable") {
     const name = stringField(body, "name");
-    return name ? { action, name } : null;
+    return name ? { action, name, ...scopeFields(body) } : null;
   }
 
   return null;

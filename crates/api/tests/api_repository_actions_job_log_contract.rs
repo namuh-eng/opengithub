@@ -425,6 +425,8 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
             name: Some("deploy_token".to_owned()),
             scope_kind: None,
             scope_name: None,
+            current_scope_kind: None,
+            current_scope_name: None,
             value: "job-log-super-secret".to_owned(),
         },
     )

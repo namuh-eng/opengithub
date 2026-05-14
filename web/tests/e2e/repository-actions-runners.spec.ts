@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededSession = {
   cookieName: string;
   cookieValue: string;
+  firstRepositoryHref: string;
 };
 
 function seedSession(): SeededSession {
@@ -26,7 +27,8 @@ function seedSession(): SeededSession {
       cwd: "..",
       env: {
         ...process.env,
-        DASHBOARD_E2E_EMPTY: "1",
+        DASHBOARD_E2E_EMPTY: "0",
+        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -55,17 +57,7 @@ test("repository admin manages Actions runners and scheduling controls", async (
     },
   ]);
 
-  const repositoryName = `actions runners ${Date.now().toString(36)}`;
-  await page.goto("/new");
-  await page.getByLabel("Repository name *").fill(repositoryName);
-  await page.getByLabel(/Description/).fill("Runner pool smoke testing");
-  await page.getByRole("button", { name: "Create repository" }).click();
-  await expect(page).toHaveURL(
-    new RegExp(repositoryName.replaceAll(/\s+/g, "-")),
-  );
-  const [, ownerLogin, repoName] = new URL(page.url()).pathname.split("/");
-
-  await page.goto(`/${ownerLogin}/${repoName}/settings/actions`);
+  await page.goto(`${seeded.firstRepositoryHref}/settings/actions`);
   await expect(
     page.getByRole("heading", { name: "Actions", exact: true }),
   ).toBeVisible();
@@ -82,6 +74,20 @@ test("repository admin manages Actions runners and scheduling controls", async (
   await expect(
     page.getByText("Actions workflow settings saved."),
   ).toBeVisible();
+  await expect(page.getByText("Secret release approval")).toBeVisible();
+  await page.getByRole("textbox", { name: "Environment" }).fill("production");
+  await page
+    .getByLabel(
+      "Require reviewer approval before environment secrets are released",
+    )
+    .check();
+  await page
+    .getByRole("button", { name: "Save environment protection" })
+    .click();
+  await expect(
+    page.getByText("Actions workflow settings saved."),
+  ).toBeVisible();
+  await expect(page.getByText("production: approval required")).toBeVisible();
   await page.getByRole("button", { name: "Assign queued jobs" }).click();
   await expect(page.getByText(/queued jobs? assigned/)).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);

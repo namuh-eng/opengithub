@@ -6797,5 +6797,107 @@
       "rm -rf web/.next && make check: pass",
       "target system-Chrome Playwright: pass 5/5"
     ]
+  },
+  {
+    "feature_id": "actions-010",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow permissions and repository/organization secrets. Resolves permissions blocks per job, scoped GITHUB_TOKEN policy, encrypted scoped secrets, log redaction, and environment approval gates.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T17:15:00Z",
+    "tested_steps": [
+      "make doctor (local verification stack healthy: postgres-test up, .env.test present, Cargo target writable)",
+      "podman exec opengithub-postgres-test psql -U opengithub -d opengithub_test -Atc select to_regclass(...) verified actions_secrets, actions_environments, actions_runner_settings on localhost:55433",
+      "set -a; source .env.test; set +a; export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; ./hack/cargo_locked.sh test -p opengithub-api --test repository_actions_secrets_contract -- --nocapture (2 passed, DB-backed; no self-skip)",
+      "same env ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_runners_contract -- --nocapture (1 passed, DB-backed; no self-skip)",
+      "cd web && npm test -- --run repository-actions-runners-page.test.tsx repository-actions-secrets-page.test.tsx (8 passed)",
+      "export CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; make check (Cargo check, Web typecheck, Clippy, Biome passed)",
+      "make test (Cargo tests passed; Web tests passed 671/671 after increasing api-docs timeout for full-suite load)",
+      "killed stale non-OpenGitHub :3015 listener from /home/jaeyunha/dev/namuh/namuh-linear before browser gates",
+      "cd web && set -a && source ../.env.test && set +a && export CARGO_TARGET_DIR=/home/jaeyunha/dev/namuh/opengithub-visible/actions-010-visible-20260514093355/.scratch/cargo-target && export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome && npx playwright test tests/e2e/repository-actions-runners.spec.ts tests/e2e/repository-settings-secrets.spec.ts --project=chromium (3 passed)"
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Environment-scoped secrets with the same name as repository secrets could not be created because availability checks ignored scope; update/delete also targeted by name only, which was unsafe once scoped duplicates exist.",
+        "files": [
+          "crates/api/src/domain/actions_secrets.rs",
+          "crates/api/src/routes/repositories.rs",
+          "web/src/components/RepositoryActionsSecretsPage.tsx",
+          "web/src/lib/api.ts"
+        ]
+      },
+      {
+        "severity": "major",
+        "description": "Environment protection rules were stored in schema but not exposed in the Actions settings contract/UI and runtime secret release did not consult the protected-environment toggle.",
+        "files": [
+          "crates/api/src/domain/actions.rs",
+          "crates/api/src/routes/actions.rs",
+          "web/src/components/RepositoryActionsRunnersPage.tsx"
+        ]
+      },
+      {
+        "severity": "major",
+        "description": "The required /<owner>/<repo>/settings/secrets/actions page path was occupied by a POST-only mutation route, so browser GETs could not render the Actions secrets UI.",
+        "files": [
+          "web/src/app/[owner]/[repo]/settings/secrets/actions/page.tsx",
+          "web/src/app/[owner]/[repo]/settings/secrets/actions/mutations/route.ts"
+        ]
+      },
+      {
+        "severity": "minor",
+        "description": "Full web test suite consistently timed out api-docs under all-suite concurrency at 120s while the focused test passed in about 107s; timeout was raised without weakening assertions.",
+        "files": [
+          "web/tests/api-docs.test.tsx"
+        ]
+      }
+    ],
+    "fix_description": "Allowed scoped same-name repository/environment secrets and variables with scope-aware update/delete; added protected environment summaries and toggle persistence to the Actions settings contract/UI; made runtime resolution release environment secrets only for matching environments and require approval when protection rules are enabled; moved the same-origin mutation endpoint under /settings/secrets/actions/mutations and added the required /settings/secrets/actions page; extended Rust, Vitest, and Playwright coverage.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Actions settings UI saves GITHUB_TOKEN read/write policy, PR approval, and environment protection. Actions secrets UI renders at /settings/secrets/actions and supports repository/environment scoped secret metadata without plaintext disclosure."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET/PATCH /api/repos/{owner}/{repo}/settings/actions/runners",
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/secrets/secrets",
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/secrets/variables"
+        ],
+        "notes": "DB-backed Rust contracts exercised admin-only access, encrypted persistence, scope-aware duplicate names, scoped GITHUB_TOKEN policy/scopes, runner settings persistence, environment approval diagnostics, and log masking."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "write_only_secret_responses",
+          "encrypted_persistence",
+          "audit_redaction",
+          "log_redaction",
+          "fork_pr_secret_block",
+          "environment_approval_gate",
+          "scoped_token_narrowing"
+        ],
+        "notes": "Contracts verify anonymous secrets access is 401, non-admins are forbidden without private metadata, secret plaintext/ciphertext/fingerprints do not appear in responses/audit, fork PRs do not receive secrets, protected environments block environment secrets until approval, and masked log output redacts plaintext/base64 secret values."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright checks verified accessible names for controls, no dead hrefs, disabled aria-disabled consistency, and no horizontal overflow in browser smoke."
+      }
+    },
+    "artifacts": [
+      "ralph/screenshots/build/actions-006-runners-e2e.png",
+      "ralph/screenshots/build/settings-005-final-secrets-populated.jpg",
+      "ralph/screenshots/build/settings-005-final-secrets-mutation.jpg",
+      "ralph/screenshots/build/settings-005-final-secrets-variable.jpg",
+      "ralph/screenshots/build/settings-005-final-secrets-empty.jpg",
+      "ralph/screenshots/build/settings-005-final-secrets-mobile.jpg",
+      "ralph/screenshots/build/settings-005-final-secrets-forbidden.jpg"
+    ]
   }
 ]

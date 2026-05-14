@@ -134,7 +134,7 @@ describe("RepositoryActionsSecretsPage", () => {
     ).toBeVisible();
     expect(screen.getByRole("link", { name: /Variables/ })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/settings/secrets?tab=variables",
+      "/namuh-eng/opengithub/settings/secrets/actions?tab=variables",
     );
     expect(container.textContent).not.toContain("super-secret");
     expect(container.textContent).not.toContain("ciphertext");
@@ -174,7 +174,7 @@ describe("RepositoryActionsSecretsPage", () => {
     expect(screen.getByText(/organization: namuh-eng/)).toBeVisible();
     expect(screen.getByRole("link", { name: /Secrets/ })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/settings/secrets?tab=secrets",
+      "/namuh-eng/opengithub/settings/secrets/actions?tab=secrets",
     );
   });
 
@@ -192,7 +192,7 @@ describe("RepositoryActionsSecretsPage", () => {
     expect(screen.getByText("No repository secrets")).toBeVisible();
     expect(screen.getByRole("link", { name: "Add secret" })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/settings/secrets?tab=secrets#add-secret",
+      "/namuh-eng/opengithub/settings/secrets/actions?tab=secrets#add-secret",
     );
     expect(screen.getByRole("link", { name: "API docs" })).toHaveAttribute(
       "href",
@@ -253,7 +253,7 @@ describe("RepositoryActionsSecretsPage", () => {
       expect(screen.getByText("NEW_DEPLOY_KEY")).toBeVisible(),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "/namuh-eng/opengithub/settings/secrets/actions",
+      "/namuh-eng/opengithub/settings/secrets/actions/mutations",
       expect.objectContaining({
         body: JSON.stringify({
           action: "create-secret",
