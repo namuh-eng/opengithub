@@ -1,9 +1,10 @@
 import { AppShell } from "@/components/AppShell";
 import { RepositoryActionsRunPage as RepositoryActionsRunView } from "@/components/RepositoryActionsRunPage";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
-import type { RepositoryActionsRunDetail } from "@/lib/api";
+import type { ActionsJobLog, RepositoryActionsRunDetail } from "@/lib/api";
 import {
   getRepository,
+  getRepositoryActionsJobLog,
   getRepositoryActionsRunDetail,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -23,10 +24,20 @@ export default async function ActionRunPage({ params }: ActionRunPageProps) {
     getRepositoryActionsRunDetail(ownerLogin, repositoryName, decodedRunId),
   ]);
 
+  const initialJobLog = await initialVisibleJobLog(
+    ownerLogin,
+    repositoryName,
+    detail,
+  );
+
   return (
     <AppShell session={session} shellContext={shellContext}>
       {repository && !("error" in detail) ? (
-        <RepositoryActionsRunView detail={detail} repository={repository} />
+        <RepositoryActionsRunView
+          detail={detail}
+          initialJobLog={initialJobLog}
+          repository={repository}
+        />
       ) : repository && "error" in detail ? (
         <RepositoryActionsRunView
           detail={emptyRunDetail(ownerLogin, repositoryName, decodedRunId)}
@@ -119,4 +130,24 @@ function emptyRunDetail(
       disabledReason: "Workflow run details could not be loaded.",
     },
   };
+}
+
+async function initialVisibleJobLog(
+  ownerLogin: string,
+  repositoryName: string,
+  detail: RepositoryActionsRunDetail | { error: unknown },
+): Promise<ActionsJobLog | null> {
+  if ("error" in detail) {
+    return null;
+  }
+  const job = detail.jobs[0];
+  if (!job?.logAvailable) {
+    return null;
+  }
+  const log = await getRepositoryActionsJobLog(
+    ownerLogin,
+    repositoryName,
+    job.id,
+  );
+  return "error" in log ? null : log;
 }

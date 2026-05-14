@@ -18,6 +18,7 @@ type RepositoryActionsRunPageProps = {
   repository: RepositoryOverview;
   detail: RepositoryActionsRunDetail;
   validationError?: ApiErrorEnvelope | null;
+  initialJobLog?: ActionsJobLog | null;
 };
 
 function titleCase(value: string | null | undefined) {
@@ -156,6 +157,7 @@ export function RepositoryActionsRunPage({
   repository,
   detail,
   validationError,
+  initialJobLog = null,
 }: RepositoryActionsRunPageProps) {
   const router = useRouter();
   const basePath = `/${repository.owner_login}/${repository.name}`;
@@ -164,7 +166,7 @@ export function RepositoryActionsRunPage({
   );
   const [logQuery, setLogQuery] = useState("");
   const [submittedLogQuery, setSubmittedLogQuery] = useState("");
-  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(null);
+  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(initialJobLog);
   const [jobLogState, setJobLogState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
@@ -193,6 +195,13 @@ export function RepositoryActionsRunPage({
       setJobLog(null);
       setJobLogMessage("");
       setJobLogState("idle");
+      return;
+    }
+
+    if (!submittedLogQuery.trim() && initialJobLog?.job.id === selectedJob.id) {
+      setJobLog(initialJobLog);
+      setJobLogState("idle");
+      setJobLogMessage("");
       return;
     }
 
@@ -228,7 +237,7 @@ export function RepositoryActionsRunPage({
     return () => {
       cancelled = true;
     };
-  }, [basePath, selectedJob, submittedLogQuery]);
+  }, [basePath, initialJobLog, selectedJob, submittedLogQuery]);
 
   async function copyArtifactDownload(artifactId: string) {
     setArtifactMessage("");

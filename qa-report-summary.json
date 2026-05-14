@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 97,
-    "features_failed": 22,
+    "features_passed": 98,
+    "features_failed": 21,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 90,
+      "pass": 95,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 86,
+      "pass": 91,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 86,
+      "pass": 91,
       "fail": 0,
       "skip": 4
     },
     "accessibility": {
-      "pass": 52,
+      "pass": 58,
       "fail": 0,
       "skip": 39
     }
@@ -3300,10 +3300,43 @@
       "feature_id": "actions-009",
       "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Env-loaded system-Chrome Playwright command passed 5/5. repository-actions-run.spec.ts passed and displayed `Installing dependencies`; rerun/cancel/delete-log and artifact checks remained green."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+            "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+            "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+            "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+            "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+            "GET /api/repos/{owner}/{repo}/pulls/{number}"
+          ],
+          "notes": "DB-backed Rust contracts api_repository_actions_run_detail_contract (3/3) and api_pull_request_detail_contract (2/2) passed without self-skip."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "private_repository_authz",
+            "required_checks_merge_gate",
+            "error_envelope_preservation",
+            "log_secret_redaction_in_existing_contracts"
+          ],
+          "notes": "Focused contracts preserve repository visibility permissions and required-check merge gating; the new server log hydration uses the same cookie-backed API helper and returns null on error envelopes rather than leaking stack traces."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Existing Playwright no-dead-controls/no-horizontal-overflow coverage remained green for Actions run detail and PR detail."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "actions-010",

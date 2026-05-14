@@ -6710,5 +6710,73 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T07:05:00-07:00",
+    "tested_steps": [
+      "make doctor",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture (3 passed, real DB)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture (2 passed, real DB)",
+      "rm -rf web/.next && make check",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts (5 passed; repository-actions-run showed Installing dependencies)"
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Actions run detail rendered the selected job shell before the job log was hydrated; under the controller's clean web/.next/system-Chrome gate the client-only log route stayed in Loading logs long enough for the required `Installing dependencies` assertion to time out.",
+        "file": "web/src/components/RepositoryActionsRunPage.tsx"
+      }
+    ],
+    "fix_description": "Added a server-side job-log fetch for the initially selected Actions run job, passed it into the client run page as initialJobLog, and kept existing client-side search/rerun/cancel/delete-log behavior and error-envelope handling intact.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Env-loaded system-Chrome Playwright command passed 5/5. repository-actions-run.spec.ts passed and displayed `Installing dependencies`; rerun/cancel/delete-log and artifact checks remained green."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+          "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}"
+        ],
+        "notes": "DB-backed Rust contracts api_repository_actions_run_detail_contract (3/3) and api_pull_request_detail_contract (2/2) passed without self-skip."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private_repository_authz",
+          "required_checks_merge_gate",
+          "error_envelope_preservation",
+          "log_secret_redaction_in_existing_contracts"
+        ],
+        "notes": "Focused contracts preserve repository visibility permissions and required-check merge gating; the new server log hydration uses the same cookie-backed API helper and returns null on error envelopes rather than leaking stack traces."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Existing Playwright no-dead-controls/no-horizontal-overflow coverage remained green for Actions run detail and PR detail."
+      }
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make doctor",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture (3 passed, real DB)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture (2 passed, real DB)",
+      "rm -rf web/.next && make check",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts (5 passed; repository-actions-run showed Installing dependencies)"
+    ]
   }
 ]

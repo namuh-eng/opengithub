@@ -13739,6 +13739,33 @@ export function repositoryActionsCachesPath(
   )}/actions/caches${suffix}`;
 }
 
+export function repositoryActionsJobLogPath(
+  owner: string,
+  repo: string,
+  jobId: string,
+  query: {
+    q?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.q) {
+    params.set("q", query.q);
+  }
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const path = `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/jobs/${encodeURIComponent(jobId)}/logs`;
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}
+
 export function repositoryActionsJobLogDetailPath(
   owner: string,
   repo: string,
@@ -13942,6 +13969,52 @@ export async function getRepositoryActionsRunDetailFromCookie(
   }
 
   return body as RepositoryActionsRunDetail;
+}
+
+export async function getRepositoryActionsJobLogFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  jobId: string,
+  query: {
+    q?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): Promise<ActionsJobLog | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsJobLogPath(owner, repo, jobId, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Workflow job logs are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_job_logs_failed",
+          message: "Workflow job logs could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as ActionsJobLog;
 }
 
 export async function getRepositoryActionsJobLogDetailFromCookie(

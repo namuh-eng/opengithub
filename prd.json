@@ -2122,7 +2122,9 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "QA verified on 2026-05-14: server-hydrated the selected Actions job log so cold Next route compilation no longer hides `Installing dependencies`; required DB/API/check-run, PR mergeability, make check, and env-loaded system-Chrome Playwright gates all passed."
   },
   {
     "id": "actions-010",
