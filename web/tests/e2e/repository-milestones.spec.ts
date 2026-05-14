@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededSession = {
   cookieName: string;
   cookieValue: string;
+  firstRepositoryHref: string;
 };
 
 type CreatedMilestone = {
@@ -42,7 +43,7 @@ function seedSession(): SeededSession {
       cwd: "..",
       env: {
         ...process.env,
-        DASHBOARD_E2E_EMPTY: "1",
+        DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -89,24 +90,16 @@ test.skip(
   "Repository milestones E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
+test.setTimeout(6 * 60 * 1000);
+
 test("signed-in repository milestones manage lifecycle, assignment, reorder, and mobile layout", async ({
   page,
 }) => {
   const seeded = seedSession();
   await signIn(page, seeded);
   const unique = Date.now().toString(36);
-  const repositoryName = `milestones sweep ${unique}`;
-  const normalizedName = repositoryName.replaceAll(/\s+/g, "-");
-
-  await page.goto("/new");
-  await page.getByLabel("Repository name *").fill(repositoryName);
-  await page
-    .getByLabel(/Description/)
-    .fill("Repository for milestone management E2E coverage");
-  await page.getByRole("button", { name: "Create repository" }).click();
-  await expect(page).toHaveURL(new RegExp(`/${normalizedName}$`));
-
-  const [, ownerLogin, repoName] = new URL(page.url()).pathname.split("/");
+  expect(seeded.firstRepositoryHref).toMatch(/^\/[^/]+\/[^/]+$/);
+  const [, ownerLogin, repoName] = seeded.firstRepositoryHref.split("/");
   const cookie = `${seeded.cookieName}=${seeded.cookieValue}`;
   const milestoneResponse = await page.request.post(
     `http://localhost:3016/api/repos/${ownerLogin}/${repoName}/milestones`,
@@ -172,12 +165,15 @@ test("signed-in repository milestones manage lifecycle, assignment, reorder, and
   expect(pullNumber).toBeTruthy();
 
   await page.goto(`/${ownerLogin}/${repoName}/milestones`);
-  await expect(page.getByRole("heading", { name: "Milestones" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Milestones" }),
+  ).toBeVisible();
   await expect(page.getByText(`Launch readiness ${unique}`)).toBeVisible();
-  await page.getByText("Sort").click();
+  await page.getByRole("button", { name: "Sort" }).click();
   await expect(
     page.getByRole("menuitemradio", { name: /Most issues/ }),
   ).toHaveAttribute("href", /sort=issues-desc/);
+  await page.getByRole("button", { name: "Sort" }).click();
   await page.getByRole("button", { name: "New milestone" }).click();
   await page.getByLabel("Milestone title").fill(`Docs cutover ${unique}`);
   await page
@@ -217,15 +213,16 @@ test("signed-in repository milestones manage lifecycle, assignment, reorder, and
   await expect(page.getByText(`Polish release notes ${unique}`)).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await page.reload();
-  await expect(page.getByText("closed")).toBeVisible();
+  await expect(page.getByText("closed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Reopen" }).click();
   await page.reload();
-  await expect(page.getByText("open")).toBeVisible();
+  await expect(page.getByText("open", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "New issue" }).click();
   await expect(page).toHaveURL(
     new RegExp(`/issues/new\\?milestone=${milestone}`),
   );
+  await signIn(page, seeded);
   await page.goto(`/${ownerLogin}/${repoName}/issues/${issueOne.number}`);
   await page
     .locator("section", {
@@ -233,11 +230,12 @@ test("signed-in repository milestones manage lifecycle, assignment, reorder, and
     })
     .getByRole("button", { name: "Edit" })
     .click();
-  await page.getByLabel("Search milestones").fill("No milestone");
-  await page.getByRole("button", { name: /Choose No milestone/ }).click();
+  await page.getByPlaceholder("Search milestones").fill("No milestone");
+  await page.getByRole("button", { name: "No milestone" }).click();
   await expect(page.getByText("Issue metadata updated.")).toBeVisible();
   await expect(page.getByText("No milestone")).toBeVisible();
 
+  await signIn(page, seeded);
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
   await page
     .locator("section", {
@@ -245,11 +243,12 @@ test("signed-in repository milestones manage lifecycle, assignment, reorder, and
     })
     .getByRole("button", { name: "Edit" })
     .click();
-  await page.getByLabel("Search milestones").fill("No milestone");
-  await page.getByRole("button", { name: /Choose No milestone/ }).click();
+  await page.getByPlaceholder("Search milestones").fill("No milestone");
+  await page.getByRole("button", { name: "No milestone" }).click();
   await expect(page.getByText("Pull request metadata updated.")).toBeVisible();
   await expect(page.getByText("No milestone")).toBeVisible();
 
+  await signIn(page, seeded);
   await page.goto(`/${ownerLogin}/${repoName}/issues/${issueTwo.number}`);
   await expect(page.getByText(`Launch readiness ${unique}`)).toBeVisible();
   await page.goto(`/${ownerLogin}/${repoName}/milestones/${milestone}`);
@@ -259,7 +258,9 @@ test("signed-in repository milestones manage lifecycle, assignment, reorder, and
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/${ownerLogin}/${repoName}/milestones`);
-  await expect(page.getByRole("heading", { name: "Milestones" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Milestones" }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectNoDeadControls(page);
   await page.screenshot({

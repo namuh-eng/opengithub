@@ -252,7 +252,9 @@ pub async fn repository_milestone_detail_for_actor_by_owner_name(
 ) -> Result<RepositoryMilestoneDetail, MilestonesError> {
     let repository = repository_for_optional_actor(pool, owner, repo, actor_user_id).await?;
     let viewer = milestone_viewer(pool, &repository, actor_user_id).await?;
-    let row = sqlx::query(&milestone_select_sql("milestones.id = $2"))
+    let row = sqlx::query(&milestone_select_sql(
+        "milestones.repository_id = $1 AND milestones.id = $2",
+    ))
         .bind(repository.id)
         .bind(milestone_id)
         .fetch_optional(pool)
@@ -817,8 +819,10 @@ async fn milestone_rows(
         MilestoneSort::IssuesAsc => "total_count ASC, milestones.updated_at DESC",
     };
     let sql = format!(
-        "{} AND ($2::text IS NULL OR milestones.state = $2) ORDER BY {order_by} LIMIT $3 OFFSET $4",
-        milestone_select_sql("milestones.repository_id = $1")
+        "{} ORDER BY {order_by} LIMIT $3 OFFSET $4",
+        milestone_select_sql(
+            "milestones.repository_id = $1 AND ($2::text IS NULL OR milestones.state = $2)",
+        )
     );
     sqlx::query(&sql)
         .bind(repository_id)
@@ -1041,7 +1045,7 @@ async fn insert_audit_event(
     .bind(actor_user_id)
     .bind(event_type)
     .bind(target_type)
-    .bind(target_id)
+    .bind(target_id.to_string())
     .bind(metadata)
     .execute(pool)
     .await?;

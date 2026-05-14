@@ -6474,5 +6474,64 @@
       "Current main's wiki component tests failed in make test because client-side wiki validation blocked the expected backend validation response and wiki page sidebar links trusted fixture hrefs missing owner/repo context."
     ],
     "fix_description": "Refactored labels E2E through shared auth/psql helpers with podman-compatible fallback, added optimistic label list/count/status mutation feedback, strengthened focused component assertions, and fixed two current-main wiki regressions blocking the required broad test gate."
+  },
+  {
+    "feature_id": "milestones-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Repository milestones lifecycle verified end-to-end in focused system-Chrome Playwright: seeded authenticated repository, listed open milestones, checked sort URL option, created and edited a milestone, viewed detail progress/open-closed tabs, reordered open milestone items, closed/reopened, preselected New issue URL, cleared issue and pull request milestone metadata, deleted the milestone, and checked mobile no-overflow/no-dead-controls."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/milestones",
+          "POST /api/repos/:owner/:repo/milestones",
+          "GET /api/repos/:owner/:repo/milestones/:milestone_id",
+          "PATCH /api/repos/:owner/:repo/milestones/:milestone_id",
+          "POST /api/repos/:owner/:repo/milestones/:milestone_id/close",
+          "POST /api/repos/:owner/:repo/milestones/:milestone_id/reopen",
+          "PUT /api/repos/:owner/:repo/milestones/:milestone_id/order",
+          "DELETE /api/repos/:owner/:repo/milestones/:milestone_id"
+        ],
+        "notes": "DB-backed repository_milestones_contract passed with .env.test loaded and no self-skips; it covers list/detail, mutation, close/reopen/delete clearing associations, timeline/audit writes, permissions, and order state. Fixed SQL placeholder placement in milestone list/detail selection and audit target_id text binding."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "repository_scope_enforcement",
+          "permission_enforcement",
+          "input_validation",
+          "audit_data_shape"
+        ],
+        "notes": "Contract verifies private/permission boundaries and writer-only mutations; milestone detail now constrains repository_id with milestone_id to prevent cross-repository lookup by UUID. Audit event target IDs are stored as text to match schema without leaking database errors."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright path asserts accessible button names/no dead controls and no horizontal overflow on desktop list/detail flow and mobile milestones page. Existing Editorial design primitives were preserved; no UI token changes were introduced."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target: local verification stack healthy; postgres-test reachable; .env/.env.test present; cargo target dir writable.",
+      "Inspected preserved dead-lane patch and validated only still-relevant scoped fixes before applying.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_milestones_contract -- --nocapture before fixes: reproduced SQL error argument of AND must be type boolean, not type uuid.",
+      "Fixed milestone detail/list SQL where-clause binding and audit_events target_id text binding; updated contract assertion to bind milestone.id as text.",
+      "Hardened focused repository-milestones Playwright spec to use seeded repository data instead of unrelated repository-create UI, skip repeated migrations in the seed helper, disambiguate strict locators, restore session cookies after cross-page actions, and assert current sidebar picker labels.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_milestones_contract -- --nocapture: 1 passed, 0 failed, 0 ignored/skipped.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Verified port 3015 was serving a stale non-OpenGitHub Next app from /home/jaeyunha/dev/namuh/namuh-linear, killed only that listener, and confirmed port 3015/3016 were clear before the focused browser gate.",
+      "Ran cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-milestones.spec.ts --project=chromium: 2 passed including setup and milestone lifecycle."
+    ],
+    "bugs_found": [
+      "Milestone list SQL appended an additional AND after milestone_select_sql had already emitted WHERE milestones.repository_id = $1, causing Postgres to parse the UUID bind as a boolean expression and fail DB-backed list tests/API calls.",
+      "Milestone detail lookup filtered only by milestone id while still binding repository id, risking cross-repository UUID access if a caller knew another repository milestone id.",
+      "Milestone audit writes bound UUID values into audit_events.target_id, whose schema is text, causing audit assertions and some mutations to fail with type mismatch.",
+      "Focused E2E setup depended on repository creation UI and full seed migrations, making the milestone acceptance path vulnerable to unrelated create-flow hangs/timeouts instead of isolating the milestone feature."
+    ],
+    "fix_description": "Scoped milestone backend fixes for repository-scoped list/detail SQL and audit target_id text binding, plus focused real-browser milestone lifecycle coverage using seeded authenticated repository data. QA artifacts updated only for milestones-001 after required gates passed.",
+    "completed_at": "2026-05-14T03:24:00Z"
   }
 ]
