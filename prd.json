@@ -2122,7 +2122,20 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_evidence": {
+      "verified_at": "2026-05-14T12:29:00-07:00",
+      "branch": "qa/actions-009-visible-retry4-20260514050918",
+      "gates": [
+        "make doctor: Local verification stack is healthy",
+        "api_repository_actions_run_detail_contract: 3 passed, 0 failed, 0 ignored",
+        "api_pull_request_detail_contract: 2 passed, 0 failed, 0 ignored",
+        "make check: Cargo check, Web typecheck, Clippy, Biome passed",
+        "focused system-Chrome Playwright: 5 passed (repository-actions-run + repository-pull-request-detail)"
+      ],
+      "fix": "Server-fetch initial workflow job logs for the run detail page and keep existing log rows visible while client log refresh/search is pending, making the rerun acceptance path deterministic."
+    }
   },
   {
     "id": "actions-010",

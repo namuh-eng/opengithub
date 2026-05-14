@@ -65,6 +65,7 @@ import {
   getRepositoryActionsCachesFromCookie,
   getRepositoryActionsDashboardFromCookie,
   getRepositoryActionsJobLogDetailFromCookie,
+  getRepositoryActionsJobLogsFromCookie,
   getRepositoryActionsRunDetailFromCookie,
   getRepositoryActionsRunnerSettingsFromCookie,
   getRepositoryActionsSecretsSettingsFromCookie,
@@ -1730,6 +1731,26 @@ export async function getRepositoryActionsJobLogDetail(
     owner,
     repo,
     runId,
+    jobId,
+    query,
+  );
+}
+
+export async function getRepositoryActionsJobLogs(
+  owner: string,
+  repo: string,
+  jobId: string,
+  query: {
+    q?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryActionsJobLogsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
     jobId,
     query,
   );

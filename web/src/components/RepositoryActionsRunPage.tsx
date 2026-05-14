@@ -17,6 +17,7 @@ import type {
 type RepositoryActionsRunPageProps = {
   repository: RepositoryOverview;
   detail: RepositoryActionsRunDetail;
+  initialJobLog?: ActionsJobLog | null;
   validationError?: ApiErrorEnvelope | null;
 };
 
@@ -155,6 +156,7 @@ function runMutationPath(
 export function RepositoryActionsRunPage({
   repository,
   detail,
+  initialJobLog = null,
   validationError,
 }: RepositoryActionsRunPageProps) {
   const router = useRouter();
@@ -164,7 +166,7 @@ export function RepositoryActionsRunPage({
   );
   const [logQuery, setLogQuery] = useState("");
   const [submittedLogQuery, setSubmittedLogQuery] = useState("");
-  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(null);
+  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(initialJobLog);
   const [jobLogState, setJobLogState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
@@ -191,6 +193,12 @@ export function RepositoryActionsRunPage({
   useEffect(() => {
     if (!selectedJob?.logAvailable) {
       setJobLog(null);
+      setJobLogMessage("");
+      setJobLogState("idle");
+      return;
+    }
+    if (!submittedLogQuery.trim() && initialJobLog?.job.id === selectedJob.id) {
+      setJobLog(initialJobLog);
       setJobLogMessage("");
       setJobLogState("idle");
       return;
@@ -228,7 +236,7 @@ export function RepositoryActionsRunPage({
     return () => {
       cancelled = true;
     };
-  }, [basePath, selectedJob, submittedLogQuery]);
+  }, [basePath, initialJobLog, selectedJob, submittedLogQuery]);
 
   async function copyArtifactDownload(artifactId: string) {
     setArtifactMessage("");
@@ -834,16 +842,16 @@ function JobDetail({
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Logs are not available yet.
           </p>
-        ) : logState === "loading" ? (
-          <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
-            Loading logs...
-          </p>
-        ) : logState === "error" ? (
-          <p className="t-sm p-4" role="status" style={{ color: "var(--err)" }}>
-            {logMessage}
-          </p>
         ) : log ? (
           <div>
+            {logState === "loading" ? (
+              <p
+                className="t-xs border-b px-4 py-2"
+                style={{ borderColor: "var(--line-soft)" }}
+              >
+                Refreshing logs…
+              </p>
+            ) : null}
             <p
               className="t-xs border-b px-4 py-2"
               style={{ borderColor: "var(--line-soft)" }}
@@ -870,6 +878,14 @@ function JobDetail({
               ))}
             </ol>
           </div>
+        ) : logState === "loading" ? (
+          <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
+            Loading logs...
+          </p>
+        ) : logState === "error" ? (
+          <p className="t-sm p-4" role="status" style={{ color: "var(--err)" }}>
+            {logMessage}
+          </p>
         ) : null}
       </div>
     </div>

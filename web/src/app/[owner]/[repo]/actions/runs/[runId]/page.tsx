@@ -1,9 +1,10 @@
 import { AppShell } from "@/components/AppShell";
 import { RepositoryActionsRunPage as RepositoryActionsRunView } from "@/components/RepositoryActionsRunPage";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
-import type { RepositoryActionsRunDetail } from "@/lib/api";
+import type { ActionsJobLog, RepositoryActionsRunDetail } from "@/lib/api";
 import {
   getRepository,
+  getRepositoryActionsJobLogs,
   getRepositoryActionsRunDetail,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -22,11 +23,19 @@ export default async function ActionRunPage({ params }: ActionRunPageProps) {
     getRepository(ownerLogin, repositoryName),
     getRepositoryActionsRunDetail(ownerLogin, repositoryName, decodedRunId),
   ]);
+  const initialJobLog =
+    detail && !("error" in detail)
+      ? await getInitialJobLog(ownerLogin, repositoryName, detail)
+      : null;
 
   return (
     <AppShell session={session} shellContext={shellContext}>
       {repository && !("error" in detail) ? (
-        <RepositoryActionsRunView detail={detail} repository={repository} />
+        <RepositoryActionsRunView
+          detail={detail}
+          initialJobLog={initialJobLog}
+          repository={repository}
+        />
       ) : repository && "error" in detail ? (
         <RepositoryActionsRunView
           detail={emptyRunDetail(ownerLogin, repositoryName, decodedRunId)}
@@ -38,6 +47,23 @@ export default async function ActionRunPage({ params }: ActionRunPageProps) {
       )}
     </AppShell>
   );
+}
+
+async function getInitialJobLog(
+  ownerLogin: string,
+  repositoryName: string,
+  detail: RepositoryActionsRunDetail,
+): Promise<ActionsJobLog | null> {
+  const firstReadableJob = detail.jobs.find((job) => job.logAvailable);
+  if (!firstReadableJob) {
+    return null;
+  }
+  const log = await getRepositoryActionsJobLogs(
+    ownerLogin,
+    repositoryName,
+    firstReadableJob.id,
+  );
+  return "error" in log ? null : log;
 }
 
 function emptyRunDetail(

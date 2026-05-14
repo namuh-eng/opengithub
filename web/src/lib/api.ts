@@ -13774,6 +13774,33 @@ export function repositoryActionsJobLogDetailPath(
   return queryString ? `${path}?${queryString}` : path;
 }
 
+export function repositoryActionsJobLogsPath(
+  owner: string,
+  repo: string,
+  jobId: string,
+  query: {
+    q?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const path = `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/jobs/${encodeURIComponent(jobId)}/logs`;
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}
+
 export async function getRepositoryActionsCachesFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -13991,6 +14018,52 @@ export async function getRepositoryActionsJobLogDetailFromCookie(
   }
 
   return body as RepositoryActionsJobLogDetail;
+}
+
+export async function getRepositoryActionsJobLogsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  jobId: string,
+  query: {
+    q?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): Promise<ActionsJobLog | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsJobLogsPath(owner, repo, jobId, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Workflow job logs are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_job_logs_failed",
+          message: "Workflow job logs could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as ActionsJobLog;
 }
 
 export function repositoryPullRequestPath(

@@ -6710,5 +6710,54 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Fresh retry4 verification fixed the controller browser gate by server-hydrating the initial job log and preserving visible log lines during refresh/search. Focused system-Chrome Playwright passed 5/5: cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts (5 passed, 36.8s). The acceptance path now deterministically shows 'Installing dependencies', can search annotations/logs, queues Re-run failed, Cancel run, Delete logs, and confirms logs-deleted state."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+          "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}"
+        ],
+        "notes": "DB-backed Rust contracts passed with no self-skip: ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture (3 passed) and ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture (2 passed). Contracts cover run attempts/jobs/annotations/artifacts/action state, stateful rerun/cancel/delete-log mutations, private repository permission handling, missing-run errors, PR required-check mergeability, and check-run metadata."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private_repository_permissions",
+          "required_check_merge_gate",
+          "stateful_mutation_authorization",
+          "data_exposure_regression"
+        ],
+        "notes": "make doctor confirmed the real local Postgres stack; Rust contracts include private repository permission denial/missing-run error handling and branch-protection required-check gating. make check passed Cargo check, Web typecheck, Clippy, and Biome after the fix with no new unsafe UI or API regressions."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser path passed the existing UI guard assertions expectNoDeadControls and expectNoHorizontalOverflow on Actions run detail and PR detail, including desktop and mobile reload coverage in repository-actions-run.spec.ts."
+      }
+    },
+    "tested_steps": [
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture",
+      "make check",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts"
+    ],
+    "bugs_found": [
+      "Controller browser gate could observe a run detail page with the initial job log still stuck on Loading logs, making the acceptance path miss Installing dependencies or time out around Re-run failed."
+    ],
+    "fix_description": "Added a server-side initial job-log fetch to the Actions run detail page and passed it into the client component; the client now uses that log immediately for the selected job and keeps current log rows visible while asynchronous refresh/search is loading."
   }
 ]
