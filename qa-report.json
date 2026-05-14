@@ -6710,5 +6710,56 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "2026-05-14 retry5: make doctor passed; env-loaded Rust contracts passed (api_repository_actions_run_detail_contract 3/3, api_pull_request_detail_contract 2/2); make check passed (cargo check, web typecheck, clippy, biome); system-Chrome Playwright acceptance passed (repository-actions-run.spec.ts and repository-pull-request-detail.spec.ts: 5/5 chromium tests). Actions run UI still renders job log text including Installing dependencies and now avoids parsing successful mutation response bodies before showing queued confirmation, reducing re-run status latency while preserving error envelope handling."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+          "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}"
+        ],
+        "notes": "Env-loaded Rust API contract tests passed for Actions run detail/mutations and pull request detail, including check-run required-check behavior and action state."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authenticated mutation paths exercised by contracts",
+          "no stack traces or secret values observed in required gates"
+        ],
+        "notes": "No new security-sensitive surface added in retry5; mutation error handling still parses backend error envelopes only on non-OK responses."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright acceptance rechecked visible controls/status regions and dead-control/horizontal-overflow helpers in the touched Actions run page."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: local verification stack healthy with test Postgres on :55433 and writable per-worktree Cargo target.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture: 3 passed.",
+      "Ran set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture: 2 passed.",
+      "Ran make check: Cargo check, Web typecheck, Clippy, and Biome all passed.",
+      "Ran from web/ with ../.env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome: npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts: 5 passed.",
+      "Confirmed repository-actions-run.spec.ts still asserts job logs render Installing dependencies before mutation actions."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Rejected retry4 observed the Actions run status live region staying on the pending Re Run Failed Jobs message until timeout after clicking Re-run failed.",
+        "fix": "On successful run mutations, the client now shows the queued confirmation immediately after an OK response instead of waiting to parse the full refreshed run-detail JSON body; non-OK responses still parse and display backend error envelopes."
+      }
+    ],
+    "fix_description": "Minimal UI mutation handling fix in web/src/components/RepositoryActionsRunPage.tsx; no test weakening."
   }
 ]

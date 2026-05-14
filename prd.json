@@ -2122,7 +2122,9 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "2026-05-14 retry5: make doctor passed; env-loaded Rust contracts passed (api_repository_actions_run_detail_contract 3/3, api_pull_request_detail_contract 2/2); make check passed (cargo check, web typecheck, clippy, biome); system-Chrome Playwright acceptance passed (repository-actions-run.spec.ts and repository-pull-request-detail.spec.ts: 5/5 chromium tests). Actions run UI still renders job log text including Installing dependencies and now avoids parsing successful mutation response bodies before showing queued confirmation, reducing re-run status latency while preserving error envelope handling."
   },
   {
     "id": "actions-010",

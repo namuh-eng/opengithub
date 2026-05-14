@@ -325,11 +325,10 @@ export function RepositoryActionsRunPage({
           cache: "no-store",
         },
       );
-      const body = (await response.json().catch(() => null)) as
-        | RepositoryActionsRunDetail
-        | ApiErrorEnvelope
-        | null;
-      if (!response.ok || !body || "error" in body) {
+      if (!response.ok) {
+        const body = (await response
+          .json()
+          .catch(() => null)) as ApiErrorEnvelope | null;
         throw new Error(
           body && "error" in body
             ? body.error.message

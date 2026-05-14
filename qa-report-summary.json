@@ -8,8 +8,8 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 97,
-    "features_failed": 22,
+    "features_passed": 98,
+    "features_failed": 21,
     "features_exhausted": 0,
     "features_crashed": 0
   },
@@ -30,7 +30,7 @@
       "skip": 4
     },
     "accessibility": {
-      "pass": 52,
+      "pass": 53,
       "fail": 0,
       "skip": 39
     }
@@ -3300,10 +3300,39 @@
       "feature_id": "actions-009",
       "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "2026-05-14 retry5: make doctor passed; env-loaded Rust contracts passed (api_repository_actions_run_detail_contract 3/3, api_pull_request_detail_contract 2/2); make check passed (cargo check, web typecheck, clippy, biome); system-Chrome Playwright acceptance passed (repository-actions-run.spec.ts and repository-pull-request-detail.spec.ts: 5/5 chromium tests). Actions run UI still renders job log text including Installing dependencies and now avoids parsing successful mutation response bodies before showing queued confirmation, reducing re-run status latency while preserving error envelope handling."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}",
+            "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+            "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+            "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+            "GET /api/repos/{owner}/{repo}/pulls/{number}"
+          ],
+          "notes": "Env-loaded Rust API contract tests passed for Actions run detail/mutations and pull request detail, including check-run required-check behavior and action state."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "authenticated mutation paths exercised by contracts",
+            "no stack traces or secret values observed in required gates"
+          ],
+          "notes": "No new security-sensitive surface added in retry5; mutation error handling still parses backend error envelopes only on non-OK responses."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright acceptance rechecked visible controls/status regions and dead-control/horizontal-overflow helpers in the touched Actions run page."
+        }
+      }
     },
     {
       "feature_id": "actions-010",
