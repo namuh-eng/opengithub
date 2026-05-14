@@ -444,6 +444,11 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
     assert_eq!(owner_body["actionState"]["canRerunFailed"], true);
     assert_eq!(owner_body["actionState"]["canDeleteLogs"], true);
     assert_eq!(owner_body["actionState"]["canCancel"], false);
+    assert_eq!(owner_body["jobs"][0]["logPreview"][0]["lineNumber"], 1);
+    assert_eq!(
+        owner_body["jobs"][0]["logPreview"][0]["content"],
+        "Installing dependencies"
+    );
 
     let logs_uri = format!(
         "/api/repos/{}/{}/actions/jobs/{}/logs?q=error",

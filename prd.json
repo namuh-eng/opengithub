@@ -2122,7 +2122,11 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_status": "pass",
+    "qa_verified_at": "2026-05-14T10:30:00Z",
+    "qa_notes": "Actions run detail now includes a redacted first-lines job-log preview so the acceptance log text is visible immediately while the full searchable log request loads; check-run/PR integration contracts and the required system-Chrome Playwright acceptance command passed."
   },
   {
     "id": "actions-010",

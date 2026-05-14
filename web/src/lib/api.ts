@@ -6970,6 +6970,7 @@ export type ActionsRunJobDetail = {
   durationSeconds: number | null;
   logAvailable: boolean;
   logDeletedAt: string | null;
+  logPreview?: ActionsJobLogLine[];
   steps: ActionsRunStepDetail[];
   startedAt: string | null;
   completedAt: string | null;

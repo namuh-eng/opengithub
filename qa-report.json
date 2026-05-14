@@ -6710,5 +6710,54 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "verified_at": "2026-05-14T10:30:00Z",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed system-Chrome Playwright acceptance for repository Actions run detail plus PR detail passed 5/5. The run detail page shows job annotations, artifacts, controls, download links, and immediate log-preview text before the async searchable log fetch resolves."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+          "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}"
+        ],
+        "notes": "Focused Rust contracts passed: api_repository_actions_run_detail_contract (3 tests) covers attempts/jobs/annotations/artifacts/action-state/mutations/log preview and log endpoints; api_pull_request_detail_contract (2 tests) covers PR checks/mergeability required-check behavior."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "repository_read_authorization",
+          "secret_redaction",
+          "private_repository_permissions"
+        ],
+        "notes": "Run detail/log preview uses existing repository read authorization and masks Actions secret values before serializing preview log lines. Pull request detail contract preserves private repository authorization."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright assertions passed for keyboard-focusable job links/buttons and no dead controls/horizontal overflow on desktop and mobile run-detail views."
+      }
+    },
+    "tested_steps": [
+      "make doctor: local verification stack healthy (podman, postgres-test, .env.test/.env, per-worktree CARGO_TARGET_DIR writable)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture: 3 passed, 0 failed",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture: 2 passed, 0 failed",
+      "make check: Cargo check, Web typecheck, Clippy, and Biome passed",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts: 5 passed (system Chrome, DB-backed, no self-skip)"
+    ],
+    "bugs_found": [
+      "Actions run detail depended solely on a client-side log fetch before rendering the first log line, leaving the required \"Installing dependencies\" text absent while the run detail sat in Loading logs during slow/cold route startup."
+    ],
+    "fix_description": "Added a redacted logPreview array to Actions run job detail responses and rendered it as an immediate fallback in RepositoryActionsRunPage while the full job-log request loads; kept the full searchable log endpoint as source of truth and extended the focused Actions run E2E timeout to cover screenshot/artifact capture under cold system-Chrome starts."
   }
 ]

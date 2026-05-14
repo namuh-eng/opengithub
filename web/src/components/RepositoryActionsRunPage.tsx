@@ -746,6 +746,28 @@ function JobDetail({
   onRerunJob: (jobId: string) => void;
   rerunDisabled: boolean;
 }) {
+  const logPreview = job.logPreview ?? [];
+  const visibleLog =
+    log ??
+    (logPreview.length
+      ? {
+          downloadHref: jobLogDownloadPath(basePath, job.id),
+          job: {
+            conclusion: job.conclusion,
+            id: job.id,
+            logDeletedAt: job.logDeletedAt,
+            name: job.name,
+            runId: "",
+            status: job.status,
+          },
+          lines: logPreview,
+          page: 1,
+          pageSize: logPreview.length,
+          query: null,
+          total: logPreview.length,
+        }
+      : null);
+
   return (
     <div className="space-y-5 p-5">
       <div className="mb-4 flex flex-wrap gap-2">
@@ -834,24 +856,24 @@ function JobDetail({
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Logs are not available yet.
           </p>
-        ) : logState === "loading" ? (
+        ) : logState === "loading" && !visibleLog ? (
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Loading logs...
           </p>
-        ) : logState === "error" ? (
+        ) : logState === "error" && !visibleLog ? (
           <p className="t-sm p-4" role="status" style={{ color: "var(--err)" }}>
             {logMessage}
           </p>
-        ) : log ? (
+        ) : visibleLog ? (
           <div>
             <p
               className="t-xs border-b px-4 py-2"
               style={{ borderColor: "var(--line-soft)" }}
             >
-              {log.total} matching lines
+              {visibleLog.total} matching lines
             </p>
             <ol className="max-h-[360px] overflow-auto py-2">
-              {log.lines.map((line) => (
+              {visibleLog.lines.map((line) => (
                 <li
                   className="grid grid-cols-[64px_minmax(0,1fr)] gap-3 px-4 py-1"
                   id={`log-${line.anchor}`}
