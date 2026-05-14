@@ -336,6 +336,7 @@ pub struct ActionsRunJobDetail {
     pub duration_seconds: Option<i64>,
     pub log_available: bool,
     pub log_deleted_at: Option<DateTime<Utc>>,
+    pub log_preview_lines: Vec<ActionsJobLogLine>,
     pub steps: Vec<ActionsRunStepDetail>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -1309,7 +1310,7 @@ pub async fn actions_run_detail_for_viewer(
         .ok_or(AutomationError::WorkflowRunNotFound)?;
     let workflow = actions_run_detail_workflow(pool, &repository, run.workflow_id).await?;
     let attempts = actions_run_attempts(pool, &run).await?;
-    let jobs = actions_run_jobs(pool, run.id).await?;
+    let jobs = actions_run_jobs(pool, repository_id, run.id).await?;
     let redaction_values = actions_secret_redaction_values(pool, repository.id).await?;
     let mut annotations = actions_run_annotations(pool, run.id).await?;
     mask_actions_annotations(&mut annotations, &redaction_values);
@@ -3459,6 +3460,7 @@ async fn actions_run_attempts(
 
 async fn actions_run_jobs(
     pool: &PgPool,
+    repository_id: Uuid,
     run_id: Uuid,
 ) -> Result<Vec<ActionsRunJobDetail>, AutomationError> {
     let job_rows = sqlx::query(
@@ -3478,6 +3480,7 @@ async fn actions_run_jobs(
         .map(|row| row.get::<Uuid, _>("id"))
         .collect::<Vec<_>>();
     let mut steps_by_job: HashMap<Uuid, Vec<ActionsRunStepDetail>> = HashMap::new();
+    let mut log_preview_lines_by_job: HashMap<Uuid, Vec<ActionsJobLogLine>> = HashMap::new();
     if !job_ids.is_empty() {
         let step_rows = sqlx::query(
             r#"
@@ -3508,6 +3511,40 @@ async fn actions_run_jobs(
                     completed_at,
                 });
         }
+
+        let redaction_values = actions_secret_redaction_values(pool, repository_id).await?;
+        let preview_rows = sqlx::query(
+            r#"
+            SELECT job_id, line_number, timestamp, content
+            FROM (
+                SELECT job_id, line_number, timestamp, content,
+                       row_number() OVER (PARTITION BY job_id ORDER BY line_number) AS row_number
+                FROM workflow_job_log_lines
+                WHERE job_id = ANY($1)
+            ) AS preview
+            WHERE row_number <= 50
+            ORDER BY job_id, line_number
+            "#,
+        )
+        .bind(&job_ids)
+        .fetch_all(pool)
+        .await?;
+        for row in preview_rows {
+            let job_id = row.get::<Uuid, _>("job_id");
+            let line_number: i32 = row.get("line_number");
+            log_preview_lines_by_job
+                .entry(job_id)
+                .or_default()
+                .push(ActionsJobLogLine {
+                    line_number,
+                    timestamp: row.get("timestamp"),
+                    content: mask_actions_secret_values(
+                        &row.get::<String, _>("content"),
+                        &redaction_values,
+                    ),
+                    anchor: format!("L{line_number}"),
+                });
+        }
     }
 
     Ok(job_rows
@@ -3529,6 +3566,7 @@ async fn actions_run_jobs(
                 duration_seconds: duration_seconds(started_at, completed_at),
                 log_available: log_storage_key.is_some() && log_deleted_at.is_none(),
                 log_deleted_at,
+                log_preview_lines: log_preview_lines_by_job.remove(&id).unwrap_or_default(),
                 steps: steps_by_job.remove(&id).unwrap_or_default(),
                 started_at,
                 completed_at,
@@ -4670,7 +4708,7 @@ pub async fn workflow_run_log_archive_for_viewer(
         .into_iter()
         .next()
         .ok_or(AutomationError::WorkflowRunNotFound)?;
-    let jobs = actions_run_jobs(pool, run_id).await?;
+    let jobs = actions_run_jobs(pool, repository_id, run_id).await?;
     if jobs.iter().all(|job| !job.log_available) {
         return Err(AutomationError::WorkflowLogsUnavailable);
     }

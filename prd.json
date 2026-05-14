@@ -2122,7 +2122,8 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "actions-010",

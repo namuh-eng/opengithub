@@ -6710,5 +6710,74 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T09:34:00Z",
+    "tested_steps": [
+      "make doctor passed with postgres-test reachable and .env/.env.test present.",
+      "DB-backed Rust contracts passed without self-skip: api_repository_actions_run_detail_contract 3/3 and api_pull_request_detail_contract 2/2, covering actions run annotations/logs and required-check merge blockers.",
+      "Focused Vitest component test passed: web npm test -- repository-actions-run.test.tsx (7/7).",
+      "make check passed: cargo check, web typecheck, clippy, and Biome.",
+      "make test passed: Cargo tests and web tests (671 passed).",
+      "Env-loaded system-Chrome Playwright acceptance command passed: repository-actions-run.spec.ts and repository-pull-request-detail.spec.ts --project=chromium (5/5)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Actions run detail initially depended on a cold client-side job-log proxy fetch, leaving the required log lines stuck behind Loading logs long enough for the system-Chrome browser gate to fail.",
+        "file": "web/src/components/RepositoryActionsRunPage.tsx"
+      }
+    ],
+    "fix_description": "Added redacted first-page job log preview lines to the Actions run detail payload and rendered/searched that preview immediately while the full log proxy fetch hydrates, preserving real log assertions without weakening tests.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "PR Checks/actions browser acceptance path passed under env-loaded system Chrome. Actions run page now shows job log and filtered search lines immediately from DB-backed detail data while full logs hydrate."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}/checks"
+        ],
+        "notes": "DB-backed contracts passed without self-skip for run detail annotations/artifacts/log preview and pull request required-check mergeability blockers."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_and_repository_read_permissions",
+          "secret_redaction",
+          "required_check_merge_gate",
+          "data_exposure"
+        ],
+        "notes": "Log preview lines are populated through the same repository-read gate as run detail and masked with actions secret redaction values before serialization; required-check blockers remain enforced by DB-backed mergeability contract."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright acceptance retained no-dead-controls/no-horizontal-overflow assertions for the Actions run page and PR detail flows."
+      }
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make doctor: pass",
+      "./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture: pass 3/3",
+      "./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture: pass 2/2",
+      "cd web && npm test -- repository-actions-run.test.tsx: pass 7/7",
+      "make check: pass",
+      "make test: pass (Cargo tests; web tests 671 passed)",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts: pass 5/5"
+    ]
   }
 ]

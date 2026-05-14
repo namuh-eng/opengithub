@@ -8,8 +8,8 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 97,
-    "features_failed": 22,
+    "features_passed": 98,
+    "features_failed": 21,
     "features_exhausted": 0,
     "features_crashed": 0
   },
@@ -30,7 +30,7 @@
       "skip": 4
     },
     "accessibility": {
-      "pass": 52,
+      "pass": 53,
       "fail": 0,
       "skip": 39
     }
@@ -3298,12 +3298,43 @@
     },
     {
       "feature_id": "actions-009",
-      "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head",
+      "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "PR Checks/actions browser acceptance path passed under env-loaded system Chrome. Actions run page now shows job log and filtered search lines immediately from DB-backed detail data while full logs hydrate."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+            "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+            "GET /api/repos/{owner}/{repo}/pulls/{number}",
+            "GET /api/repos/{owner}/{repo}/pulls/{number}/checks"
+          ],
+          "notes": "DB-backed contracts passed without self-skip for run detail annotations/artifacts/log preview and pull request required-check mergeability blockers."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_and_repository_read_permissions",
+            "secret_redaction",
+            "required_check_merge_gate",
+            "data_exposure"
+          ],
+          "notes": "Log preview lines are populated through the same repository-read gate as run detail and masked with actions secret redaction values before serialization; required-check blockers remain enforced by DB-backed mergeability contract."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright acceptance retained no-dead-controls/no-horizontal-overflow assertions for the Actions run page and PR detail flows."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "actions-010",

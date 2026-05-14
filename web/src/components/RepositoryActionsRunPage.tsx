@@ -152,6 +152,39 @@ function runMutationPath(
   return `${basePath}/actions/runs/${runId}/${action}`;
 }
 
+function jobLogPreview(
+  basePath: string,
+  runId: string,
+  job: ActionsRunJobDetail | undefined,
+  query = "",
+): ActionsJobLog | null {
+  if (!job?.logPreviewLines?.length) {
+    return null;
+  }
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const lines = normalizedQuery
+    ? job.logPreviewLines.filter((line) =>
+        line.content.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : job.logPreviewLines;
+  return {
+    job: {
+      id: job.id,
+      runId,
+      name: job.name,
+      status: job.status,
+      conclusion: job.conclusion,
+      logDeletedAt: job.logDeletedAt,
+    },
+    lines,
+    total: lines.length,
+    page: 1,
+    pageSize: lines.length,
+    query: normalizedQuery ? query.trim() : null,
+    downloadHref: jobLogDownloadPath(basePath, job.id),
+  };
+}
+
 export function RepositoryActionsRunPage({
   repository,
   detail,
@@ -164,7 +197,9 @@ export function RepositoryActionsRunPage({
   );
   const [logQuery, setLogQuery] = useState("");
   const [submittedLogQuery, setSubmittedLogQuery] = useState("");
-  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(null);
+  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(() =>
+    jobLogPreview(basePath, detail.run.id, detail.jobs[0]),
+  );
   const [jobLogState, setJobLogState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
@@ -197,6 +232,9 @@ export function RepositoryActionsRunPage({
     }
 
     let cancelled = false;
+    setJobLog(
+      jobLogPreview(basePath, detail.run.id, selectedJob, submittedLogQuery),
+    );
     setJobLogState("loading");
     setJobLogMessage("");
     fetch(jobLogsPath(basePath, selectedJob.id, submittedLogQuery), {
@@ -228,7 +266,7 @@ export function RepositoryActionsRunPage({
     return () => {
       cancelled = true;
     };
-  }, [basePath, selectedJob, submittedLogQuery]);
+  }, [basePath, detail.run.id, selectedJob, submittedLogQuery]);
 
   async function copyArtifactDownload(artifactId: string) {
     setArtifactMessage("");
@@ -834,11 +872,11 @@ function JobDetail({
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Logs are not available yet.
           </p>
-        ) : logState === "loading" ? (
+        ) : logState === "loading" && !log ? (
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Loading logs...
           </p>
-        ) : logState === "error" ? (
+        ) : logState === "error" && !log ? (
           <p className="t-sm p-4" role="status" style={{ color: "var(--err)" }}>
             {logMessage}
           </p>
