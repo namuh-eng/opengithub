@@ -962,6 +962,17 @@ pub struct ActionsWorkflowPermissions {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ActionsEnvironmentProtection {
+    pub id: Uuid,
+    pub name: String,
+    pub protection_rules_enabled: bool,
+    pub required_reviewers: Value,
+    pub deployment_branch_policy: Value,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryActionsRunnerSettings {
     pub repository: ActionsDashboardRepository,
     pub viewer_permission: Option<String>,
@@ -969,6 +980,7 @@ pub struct RepositoryActionsRunnerSettings {
     pub runners: Vec<ActionsRunner>,
     pub queue: ActionsRunnerQueue,
     pub workflow_permissions: ActionsWorkflowPermissions,
+    pub environments: Vec<ActionsEnvironmentProtection>,
     pub setup: ActionsRunnerSetup,
 }
 
@@ -992,6 +1004,8 @@ pub struct UpdateActionsRunnerSettings {
     pub cancel_in_progress: bool,
     pub github_token_permission: String,
     pub allow_pull_request_approval: bool,
+    pub environment: Option<String>,
+    pub environment_protection_rules_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3812,6 +3826,7 @@ pub async fn actions_runner_settings_for_viewer(
     let runners = actions_runners(pool, repository_id).await?;
     let queue = actions_runner_queue(pool, repository_id).await?;
     let workflow_permissions = actions_workflow_permissions(pool, repository_id).await?;
+    let environments = actions_environments(pool, repository_id).await?;
     let token = sqlx::query_scalar::<_, String>(
         r#"
         SELECT registration_token
@@ -3839,6 +3854,7 @@ pub async fn actions_runner_settings_for_viewer(
         runners,
         queue,
         workflow_permissions,
+        environments,
         setup: ActionsRunnerSetup {
             registration_token: Some(token.clone()),
             docker_command: Some(format!(
@@ -3896,6 +3912,26 @@ pub async fn update_actions_runner_settings(
     }
     let github_token_permission =
         normalize_github_token_permission(&input.github_token_permission)?;
+    if let Some(environment) = input.environment.as_deref() {
+        let environment = normalize_actions_environment_name(environment)?;
+        let enabled = input.environment_protection_rules_enabled.unwrap_or(false);
+        sqlx::query(
+            r#"
+            INSERT INTO actions_environments
+                (repository_id, name, protection_rules_enabled, updated_by_user_id, created_by_user_id)
+            VALUES ($1, $2, $3, $4, $4)
+            ON CONFLICT (repository_id, lower(name)) DO UPDATE
+            SET protection_rules_enabled = EXCLUDED.protection_rules_enabled,
+                updated_by_user_id = EXCLUDED.updated_by_user_id
+            "#,
+        )
+        .bind(repository_id)
+        .bind(&environment)
+        .bind(enabled)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+    }
     sqlx::query(
         r#"
         INSERT INTO actions_runner_settings
@@ -3923,6 +3959,21 @@ pub async fn update_actions_runner_settings(
     .await?;
 
     actions_runner_settings_for_viewer(pool, repository_id, actor_user_id).await
+}
+
+fn normalize_actions_environment_name(value: &str) -> Result<String, AutomationError> {
+    let name = value.trim();
+    if name.is_empty() {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "environment name is required".to_owned(),
+        ));
+    }
+    if name.len() > 64 {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "environment name must be 64 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(name.to_owned())
 }
 
 pub async fn record_runner_heartbeat(
@@ -4581,6 +4632,36 @@ async fn actions_workflow_permissions(
         github_token_permission: permission,
         allow_pull_request_approval,
     })
+}
+
+async fn actions_environments(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsEnvironmentProtection>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, protection_rules_enabled, required_reviewers,
+               deployment_branch_policy, updated_at
+        FROM actions_environments
+        WHERE repository_id = $1
+        ORDER BY lower(name)
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ActionsEnvironmentProtection {
+            id: row.get("id"),
+            name: row.get("name"),
+            protection_rules_enabled: row.get("protection_rules_enabled"),
+            required_reviewers: row.get("required_reviewers"),
+            deployment_branch_policy: row.get("deployment_branch_policy"),
+            updated_at: row.get("updated_at"),
+        })
+        .collect())
 }
 
 fn normalize_github_token_permission(value: &str) -> Result<String, AutomationError> {

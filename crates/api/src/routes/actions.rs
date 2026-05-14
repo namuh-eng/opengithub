@@ -302,6 +302,8 @@ struct UpdateRunnerSettingsRequest {
     cancel_in_progress: bool,
     github_token_permission: String,
     allow_pull_request_approval: bool,
+    environment: Option<String>,
+    environment_protection_rules_enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -424,6 +426,8 @@ async fn update_actions_runner_settings_route(
             cancel_in_progress: request.cancel_in_progress,
             github_token_permission: request.github_token_permission,
             allow_pull_request_approval: request.allow_pull_request_approval,
+            environment: request.environment,
+            environment_protection_rules_enabled: request.environment_protection_rules_enabled,
         },
     )
     .await

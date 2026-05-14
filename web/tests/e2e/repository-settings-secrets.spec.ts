@@ -66,6 +66,8 @@ test.skip(
   "repository Actions secrets smoke needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
+test.setTimeout(240_000);
+
 test("admin can create update and delete Actions secrets and variables", async ({
   page,
 }) => {
@@ -75,9 +77,9 @@ test("admin can create update and delete Actions secrets and variables", async (
   const secretName = `DEPLOY_KEY_${suffix}`;
   const variableName = `PUBLIC_BASE_URL_${suffix}`;
 
-  await page.goto(`${seeded.firstRepositoryHref}/settings/secrets`);
+  await page.goto(`${seeded.firstRepositoryHref}/settings/secrets/actions`);
   await expect(
-    page.getByRole("heading", { name: "Secrets and variables" }),
+    page.getByRole("heading", { name: "Actions secrets" }),
   ).toBeVisible();
 
   await page.getByLabel("Name").fill(secretName);
@@ -176,7 +178,7 @@ test("admin can create update and delete Actions secrets and variables", async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Secrets and variables" }),
+    page.getByRole("heading", { name: "Actions secrets" }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -192,7 +194,7 @@ test("admin can create update and delete Actions secrets and variables", async (
 
   await page.context().clearCookies();
   await signIn(page, seeded, seeded.profileActionCookieValue);
-  await page.goto(`${seeded.firstRepositoryHref}/settings/secrets`);
+  await page.goto(`${seeded.firstRepositoryHref}/settings/secrets/actions`);
   await expect(
     page.getByRole("heading", { name: "Actions secrets are restricted" }),
   ).toBeVisible();

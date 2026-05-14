@@ -326,11 +326,29 @@ async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
             name: Some("deploy_token".to_owned()),
             scope_kind: None,
             scope_name: None,
+            current_scope_kind: None,
+            current_scope_name: None,
             value: "runtime-super-secret".to_owned(),
         },
     )
     .await
     .expect("secret should create");
+    create_repository_actions_secret_by_owner_name(
+        &pool,
+        owner.id,
+        &owner.email,
+        &repo.name,
+        ActionsSecretMutation {
+            name: Some("deploy_token".to_owned()),
+            scope_kind: Some("environment".to_owned()),
+            scope_name: Some("production".to_owned()),
+            current_scope_kind: None,
+            current_scope_name: None,
+            value: "production-super-secret".to_owned(),
+        },
+    )
+    .await
+    .expect("same-name environment secret should create");
     create_repository_actions_variable_by_owner_name(
         &pool,
         owner.id,
@@ -340,11 +358,22 @@ async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
             name: Some("release_channel".to_owned()),
             scope_kind: None,
             scope_name: None,
+            current_scope_kind: None,
+            current_scope_name: None,
             value: "stable".to_owned(),
         },
     )
     .await
     .expect("variable should create");
+    sqlx::query(
+        "INSERT INTO actions_environments (repository_id, name, protection_rules_enabled, required_reviewers, deployment_branch_policy, created_by_user_id, updated_by_user_id)
+         VALUES ($1, 'production', true, '[\"release-manager\"]'::jsonb, '{}'::jsonb, $2, $2)",
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("protected environment should persist");
 
     let trusted = resolve_actions_runtime_context(
         &pool,
@@ -370,6 +399,54 @@ async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
     assert_eq!(trusted.diagnostics.secret_count, 1);
     assert_eq!(trusted.diagnostics.variable_count, 1);
 
+    let waiting_for_review = resolve_actions_runtime_context(
+        &pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repo.id,
+            event: "push".to_owned(),
+            fork_pull_request: false,
+            environment: Some("production".to_owned()),
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await
+    .expect("protected environment should resolve diagnostics");
+    assert_eq!(
+        waiting_for_review
+            .secrets
+            .get("DEPLOY_TOKEN")
+            .map(String::as_str),
+        Some("runtime-super-secret")
+    );
+    assert_eq!(waiting_for_review.diagnostics.blocked_secret_count, 1);
+    assert!(waiting_for_review
+        .diagnostics
+        .blocked_reasons
+        .iter()
+        .any(|reason| reason == "environment_not_approved"));
+
+    let approved_environment = resolve_actions_runtime_context(
+        &pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repo.id,
+            event: "push".to_owned(),
+            fork_pull_request: false,
+            environment: Some("production".to_owned()),
+            environment_approved: true,
+            explicit_secret_names: None,
+        },
+    )
+    .await
+    .expect("approved environment should release scoped secrets");
+    assert_eq!(
+        approved_environment
+            .secrets
+            .get("DEPLOY_TOKEN")
+            .map(String::as_str),
+        Some("production-super-secret")
+    );
+
     let serialized = serde_json::to_string(&trusted).expect("runtime context should serialize");
     assert!(!serialized.contains("runtime-super-secret"));
     assert!(!serialized.contains("DEPLOY_TOKEN"));
@@ -389,7 +466,7 @@ async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
     .expect("fork PR context should resolve");
     assert!(blocked.secrets.is_empty());
     assert_eq!(blocked.variables.len(), 1);
-    assert_eq!(blocked.diagnostics.blocked_secret_count, 1);
+    assert_eq!(blocked.diagnostics.blocked_secret_count, 2);
     assert!(blocked
         .diagnostics
         .blocked_reasons

@@ -93,6 +93,11 @@ export function RepositoryActionsRunnersPage({
   const [allowPullRequestApproval, setAllowPullRequestApproval] = useState(
     settings?.workflowPermissions.allowPullRequestApproval ?? false,
   );
+  const [environmentName, setEnvironmentName] = useState(
+    settings?.environments[0]?.name ?? "production",
+  );
+  const [environmentProtectionEnabled, setEnvironmentProtectionEnabled] =
+    useState(settings?.environments[0]?.protectionRulesEnabled ?? false);
   const [message, setMessage] = useState(
     settingsResult.ok ? "" : settingsResult.message,
   );
@@ -138,6 +143,8 @@ export function RepositoryActionsRunnersPage({
       allowPullRequestApproval,
       cancelInProgress,
       concurrencyLimit,
+      environment: environmentName,
+      environmentProtectionRulesEnabled: environmentProtectionEnabled,
       githubTokenPermission,
     });
     if (payload?.queue) {
@@ -382,6 +389,69 @@ export function RepositoryActionsRunnersPage({
           type="button"
         >
           Save workflow permissions
+        </button>
+      </section>
+
+      <section className="card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="t-label" style={{ color: "var(--ink-3)" }}>
+              Environment protection rules
+            </p>
+            <h2 className="t-h2 mt-2">Secret release approval</h2>
+            <p
+              className="t-sm mt-2 max-w-2xl"
+              style={{ color: "var(--ink-2)" }}
+            >
+              Environment-scoped secrets are only released to jobs targeting the
+              same environment. Enable protection rules to require reviewer
+              approval before those secrets enter the runner environment.
+            </p>
+          </div>
+          <span className="chip soft">
+            {settings.environments.length} environments
+          </span>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
+          <label className="grid gap-2">
+            <span className="t-label">Environment</span>
+            <input
+              className="input"
+              onChange={(event) => setEnvironmentName(event.target.value)}
+              placeholder="production"
+              value={environmentName}
+            />
+          </label>
+          <label className="flex items-center gap-3">
+            <input
+              checked={environmentProtectionEnabled}
+              onChange={(event) =>
+                setEnvironmentProtectionEnabled(event.target.checked)
+              }
+              type="checkbox"
+            />
+            <span className="t-sm">
+              Require reviewer approval before environment secrets are released
+            </span>
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {settings.environments.map((environment) => (
+            <span className="chip soft" key={environment.id}>
+              {environment.name}:{" "}
+              {environment.protectionRulesEnabled
+                ? "approval required"
+                : "ungated"}
+            </span>
+          ))}
+        </div>
+        <button
+          className="btn primary mt-5"
+          disabled={pending === "update-settings"}
+          onClick={saveSettings}
+          type="button"
+        >
+          Save environment protection
         </button>
       </section>
     </div>

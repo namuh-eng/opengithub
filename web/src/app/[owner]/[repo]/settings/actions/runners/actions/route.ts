@@ -34,6 +34,12 @@ function parseMutation(input: unknown): RepositoryActionsRunnerMutation | null {
           action,
           cancelInProgress: body.cancelInProgress === true,
           concurrencyLimit,
+          environment:
+            typeof body.environment === "string"
+              ? body.environment.trim()
+              : undefined,
+          environmentProtectionRulesEnabled:
+            body.environmentProtectionRulesEnabled === true,
           githubTokenPermission:
             body.githubTokenPermission === "write" ? "write" : "read",
           allowPullRequestApproval: body.allowPullRequestApproval === true,

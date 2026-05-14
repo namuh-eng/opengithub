@@ -27,6 +27,8 @@ type SettingMutationPayload = {
   name: string;
   scopeKind: "repository" | "environment";
   scopeName: string | null;
+  currentScopeKind?: "repository" | "environment";
+  currentScopeName?: string | null;
   value: string;
 };
 
@@ -47,6 +49,10 @@ function scopeLabel(scope: ActionsSettingScope) {
   return scope.kind;
 }
 
+function settingKey(item: { name: string; scope: ActionsSettingScope }) {
+  return `${item.scope.kind}:${item.scope.name ?? ""}:${item.name}`;
+}
+
 function settingActorLabel(
   item: Pick<ActionsSecretSummary | ActionsVariableSummary, "updatedBy">,
 ) {
@@ -57,11 +63,11 @@ function settingsHref(
   repository: RepositoryOverview,
   tab: "secrets" | "variables",
 ) {
-  return `/${repository.owner_login}/${repository.name}/settings/secrets?tab=${tab}`;
+  return `/${repository.owner_login}/${repository.name}/settings/secrets/actions?tab=${tab}`;
 }
 
 function actionUrl(repository: RepositoryOverview) {
-  return `/${repository.owner_login}/${repository.name}/settings/secrets/actions`;
+  return `/${repository.owner_login}/${repository.name}/settings/secrets/actions/mutations`;
 }
 
 function errorMessageFromPayload(payload: unknown, fallback: string) {
@@ -439,8 +445,8 @@ function SecretRows({
   deletingName: string | null;
   editingName: string | null;
   items: ActionsSecretSummary[];
-  onDelete: (name: string) => Promise<void>;
-  onEdit: (name: string) => void;
+  onDelete: (secret: ActionsSecretSummary) => Promise<void>;
+  onEdit: (secret: ActionsSecretSummary) => void;
   onSave: (
     currentName: string,
     payload: SettingMutationPayload,
@@ -476,7 +482,7 @@ function SecretRows({
                 {settingActorLabel(secret)} · {secret.storageKind} ·{" "}
                 {secret.visibilityPolicy}
               </p>
-              {editingName === secret.name ? (
+              {editingName === settingKey(secret) ? (
                 <div className="mt-3">
                   <SettingMutationForm
                     disabled={!canEdit}
@@ -490,17 +496,26 @@ function SecretRows({
                     kind="secret"
                     mode="update"
                     onCancel={() => setEditingName(null)}
-                    onSubmit={(payload) => onSave(secret.name, payload)}
+                    onSubmit={(payload) =>
+                      onSave(secret.name, {
+                        ...payload,
+                        currentScopeKind:
+                          secret.scope.kind === "environment"
+                            ? "environment"
+                            : "repository",
+                        currentScopeName: secret.scope.name ?? null,
+                      })
+                    }
                   />
                 </div>
               ) : null}
-              {deletingName === secret.name ? (
+              {deletingName === settingKey(secret) ? (
                 <DeleteConfirmation
                   disabled={!canEdit}
                   kind="secret"
                   name={secret.name}
                   onCancel={() => setDeletingName(null)}
-                  onDelete={() => onDelete(secret.name)}
+                  onDelete={() => onDelete(secret)}
                 />
               ) : null}
             </div>
@@ -509,7 +524,7 @@ function SecretRows({
                 aria-disabled={!canEdit}
                 className="btn sm"
                 disabled={!canEdit}
-                onClick={() => onEdit(secret.name)}
+                onClick={() => onEdit(secret)}
                 type="button"
               >
                 Update
@@ -518,7 +533,7 @@ function SecretRows({
                 aria-disabled={!canEdit}
                 className="btn sm"
                 disabled={!canEdit}
-                onClick={() => setDeletingName(secret.name)}
+                onClick={() => setDeletingName(settingKey(secret))}
                 type="button"
               >
                 Delete
@@ -577,8 +592,8 @@ function VariableRows({
   deletingName: string | null;
   editingName: string | null;
   items: ActionsVariableSummary[];
-  onDelete: (name: string) => Promise<void>;
-  onEdit: (name: string) => void;
+  onDelete: (variable: ActionsVariableSummary) => Promise<void>;
+  onEdit: (variable: ActionsVariableSummary) => void;
   onSave: (
     currentName: string,
     payload: SettingMutationPayload,
@@ -626,7 +641,7 @@ function VariableRows({
                 Updated {formatDate(variable.updatedAt)} by{" "}
                 {settingActorLabel(variable)} · {variable.visibilityPolicy}
               </p>
-              {editingName === variable.name ? (
+              {editingName === settingKey(variable) ? (
                 <div className="mt-3">
                   <SettingMutationForm
                     disabled={!canEdit}
@@ -641,17 +656,26 @@ function VariableRows({
                     kind="variable"
                     mode="update"
                     onCancel={() => setEditingName(null)}
-                    onSubmit={(payload) => onSave(variable.name, payload)}
+                    onSubmit={(payload) =>
+                      onSave(variable.name, {
+                        ...payload,
+                        currentScopeKind:
+                          variable.scope.kind === "environment"
+                            ? "environment"
+                            : "repository",
+                        currentScopeName: variable.scope.name ?? null,
+                      })
+                    }
                   />
                 </div>
               ) : null}
-              {deletingName === variable.name ? (
+              {deletingName === settingKey(variable) ? (
                 <DeleteConfirmation
                   disabled={!canEdit}
                   kind="variable"
                   name={variable.name}
                   onCancel={() => setDeletingName(null)}
-                  onDelete={() => onDelete(variable.name)}
+                  onDelete={() => onDelete(variable)}
                 />
               ) : null}
             </div>
@@ -660,7 +684,7 @@ function VariableRows({
                 aria-disabled={!canEdit}
                 className="btn sm"
                 disabled={!canEdit}
-                onClick={() => onEdit(variable.name)}
+                onClick={() => onEdit(variable)}
                 type="button"
               >
                 Update
@@ -669,7 +693,7 @@ function VariableRows({
                 aria-disabled={!canEdit}
                 className="btn sm"
                 disabled={!canEdit}
-                onClick={() => setDeletingName(variable.name)}
+                onClick={() => setDeletingName(settingKey(variable))}
                 type="button"
               >
                 Delete
@@ -879,12 +903,23 @@ export function RepositoryActionsSecretsPage({
               deletingName={deletingSecret}
               editingName={editingSecret}
               items={settings.secrets}
-              onDelete={(name) =>
-                mutate({ action: "delete-secret", name }, `${name} deleted.`)
+              onDelete={(secret) =>
+                mutate(
+                  {
+                    action: "delete-secret",
+                    name: secret.name,
+                    scopeKind:
+                      secret.scope.kind === "environment"
+                        ? "environment"
+                        : "repository",
+                    scopeName: secret.scope.name ?? null,
+                  },
+                  `${secret.name} deleted.`,
+                )
               }
-              onEdit={(name) => {
+              onEdit={(secret) => {
                 setDeletingSecret(null);
-                setEditingSecret(name);
+                setEditingSecret(settingKey(secret));
               }}
               onSave={(currentName, payload) =>
                 mutate(
@@ -923,12 +958,23 @@ export function RepositoryActionsSecretsPage({
               deletingName={deletingVariable}
               editingName={editingVariable}
               items={settings.variables}
-              onDelete={(name) =>
-                mutate({ action: "delete-variable", name }, `${name} deleted.`)
+              onDelete={(variable) =>
+                mutate(
+                  {
+                    action: "delete-variable",
+                    name: variable.name,
+                    scopeKind:
+                      variable.scope.kind === "environment"
+                        ? "environment"
+                        : "repository",
+                    scopeName: variable.scope.name ?? null,
+                  },
+                  `${variable.name} deleted.`,
+                )
               }
-              onEdit={(name) => {
+              onEdit={(variable) => {
                 setDeletingVariable(null);
-                setEditingVariable(name);
+                setEditingVariable(settingKey(variable));
               }}
               onSave={(currentName, payload) =>
                 mutate(
