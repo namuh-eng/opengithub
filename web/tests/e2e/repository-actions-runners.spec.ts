@@ -66,7 +66,9 @@ test("repository admin manages Actions runners and scheduling controls", async (
   const [, ownerLogin, repoName] = new URL(page.url()).pathname.split("/");
 
   await page.goto(`/${ownerLogin}/${repoName}/settings/actions`);
-  await expect(page.getByRole("heading", { name: "Actions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Actions", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Self-hosted runners")).toBeVisible();
   await page.getByLabel("Runner name").fill("linux-build-1");
   await page.getByLabel("Labels").fill("self-hosted, ubuntu-latest");
@@ -78,7 +80,7 @@ test("repository admin manages Actions runners and scheduling controls", async (
     .check();
   await page.getByRole("button", { name: "Save scheduling settings" }).click();
   await expect(
-    page.getByText("Runner concurrency settings saved."),
+    page.getByText("Actions workflow settings saved."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Assign queued jobs" }).click();
   await expect(page.getByText(/queued jobs? assigned/)).toBeVisible();

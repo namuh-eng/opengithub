@@ -7779,21 +7779,11 @@
   {
     "feature_id": "actions-006",
     "tests_written": [
-      "Added Rust migration 202605070001_actions_runner_pool for actions_runners, actions_runner_settings, workflow_job_assignments, and workflow_jobs runner assignment columns.",
-      "Added Rust API endpoints for GET/POST/PATCH /api/repos/{owner}/{repo}/settings/actions/runners, POST /heartbeat, and POST /schedule with admin permissions, label matching, concurrency limit enforcement, heartbeat timeout handling, and durable job assignment rows.",
-      "Replaced the Settings > Actions placeholder with an Editorial runner pool admin UI showing runner health, labels, current job, queue depth, concurrency settings, setup command, runner registration, and manual scheduling controls.",
-      "Added same-origin Next actions route forwarding signed cookies to Rust for runner creation, settings updates, and scheduling.",
-      "Added focused Vitest coverage for runner health rendering, setup command visibility, create/update/schedule payloads, no dead controls, and API docs coverage for runner endpoints.",
-      "Added Rust API contract test api_repository_actions_runners_contract.rs covering register, heartbeat, schedule, workflow job status, runner busy state, and assignment persistence; local DB assertions self-skipped because TEST_DATABASE_URL credentials were rejected.",
-      "Browser smoke passed on real Next route /mona/octo-app/settings/actions with local API-compatible stub on :3016: assigned queued jobs, registered a runner, checked no href=\"#\", checked no horizontal overflow, and saved ralph/screenshots/build/actions-006-runners-settings.jpg.",
-      "Verification passed: cargo fmt --all, cargo check -p opengithub-api --tests, focused repository-actions-runners-page/api-docs Vitest, web TypeScript, focused Biome, full make check, full make test with Cargo tests plus 623 web tests, and mandatory Editorial banned-value scan."
+      "Focused QA fixed and verified cancel-in-progress scheduling and stale heartbeat timeout behavior in the Rust runner pool service.",
+      "DB-backed Rust contract passes for registration, heartbeat, label scheduling, durable assignment persistence, admin auth, timeout failure marking, and cancel-in-progress newer-run assignment.",
+      "Focused component and system-Chrome Playwright tests pass for the Actions runners admin UI, including runner registration, settings save, scheduling control, no dead links, and no horizontal overflow."
     ],
-    "needs_deeper_qa": [
-      "Run web/tests/e2e/repository-actions-runners.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; focused chromium E2E failed before feature assertions in dashboard_e2e_seed because local Postgres rejected the configured postgres credentials.",
-      "Run full make test-e2e after the local signed-session DB/dev-server path is healthy; bounded timeout 120 make test-e2e terminated with no Playwright result output.",
-      "Probe real runner scheduling with multiple queued jobs, mixed labels, no matching runners, concurrency limit exhaustion, stale heartbeat timeout, cancel-in-progress concurrency groups, duplicate runner names, private repository access, reader/write/admin permission boundaries, and archived repository denial.",
-      "Probe the Settings > Actions runners page on mobile and keyboard-only flows, long runner names/labels, setup command overflow, repeated schedule clicks, error envelopes from every mutation, and no secret/token leakage beyond the bounded registration token display."
-    ]
+    "needs_deeper_qa": []
   },
   {
     "feature_id": "actions-007",

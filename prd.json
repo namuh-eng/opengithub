@@ -2075,7 +2075,8 @@
       "actions-005",
       "infra-001"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "actions-007",

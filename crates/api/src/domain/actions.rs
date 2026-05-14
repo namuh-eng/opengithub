@@ -4209,6 +4209,7 @@ pub async fn schedule_queued_action_jobs(
     require_repository(pool, repository_id, actor_user_id, RepositoryRole::Admin).await?;
     ensure_runner_settings(pool, repository_id, actor_user_id).await?;
     mark_timed_out_runners(pool, repository_id).await?;
+    honor_cancel_in_progress(pool, repository_id).await?;
     let queue = actions_runner_queue(pool, repository_id).await?;
     let available_slots = (queue.concurrency_limit as i64 - queue.busy_runners).max(0);
     if available_slots == 0 {
@@ -4330,36 +4331,127 @@ async fn mark_timed_out_runners(pool: &PgPool, repository_id: Uuid) -> Result<()
     .bind(repository_id)
     .execute(pool)
     .await?;
-    sqlx::query(
+    let timed_out_runs = sqlx::query(
         r#"
-        UPDATE workflow_jobs
-        SET status = 'completed',
-            conclusion = 'timed_out',
-            completed_at = COALESCE(completed_at, now())
-        WHERE runner_id IN (
-            SELECT id FROM actions_runners WHERE repository_id = $1 AND status = 'offline'
+        WITH timed_out_jobs AS (
+            UPDATE workflow_jobs
+            SET status = 'completed',
+                conclusion = 'failure',
+                completed_at = COALESCE(completed_at, now())
+            WHERE runner_id IN (
+                SELECT id FROM actions_runners WHERE repository_id = $1 AND status = 'offline'
+            )
+              AND status = 'in_progress'
+              AND assigned_at < now() - interval '5 minutes'
+            RETURNING run_id
+        ), timed_out_assignments AS (
+            UPDATE workflow_job_assignments
+            SET status = 'timed_out'
+            WHERE runner_id IN (
+                SELECT id FROM actions_runners WHERE repository_id = $1 AND status = 'offline'
+            )
+              AND status = 'in_progress'
+              AND started_at < now() - interval '5 minutes'
+            RETURNING run_id
         )
-          AND status = 'in_progress'
-          AND assigned_at < now() - interval '5 minutes'
+        SELECT DISTINCT run_id FROM timed_out_jobs
+        UNION
+        SELECT DISTINCT run_id FROM timed_out_assignments
         "#,
     )
     .bind(repository_id)
-    .execute(pool)
+    .fetch_all(pool)
     .await?;
-    sqlx::query(
+    for row in timed_out_runs {
+        let run_id: Uuid = row.get("run_id");
+        sqlx::query(
+            r#"
+            UPDATE workflow_runs
+            SET status = 'completed',
+                conclusion = 'failure',
+                completed_at = COALESCE(completed_at, now())
+            WHERE id = $1 AND status IN ('queued', 'in_progress')
+            "#,
+        )
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn honor_cancel_in_progress(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<(), AutomationError> {
+    let cancel_enabled = sqlx::query_scalar::<_, bool>(
+        "SELECT cancel_in_progress FROM actions_runner_settings WHERE repository_id = $1",
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or(false);
+    if !cancel_enabled {
+        return Ok(());
+    }
+
+    let cancelled_assignments = sqlx::query(
         r#"
+        WITH cancellable_runs AS (
+            SELECT older.id AS run_id
+            FROM workflow_runs older
+            WHERE older.repository_id = $1
+              AND older.status = 'in_progress'
+              AND older.concurrency_group IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM workflow_runs newer
+                  WHERE newer.repository_id = older.repository_id
+                    AND newer.concurrency_group = older.concurrency_group
+                    AND newer.status = 'queued'
+                    AND newer.created_at >= older.created_at
+                    AND newer.id <> older.id
+              )
+        ), cancelled_jobs AS (
+            UPDATE workflow_jobs
+            SET status = 'completed',
+                conclusion = 'cancelled',
+                completed_at = COALESCE(completed_at, now())
+            WHERE run_id IN (SELECT run_id FROM cancellable_runs)
+              AND status IN ('queued', 'in_progress')
+            RETURNING runner_id
+        ), cancelled_runs AS (
+            UPDATE workflow_runs
+            SET status = 'cancelled',
+                conclusion = 'cancelled',
+                completed_at = COALESCE(completed_at, now())
+            WHERE id IN (SELECT run_id FROM cancellable_runs)
+            RETURNING id
+        )
         UPDATE workflow_job_assignments
-        SET status = 'timed_out'
-        WHERE runner_id IN (
-            SELECT id FROM actions_runners WHERE repository_id = $1 AND status = 'offline'
-        )
+        SET status = 'cancelled'
+        WHERE run_id IN (SELECT id FROM cancelled_runs)
           AND status = 'in_progress'
-          AND started_at < now() - interval '5 minutes'
+        RETURNING runner_id
         "#,
     )
     .bind(repository_id)
-    .execute(pool)
+    .fetch_all(pool)
     .await?;
+
+    for row in cancelled_assignments {
+        let runner_id: Uuid = row.get("runner_id");
+        sqlx::query(
+            r#"
+            UPDATE actions_runners
+            SET status = 'online', busy_since = NULL, last_heartbeat = now()
+            WHERE id = $1 AND status = 'busy'
+            "#,
+        )
+        .bind(runner_id)
+        .execute(pool)
+        .await?;
+    }
     Ok(())
 }
 

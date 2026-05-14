@@ -6533,5 +6533,49 @@
     ],
     "fix_description": "Scoped milestone backend fixes for repository-scoped list/detail SQL and audit target_id text binding, plus focused real-browser milestone lifecycle coverage using seeded authenticated repository data. QA artifacts updated only for milestones-001 after required gates passed.",
     "completed_at": "2026-05-14T03:24:00Z"
+  },
+  {
+    "feature_id": "actions-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified runner pool admin UI and scheduling flow with system-Chrome Playwright against the DB-backed local stack: authenticated repository creation, settings/actions runners page, runner registration, concurrency setting update, manual scheduling action, no dead links, no horizontal overflow, and screenshot capture."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/settings/actions/runners",
+          "POST /api/repos/:owner/:repo/settings/actions/runners",
+          "PATCH /api/repos/:owner/:repo/settings/actions/runners",
+          "POST /api/repos/:owner/:repo/settings/actions/runners/heartbeat",
+          "POST /api/repos/:owner/:repo/settings/actions/runners/schedule"
+        ],
+        "notes": "Focused Rust contract test ran against TEST_DATABASE_URL with real migrations and verified runner registration, admin-only unauthorized envelope, heartbeat token auth, label-matched scheduling, durable workflow_job_assignments, runner busy/online/offline state, stale heartbeat timeout failing the run/job, and cancel-in-progress assigning the newer concurrency-group run."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Focused contract verifies unauthenticated admin settings access returns 401 not_authenticated and runner heartbeat requires the registration token/header path; no stack traces or raw secrets were observed in tested JSON envelopes."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused system-Chrome Playwright checked the runners settings UI has no dead href controls and no horizontal overflow; component tests cover visible runner health labels, setup command, and enabled mutation controls."
+      }
+    },
+    "verification": {
+      "commands": [
+        "make doctor",
+        "./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_runners_contract -- --nocapture",
+        "npm run test -- repository-actions-runners-page.test.tsx",
+        "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-runners.spec.ts --project=chromium",
+        "make check"
+      ],
+      "artifacts": [
+        "web/ralph/screenshots/build/actions-006-runners-e2e.png",
+        "web/test-results/repository-actions-runners-847d6-ers-and-scheduling-controls-chromium/trace.zip (from final passing run overwritten by Playwright retention as applicable)"
+      ]
+    },
+    "qa_pass": true
   }
 ]

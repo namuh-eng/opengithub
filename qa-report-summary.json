@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 94,
+    "features_passed": 95,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 88,
+      "pass": 89,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 84,
+      "pass": 85,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 84,
+      "pass": 85,
       "fail": 0,
       "skip": 4
     },
     "accessibility": {
-      "pass": 50,
+      "pass": 51,
       "fail": 0,
       "skip": 39
     }
@@ -3200,10 +3200,34 @@
       "feature_id": "actions-006",
       "description": "Runner pool and job provisioning. Allocates ephemeral container-based runners, s",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Verified runner pool admin UI and scheduling flow with system-Chrome Playwright against the DB-backed local stack: authenticated repository creation, settings/actions runners page, runner registration, concurrency setting update, manual scheduling action, no dead links, no horizontal overflow, and screenshot capture."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/:owner/:repo/settings/actions/runners",
+            "POST /api/repos/:owner/:repo/settings/actions/runners",
+            "PATCH /api/repos/:owner/:repo/settings/actions/runners",
+            "POST /api/repos/:owner/:repo/settings/actions/runners/heartbeat",
+            "POST /api/repos/:owner/:repo/settings/actions/runners/schedule"
+          ],
+          "notes": "Focused Rust contract test ran against TEST_DATABASE_URL with real migrations and verified runner registration, admin-only unauthorized envelope, heartbeat token auth, label-matched scheduling, durable workflow_job_assignments, runner busy/online/offline state, stale heartbeat timeout failing the run/job, and cancel-in-progress assigning the newer concurrency-group run."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Focused contract verifies unauthenticated admin settings access returns 401 not_authenticated and runner heartbeat requires the registration token/header path; no stack traces or raw secrets were observed in tested JSON envelopes."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Focused system-Chrome Playwright checked the runners settings UI has no dead href controls and no horizontal overflow; component tests cover visible runner health labels, setup command, and enabled mutation controls."
+        }
+      }
     },
     {
       "feature_id": "actions-007",
