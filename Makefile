@@ -120,7 +120,7 @@ dev:
 	  API_DEV_CMD='$(CARGO_LOCKED) run --bin api'; \
 	fi; \
 	if [ -n "$(HAS_WEB)" ]; then \
-	  ( sh -c "$$API_DEV_CMD" & API_PID=$$! ; cd web && npm run dev ; kill $$API_PID 2>/dev/null ) ; \
+	  ( while true; do sh -c "$$API_DEV_CMD"; echo "API dev process exited; restarting..." >&2; sleep 1; done & API_PID=$$! ; trap 'kill $$API_PID 2>/dev/null' EXIT INT TERM ; cd web && npm run dev ) ; \
 	else \
 	  sh -c "$$API_DEV_CMD" ; \
 	fi

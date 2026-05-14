@@ -2122,7 +2122,9 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "QA verified on 2026-05-14 in retry7: Actions run detail now server-primes the selected job log and keeps visible stale/filtered log lines during refresh, so clean system-Chrome acceptance reliably shows `Installing dependencies` and `error: Expected string, found number`. Required gates passed: make doctor; api_repository_actions_run_detail_contract 3/3; api_pull_request_detail_contract 2/2; rm -rf web/.next && make check; env-loaded system-Chrome Playwright repository-actions-run + repository-pull-request-detail 5/5. Also hardened make dev to restart the API dev process if it exits while Playwright/Next are still running."
   },
   {
     "id": "actions-010",

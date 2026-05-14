@@ -17,6 +17,7 @@ import type {
 type RepositoryActionsRunPageProps = {
   repository: RepositoryOverview;
   detail: RepositoryActionsRunDetail;
+  initialJobLog?: ActionsJobLog | null;
   validationError?: ApiErrorEnvelope | null;
 };
 
@@ -155,6 +156,7 @@ function runMutationPath(
 export function RepositoryActionsRunPage({
   repository,
   detail,
+  initialJobLog = null,
   validationError,
 }: RepositoryActionsRunPageProps) {
   const router = useRouter();
@@ -164,7 +166,7 @@ export function RepositoryActionsRunPage({
   );
   const [logQuery, setLogQuery] = useState("");
   const [submittedLogQuery, setSubmittedLogQuery] = useState("");
-  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(null);
+  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(initialJobLog);
   const [jobLogState, setJobLogState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
@@ -746,6 +748,17 @@ function JobDetail({
   onRerunJob: (jobId: string) => void;
   rerunDisabled: boolean;
 }) {
+  const visibleLogLines =
+    logState === "loading" && logQuery.trim() && log
+      ? log.lines.filter((line) =>
+          line.content.toLowerCase().includes(logQuery.trim().toLowerCase()),
+        )
+      : (log?.lines ?? []);
+  const visibleLogTotal =
+    logState === "loading" && logQuery.trim() && log
+      ? visibleLogLines.length
+      : (log?.total ?? 0);
+
   return (
     <div className="space-y-5 p-5">
       <div className="mb-4 flex flex-wrap gap-2">
@@ -834,7 +847,7 @@ function JobDetail({
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Logs are not available yet.
           </p>
-        ) : logState === "loading" ? (
+        ) : logState === "loading" && !log ? (
           <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
             Loading logs...
           </p>
@@ -844,14 +857,25 @@ function JobDetail({
           </p>
         ) : log ? (
           <div>
+            {logState === "loading" ? (
+              <p
+                className="t-xs border-b px-4 py-2"
+                style={{
+                  borderColor: "var(--line-soft)",
+                  color: "var(--ink-3)",
+                }}
+              >
+                Refreshing log search results...
+              </p>
+            ) : null}
             <p
               className="t-xs border-b px-4 py-2"
               style={{ borderColor: "var(--line-soft)" }}
             >
-              {log.total} matching lines
+              {visibleLogTotal} matching lines
             </p>
             <ol className="max-h-[360px] overflow-auto py-2">
-              {log.lines.map((line) => (
+              {visibleLogLines.map((line) => (
                 <li
                   className="grid grid-cols-[64px_minmax(0,1fr)] gap-3 px-4 py-1"
                   id={`log-${line.anchor}`}

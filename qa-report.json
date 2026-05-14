@@ -6710,5 +6710,82 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T14:45:00Z",
+    "tested_steps": [
+      "Inspected rejected retry6 artifact showing Actions run detail hid job log content behind a loading state during cold system-Chrome log fetches.",
+      "Implemented server-primed initial selected-job log data for the Actions run detail page and kept already-loaded/filtered log rows visible while a client-side search refresh is in flight.",
+      "Hardened make dev so the Rust API dev process restarts if it exits while Playwright/Next are still running, preventing PR detail client mutations from losing API connectivity during the required combined browser gate.",
+      "Ran make doctor: local Podman/Postgres/.env/Cargo target verification green.",
+      "Ran DB-backed Rust api_repository_actions_run_detail_contract: 3 passed, 0 skipped.",
+      "Ran DB-backed Rust api_pull_request_detail_contract: 2 passed, 0 skipped.",
+      "Ran rm -rf web/.next && make check: Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "Ran env-loaded system-Chrome Playwright command for repository-actions-run.spec.ts and repository-pull-request-detail.spec.ts: 5 passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Actions run detail depended solely on a cold client-side job-log route fetch before rendering critical log lines, so clean system-Chrome acceptance could time out before `Installing dependencies` or searched error output became visible.",
+        "file": "web/src/app/[owner]/[repo]/actions/runs/[runId]/page.tsx"
+      },
+      {
+        "severity": "major",
+        "description": "The job log panel replaced already-loaded log content with a loading-only state during search refresh, hiding the expected `error: Expected string, found number` line while the request was still compiling/loading.",
+        "file": "web/src/components/RepositoryActionsRunPage.tsx"
+      },
+      {
+        "severity": "major",
+        "description": "The Makefile dev target could leave Next running after the API dev process exited, causing client-side PR detail mutations in the required combined Playwright gate to fail with `Failed to fetch`.",
+        "file": "Makefile"
+      }
+    ],
+    "fix_description": "Server-prime the initial Actions run selected job log from the job-log detail contract, preserve/filter loaded log lines during client refreshes, and restart the API dev process in make dev if it exits while the web dev server remains active.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Required clean system-Chrome acceptance passed 5/5 for repository-actions-run and repository-pull-request-detail after the fix. Actions run detail visibly renders job steps/log lines including `Installing dependencies`, annotations, artifacts, searched `error: Expected string, found number`, and run mutation controls."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}",
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}",
+          "GET /api/repos/{owner}/{repo}/pulls/{number}"
+        ],
+        "notes": "DB-backed Rust contracts passed without skips: api_repository_actions_run_detail_contract 3/3 and api_pull_request_detail_contract 2/2."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "session_scoped_actions_detail",
+          "branch_protection_required_checks",
+          "no_secret_log_leakage"
+        ],
+        "notes": "Existing DB-backed contracts exercise session-scoped repository visibility, missing-run errors, check-run/required-check merge gating, and reader-safe annotations/log metadata."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused browser acceptance includes existing no-dead-controls and no-horizontal-overflow assertions for the Actions run detail and PR detail surfaces; UI changes use existing Editorial card/input/button/type primitives and tokens."
+      }
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make doctor: pass (local verification stack healthy)",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture: pass 3/3, 0 skipped",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture: pass 2/2, 0 skipped",
+      "rm -rf web/.next && make check: pass (Cargo check, Web typecheck, Clippy, Biome)",
+      "set -a; . ./.env.test; set +a; cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts: pass 5/5"
+    ]
   }
 ]

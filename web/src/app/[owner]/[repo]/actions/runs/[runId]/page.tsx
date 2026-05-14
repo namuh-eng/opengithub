@@ -1,9 +1,14 @@
 import { AppShell } from "@/components/AppShell";
 import { RepositoryActionsRunPage as RepositoryActionsRunView } from "@/components/RepositoryActionsRunPage";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
-import type { RepositoryActionsRunDetail } from "@/lib/api";
+import type {
+  ActionsJobLog,
+  RepositoryActionsJobLogDetail,
+  RepositoryActionsRunDetail,
+} from "@/lib/api";
 import {
   getRepository,
+  getRepositoryActionsJobLogDetail,
   getRepositoryActionsRunDetail,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -22,14 +27,28 @@ export default async function ActionRunPage({ params }: ActionRunPageProps) {
     getRepository(ownerLogin, repositoryName),
     getRepositoryActionsRunDetail(ownerLogin, repositoryName, decodedRunId),
   ]);
+  const initialJobLog =
+    !("error" in detail) && detail.jobs[0]?.logAvailable
+      ? await getInitialJobLog(
+          ownerLogin,
+          repositoryName,
+          decodedRunId,
+          detail.jobs[0].id,
+        )
+      : null;
 
   return (
     <AppShell session={session} shellContext={shellContext}>
       {repository && !("error" in detail) ? (
-        <RepositoryActionsRunView detail={detail} repository={repository} />
+        <RepositoryActionsRunView
+          detail={detail}
+          initialJobLog={initialJobLog}
+          repository={repository}
+        />
       ) : repository && "error" in detail ? (
         <RepositoryActionsRunView
           detail={emptyRunDetail(ownerLogin, repositoryName, decodedRunId)}
+          initialJobLog={null}
           repository={repository}
           validationError={detail}
         />
@@ -38,6 +57,50 @@ export default async function ActionRunPage({ params }: ActionRunPageProps) {
       )}
     </AppShell>
   );
+}
+
+async function getInitialJobLog(
+  ownerLogin: string,
+  repositoryName: string,
+  runId: string,
+  jobId: string,
+): Promise<ActionsJobLog | null> {
+  const detail = await getRepositoryActionsJobLogDetail(
+    ownerLogin,
+    repositoryName,
+    runId,
+    jobId,
+    { pageSize: 100 },
+  );
+  if ("error" in detail) {
+    return null;
+  }
+  return jobLogFromDetail(detail);
+}
+
+function jobLogFromDetail(
+  detail: RepositoryActionsJobLogDetail,
+): ActionsJobLog {
+  const lines = detail.steps
+    .flatMap((step) => step.lines.items)
+    .sort((left, right) => left.lineNumber - right.lineNumber);
+
+  return {
+    job: {
+      id: detail.job.id,
+      runId: detail.run.id,
+      name: detail.job.name,
+      status: detail.job.status,
+      conclusion: detail.job.conclusion,
+      logDeletedAt: detail.job.logDeletedAt,
+    },
+    lines,
+    total: lines.length,
+    page: 1,
+    pageSize: Math.max(lines.length, 1),
+    query: null,
+    downloadHref: detail.downloadHref,
+  };
 }
 
 function emptyRunDetail(
