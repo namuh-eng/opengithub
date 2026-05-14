@@ -3404,12 +3404,41 @@
     },
     {
       "feature_id": "search-007",
-      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file by path within the current ref.",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Dedicated finder page now loads the current ref path cache, focuses the combobox, shows the full cached list for empty input, performs local fuzzy scoring/highlighting, supports ArrowUp/ArrowDown and Enter open, and preserves concrete blob links."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/:owner/:repo/find?ref=feature%2Ftree-nav&q=guide",
+            "GET /api/repos/:owner/:repo/file-finder?ref=feature%2Ftree-nav&q=guide"
+          ],
+          "notes": "DB-backed Rust contract verified /find ignores q and returns all 107 custom ref paths with pageSize 5000, while legacy /file-finder filtering/pagination remains covered; repository_ref_files JSON cache row is refreshed for the resolved ref."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "authenticated repository access boundary via existing route extractor",
+            "no server-side filtering on /find",
+            "no dead links",
+            "no stack/secret leakage in focused gates"
+          ],
+          "notes": "The finder API continues to require AuthenticatedUser and repository permission checks through repository_file_finder_for_actor_by_owner_name; browser/API gates used real signed sessions and did not expose internal data."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Combobox/listbox/option roles, aria-selected, aria-activedescendant, focused input, keyboard navigation, no dead controls, and no horizontal overflow were verified in unit and Playwright coverage."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "security-002",

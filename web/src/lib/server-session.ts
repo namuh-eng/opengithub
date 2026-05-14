@@ -1577,7 +1577,7 @@ export async function getRepositoryFileFinder(
   repo: string,
   refName: string,
   query = "",
-  options: { page?: number; pageSize?: number } = {},
+  options: { page?: number; pageSize?: number; pathCache?: boolean } = {},
 ) {
   const requestHeaders = await headers();
   return getRepositoryFileFinderFromCookie(

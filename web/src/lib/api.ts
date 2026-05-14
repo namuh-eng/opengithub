@@ -19059,10 +19059,10 @@ export async function getRepositoryFileFinderFromCookie(
   repo: string,
   refName: string,
   query: string,
-  options: { page?: number; pageSize?: number } = {},
+  options: { page?: number; pageSize?: number; pathCache?: boolean } = {},
 ): Promise<RepositoryFileFinderResult | null> {
   const params = new URLSearchParams({ ref: refName });
-  if (query.trim()) {
+  if (!options.pathCache && query.trim()) {
     params.set("q", query.trim());
   }
   if (options.page) {
@@ -19074,7 +19074,7 @@ export async function getRepositoryFileFinderFromCookie(
   let response: Response;
   try {
     response = await fetch(
-      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/file-finder?${params.toString()}`,
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${options.pathCache ? "find" : "file-finder"}?${params.toString()}`,
       {
         headers: cookie ? { cookie } : undefined,
         cache: "no-store",

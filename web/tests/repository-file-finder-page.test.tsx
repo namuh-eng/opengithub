@@ -121,6 +121,11 @@ describe("RepositoryFileFinderPage", () => {
       within(listbox).queryByRole("option", { name: /README.md/ }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("2 matching paths")).toBeVisible();
+    expect(
+      within(listbox)
+        .getByRole("option", { name: /src\/app\/page\.tsx/ })
+        .querySelectorAll('span[class="text-[var(--accent)]"]'),
+    ).toHaveLength(3);
   });
 
   it("supports arrow navigation, enter-to-open, escape clearing, and concrete links", () => {
@@ -140,8 +145,20 @@ describe("RepositoryFileFinderPage", () => {
     });
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: /README\.md/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(
+      screen.getByRole("option", { name: /crates\/api\/src\/routes/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(assign).toHaveBeenCalledWith("/mona/octo-app/blob/main/README.md");
+    expect(assign).toHaveBeenCalledWith(
+      "/mona/octo-app/blob/main/src/app/page.tsx",
+    );
 
     const links = screen.getAllByRole("option");
     for (const link of links) {

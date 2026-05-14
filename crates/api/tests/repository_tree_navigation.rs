@@ -336,6 +336,46 @@ async fn repository_tree_contract_resolves_branches_tags_and_recovery_links() {
     assert_eq!(finder_page_body["total"], 105);
     assert_eq!(finder_page_body["items"][0]["path"], "docs/example-040.md");
 
+    let (path_cache_status, path_cache_body) = send_json(
+        app.clone(),
+        &format!("{base}/find?ref={encoded_feature}&q=guide"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(path_cache_status, StatusCode::OK);
+    assert_eq!(path_cache_body["resolvedRef"]["shortName"], "feature/tree-nav");
+    assert_eq!(
+        path_cache_body["total"], 107,
+        "the /find path-cache contract returns the full ref path list and ignores q"
+    );
+    assert_eq!(path_cache_body["pageSize"], 5000);
+    assert!(path_cache_body["items"]
+        .as_array()
+        .expect("path cache items should be an array")
+        .iter()
+        .any(|entry| entry["path"] == "README.md"));
+    assert!(path_cache_body["items"]
+        .as_array()
+        .expect("path cache items should be an array")
+        .iter()
+        .any(|entry| entry["path"] == "docs/example-104.md"));
+    let cached_paths: serde_json::Value = sqlx::query_scalar(
+        r#"
+        SELECT paths
+        FROM repository_ref_files
+        WHERE repository_id = $1 AND ref = 'feature/tree-nav'
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("finder request should refresh repository_ref_files");
+    assert!(cached_paths
+        .as_array()
+        .expect("cached paths should be a JSON array")
+        .iter()
+        .any(|path| path == "docs/guide.md"));
+
     let (bad_path_status, bad_path_body) = send_json(
         app.clone(),
         &format!("{base}/contents/%2E%2E/secrets?ref={encoded_feature}"),

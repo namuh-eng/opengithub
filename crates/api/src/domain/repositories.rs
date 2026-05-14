@@ -3053,7 +3053,7 @@ pub async fn repository_file_finder_for_actor_by_owner_name(
     let resolved_ref = resolve_repository_ref(pool, &repository, query.ref_name).await?;
     let normalized_query = query.query.unwrap_or("").trim().to_lowercase();
     let page = query.page.max(1);
-    let page_size = query.page_size.clamp(1, 100);
+    let page_size = query.page_size.clamp(1, 5_000);
     let files = list_repository_files_for_resolved_ref(pool, repository.id, &resolved_ref).await?;
     refresh_repository_ref_files_cache(pool, repository.id, &resolved_ref, &files).await?;
     let mut items = files

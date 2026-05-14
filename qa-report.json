@@ -6898,5 +6898,99 @@
       "ralph/screenshots/build/settings-005-final-secrets-mobile.jpg",
       "ralph/screenshots/build/settings-005-final-secrets-forbidden.jpg"
     ]
+  },
+  {
+    "feature_id": "search-007",
+    "attempt": 1,
+    "status": "pass",
+    "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file by path within the current ref.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T18:58:00Z",
+    "tested_steps": [
+      "make doctor passed with postgres-test up, .env.test present, and CARGO_TARGET_DIR on .scratch/cargo-target.",
+      "DB-backed Rust/API contract repository_tree_navigation::repository_tree_contract_resolves_branches_tags_and_recovery_links passed with TEST_DATABASE_URL loaded; verified /api/repos/:owner/:repo/find ignores q, returns the full ref path list, and refreshes repository_ref_files.",
+      "make test passed: Cargo tests passed and Web tests passed (671 passed).",
+      "Focused Vitest repository-file-finder-page.test.tsx passed; covers cached path rendering, client-side fuzzy scoring, matched-character highlighting, ArrowUp/ArrowDown selection, Enter open, Escape clear, empty state, and concrete links.",
+      "System-Chrome Playwright repository-file-finder.spec.ts passed against real Next/Rust servers and .env.test; verified repo t shortcut, /find/<ref> page, focused input, empty query full list, no-match state, ArrowDown navigation, Enter open, concrete blob href, no dead controls, and no horizontal overflow.",
+      "make check passed: Cargo check, Web typecheck, Clippy, and Biome."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "The /api/repos/:owner/:repo/find alias reused the legacy /file-finder server-side q filtering/default page-size behavior instead of returning the unfiltered cached ref path list required for local fuzzy scoring.",
+        "file": "crates/api/src/routes/repositories.rs"
+      },
+      {
+        "severity": "major",
+        "description": "The dedicated finder page fetched the legacy file-finder endpoint with pageSize 100 instead of the /find path-cache contract, so larger refs were truncated before client-side fuzzy matching.",
+        "file": "web/src/app/[owner]/[repo]/find/[ref]/page.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "The finder result list was capped to the first 80 client-side matches, violating the empty-input full-list requirement for moderately sized refs.",
+        "file": "web/src/components/RepositoryFileFinderPage.tsx"
+      },
+      {
+        "severity": "minor",
+        "description": "ArrowDown on an empty result set could move the active index negative and aria-activedescendant could point at a mismatched option after bounds clamping.",
+        "file": "web/src/components/RepositoryFileFinderPage.tsx"
+      }
+    ],
+    "fix_description": "Split the /find path-cache contract from legacy /file-finder filtering, raised the path-cache page-size path through domain code, taught the Next API helper/page to call /find with pathCache, removed the client 80-result cap, hardened active-option bounds, and added DB-backed API, Vitest, and system-Chrome Playwright coverage.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Dedicated finder page now loads the current ref path cache, focuses the combobox, shows the full cached list for empty input, performs local fuzzy scoring/highlighting, supports ArrowUp/ArrowDown and Enter open, and preserves concrete blob links."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/find?ref=feature%2Ftree-nav&q=guide",
+          "GET /api/repos/:owner/:repo/file-finder?ref=feature%2Ftree-nav&q=guide"
+        ],
+        "notes": "DB-backed Rust contract verified /find ignores q and returns all 107 custom ref paths with pageSize 5000, while legacy /file-finder filtering/pagination remains covered; repository_ref_files JSON cache row is refreshed for the resolved ref."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authenticated repository access boundary via existing route extractor",
+          "no server-side filtering on /find",
+          "no dead links",
+          "no stack/secret leakage in focused gates"
+        ],
+        "notes": "The finder API continues to require AuthenticatedUser and repository permission checks through repository_file_finder_for_actor_by_owner_name; browser/API gates used real signed sessions and did not expose internal data."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Combobox/listbox/option roles, aria-selected, aria-activedescendant, focused input, keyboard navigation, no dead controls, and no horizontal overflow were verified in unit and Playwright coverage."
+      }
+    },
+    "verification": {
+      "commands": [
+        "make doctor",
+        "TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_tree_navigation repository_tree_contract_resolves_branches_tags_and_recovery_links -- --nocapture",
+        "cd web && npx vitest run tests/repository-file-finder-page.test.tsx",
+        "make test",
+        "cd web && TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session ./node_modules/.bin/playwright test -c ../.scratch/playwright-search-007.config.cjs repository-file-finder.spec.ts --project=system-chrome",
+        "make check"
+      ],
+      "artifacts": [
+        "ralph/screenshots/build/search-007-file-finder-final.jpg"
+      ]
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make doctor: pass",
+      "focused DB-backed Rust/API contract: pass 1/1, no self-skip",
+      "focused Vitest file finder component/unit: pass 2/2",
+      "make test: pass (Cargo tests; Web tests 671 passed)",
+      "focused env-loaded system-Chrome Playwright: pass 1/1",
+      "make check: pass"
+    ]
   }
 ]

@@ -119,9 +119,12 @@ export function RepositoryFileFinderPage({
     return scored;
   }, [finder.items, query]);
 
-  const visibleFiles = scoredFiles.slice(0, 80);
-  const activeFile =
-    visibleFiles[Math.min(activeIndex, visibleFiles.length - 1)];
+  const visibleFiles = scoredFiles;
+  const activeOptionIndex = Math.min(
+    Math.max(activeIndex, 0),
+    Math.max(visibleFiles.length - 1, 0),
+  );
+  const activeFile = visibleFiles[activeOptionIndex];
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -163,7 +166,7 @@ export function RepositoryFileFinderPage({
             <input
               aria-activedescendant={
                 activeFile
-                  ? `repo-file-finder-result-${activeIndex}`
+                  ? `repo-file-finder-result-${activeOptionIndex}`
                   : undefined
               }
               aria-controls="repo-file-finder-page-results"
@@ -179,7 +182,7 @@ export function RepositoryFileFinderPage({
                 if (event.key === "ArrowDown") {
                   event.preventDefault();
                   setActiveIndex((index) =>
-                    Math.min(visibleFiles.length - 1, index + 1),
+                    Math.min(Math.max(visibleFiles.length - 1, 0), index + 1),
                   );
                 }
                 if (event.key === "ArrowUp") {
@@ -233,7 +236,7 @@ export function RepositoryFileFinderPage({
             role="listbox"
           >
             {visibleFiles.map((file, index) => {
-              const active = index === activeIndex;
+              const active = index === activeOptionIndex;
               return (
                 <Link
                   aria-selected={active}

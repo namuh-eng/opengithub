@@ -1,6 +1,6 @@
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get, patch, post, put},
@@ -4433,11 +4433,13 @@ async fn release_reaction(
 async fn file_finder(
     State(state): State<AppState>,
     headers: HeaderMap,
+    OriginalUri(original_uri): OriginalUri,
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<FileFinderQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let is_path_cache_contract = original_uri.path().ends_with("/find");
     let envelope = repository_file_finder_for_actor_by_owner_name(
         pool,
         actor.0.id,
@@ -4445,9 +4447,12 @@ async fn file_finder(
         &repo,
         RepositoryFileFinderQuery {
             ref_name: query.ref_name.as_deref(),
-            query: query.q.as_deref(),
+            query: if is_path_cache_contract { None } else { query.q.as_deref() },
             page: query.page.unwrap_or(1).max(1),
-            page_size: query.page_size.unwrap_or(20).clamp(1, 100),
+            page_size: query
+                .page_size
+                .unwrap_or(if is_path_cache_contract { 5_000 } else { 20 })
+                .clamp(1, 5_000),
         },
     )
     .await

@@ -32,7 +32,8 @@ export default async function RepositoryFindPage({
           getRepository(ownerLogin, repositoryName),
           getRepositoryFileFinder(ownerLogin, repositoryName, refName, "", {
             page: 1,
-            pageSize: 100,
+            pageSize: 5000,
+            pathCache: true,
           }),
         ])
       : [null, null];

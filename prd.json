@@ -2171,7 +2171,8 @@
       "repocode-002",
       "search-005"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "security-002",
