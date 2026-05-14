@@ -6710,5 +6710,92 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T15:58:00Z",
+    "tested_steps": [
+      "Inspected origin/main implementation, retry8 diff, focused Actions run/PR detail E2E specs, Playwright config, and failure artifacts. Retry8 only added an Actions spec timeout and did not cover the PR detail scenario timeout.",
+      "Reproduced the acceptance command in this worktree and identified deterministic timeout sensitivity: the real browser scenarios perform DB seeding, server-rendered page loads, screenshots, log search, Actions mutations, PR metadata updates, and PR merge mutations under Playwright default 30s test budget.",
+      "Applied scoped E2E time budgets to repository-actions-run.spec.ts and repository-pull-request-detail.spec.ts without weakening assertions; acceptance still checks Installing dependencies, annotation text, PR merge confirmation, no dead controls, and no horizontal overflow.",
+      "make doctor: pass; local verification stack healthy.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --test api_repository_actions_run_detail_contract -- --nocapture: pass, running 3 tests, 3 passed, 0 filtered out.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --test api_pull_request_detail_contract -- --nocapture: pass, running 2 tests, 2 passed, 0 filtered out.",
+      "rm -rf web/.next && make check: pass; Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts: pass, 5 passed (48.6s)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "The Actions run browser acceptance used Playwright\u2019s default 30s test timeout for a real DB-backed scenario that includes seeding, cold route/API work, log rendering, screenshots, and stateful Actions mutations; prior runs could abort while waiting for visible job log text such as Installing dependencies.",
+        "file": "web/tests/e2e/repository-actions-run.spec.ts"
+      },
+      {
+        "severity": "major",
+        "description": "The PR detail browser acceptance also used the default 30s timeout despite exercising repository creation, PR creation, metadata updates, and merge mutation flows; prior runs could abort while waiting for the Pull request merged confirmation rather than exposing a product failure.",
+        "file": "web/tests/e2e/repository-pull-request-detail.spec.ts"
+      }
+    ],
+    "fix_description": "Added scoped 120s time budgets to the two real DB-backed browser specs so controller-grade acceptance has enough time for seeding, Next.js/Rust API work, screenshots, Actions job log visibility, annotations, and PR merge confirmation while preserving all existing assertions.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "System-Chrome Playwright acceptance passed all 5 target tests with .env.test loaded. It verified job log lines, annotation text, artifacts, re-run/cancel/delete-log controls, and PR merge confirmation."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/actions/runs/:run_id",
+          "POST /api/repos/:owner/:repo/actions/runs/:run_id/rerun",
+          "POST /api/repos/:owner/:repo/actions/runs/:run_id/cancel",
+          "DELETE /api/repos/:owner/:repo/actions/runs/:run_id/logs",
+          "GET /api/repos/:owner/:repo/pulls/:number and raw diff/patch/mergeability paths exercised by pull request detail contract"
+        ],
+        "notes": "Required DB-backed Rust contracts passed 3/3 and 2/2 with TEST_DATABASE_URL loaded and no accidental zero-test filtering."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "private repository permissions",
+          "stateful Actions mutation authz",
+          "required-check mergeability gating",
+          "no zero-test self-skip"
+        ],
+        "notes": "Focused contracts verify repository-scoped access and required-check mergeability behavior; no stack trace or secret leakage observed in required focused gates."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Target Playwright scenarios retained role-based UI assertions, keyboard focus checks, no dead links, and no horizontal overflow checks for desktop/mobile paths."
+      }
+    },
+    "verification": {
+      "commands": [
+        "make doctor",
+        "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --test api_repository_actions_run_detail_contract -- --nocapture",
+        "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test --test api_pull_request_detail_contract -- --nocapture",
+        "rm -rf web/.next && make check",
+        "cd web && set -a; . ../.env.test; set +a; PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts"
+      ],
+      "artifacts": [
+        "Final target browser output: 5 passed (48.6s)"
+      ]
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make doctor: pass",
+      "api_repository_actions_run_detail_contract: pass 3/3, 0 filtered out",
+      "api_pull_request_detail_contract: pass 2/2, 0 filtered out",
+      "rm -rf web/.next && make check: pass",
+      "target system-Chrome Playwright: pass 5/5"
+    ]
   }
 ]

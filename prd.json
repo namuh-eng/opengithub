@@ -2122,7 +2122,9 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "QA passed on retry9 after scoped E2E timeout hardening for the real DB-backed Actions run and PR detail browser scenarios; required Rust contracts, check, and system-Chrome Playwright acceptance all passed."
   },
   {
     "id": "actions-010",

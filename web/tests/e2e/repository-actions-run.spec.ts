@@ -11,6 +11,12 @@ test.skip(
   "repository Actions run E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
+// This scenario intentionally covers a full real run page: DB seeding,
+// server-rendered run detail, log search, mutations, screenshots, and
+// responsive reload. Give the end-to-end path a scoped budget so slow cold
+// builds or DB I/O do not interrupt assertions mid-request.
+test.describe.configure({ timeout: 120_000 });
+
 test("signed-in workflow run detail renders jobs, annotations, and artifacts", async ({
   page,
   seed,

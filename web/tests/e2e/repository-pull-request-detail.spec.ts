@@ -67,6 +67,12 @@ test.skip(
   "repository pull request detail E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
+// These browser scenarios exercise real DB-backed repository creation, pull
+// request metadata updates, mergeability, and merge mutations. A scoped timeout
+// prevents Playwright from aborting just as the Rust API/Next.js UI completes
+// the required browser-visible state changes.
+test.describe.configure({ timeout: 120_000 });
+
 test("signed-in user opens the pull request detail conversation shell", async ({
   page,
 }) => {

@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 97,
-    "features_failed": 22,
+    "features_passed": 98,
+    "features_failed": 21,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 90,
+      "pass": 91,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 86,
+      "pass": 87,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 86,
+      "pass": 87,
       "fail": 0,
       "skip": 4
     },
     "accessibility": {
-      "pass": 52,
+      "pass": 53,
       "fail": 0,
       "skip": 39
     }
@@ -3298,12 +3298,29 @@
     },
     {
       "feature_id": "actions-009",
-      "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head",
+      "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Env-loaded system-Chrome Playwright acceptance passed 5/5 after scoped timeout hardening. The browser path verified Actions run log lines including Installing dependencies, annotation text, artifacts, re-run/cancel/delete controls, and PR merge confirmation."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "Required DB-backed Rust contracts ran without filtering/self-skip: api_repository_actions_run_detail_contract 3/3 and api_pull_request_detail_contract 2/2."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Focused contracts covered repository permission enforcement, private/missing Actions run behavior, stateful mutation authz, and required-check mergeability without leaking stack traces or secrets in verified paths."
+        },
+        "accessibility": {
+          "status": "pass",
+          "notes": "Browser acceptance retained accessible role/name checks, keyboard focus assertions, no-dead-link checks, and no-horizontal-overflow checks on Actions run and PR detail pages."
+        }
+      }
     },
     {
       "feature_id": "actions-010",
