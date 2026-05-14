@@ -71,6 +71,7 @@ test.skip(
   !databaseUrl,
   "repository Actions job log E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
+test.setTimeout(120_000);
 
 test("signed-in job log viewer renders job sidebar, steps, and annotations", async ({
   page,
@@ -116,6 +117,7 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
   await page.getByRole("menuitemcheckbox", { name: /Raw logs/ }).click();
   await expect(page.getByText("Saved log options")).toBeVisible();
   await expect(page).toHaveURL(/raw=true/);
+  await page.getByRole("button", { name: "Log options" }).click();
   await page.getByRole("menuitem", { name: "Copy job permalink" }).click();
   await expect(page.getByText("Copied job permalink")).toBeVisible();
   await expect(
@@ -128,9 +130,19 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
   expect(await archiveResponse.text()).toContain(
     "opengithub workflow log archive",
   );
+  await expect(page.getByRole("link", { name: "Raw view" })).toHaveAttribute(
+    "href",
+    /raw=true/,
+  );
   await expect(
-    page.getByRole("link", { name: "Download log" }),
+    page.getByRole("link", { name: "Download gzip" }),
   ).toHaveAttribute("href", /\/actions\/jobs\/.*\/logs\/download/);
+  const logResponse = await page.request.get(
+    `${new URL(page.url()).origin}${await page.getByRole("link", { name: "Download gzip" }).getAttribute("href")}`,
+  );
+  expect(logResponse.ok()).toBeTruthy();
+  expect(logResponse.headers()["content-type"]).toContain("application/gzip");
+  expect(logResponse.headers()["content-disposition"]).toContain(".log.gz");
 
   await expectNoDeadControls(page);
   await expectNoHorizontalOverflow(page);

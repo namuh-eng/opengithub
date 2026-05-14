@@ -6,10 +6,11 @@ use axum::{
     routing::{delete, get, patch, post},
     Json, Router,
 };
+use flate2::{write::GzEncoder, Compression};
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::Row;
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 use uuid::Uuid;
 
 use crate::{
@@ -1088,16 +1089,23 @@ async fn download_workflow_job_logs_route(
     )
     .await
     .map_err(map_automation_error)?;
+    let gzip_body = gzip_text(&body).map_err(|_| database_unavailable())?;
 
     Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(header::CONTENT_TYPE, "application/gzip")
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{filename}\""),
+            format!("attachment; filename=\"{filename}.gz\""),
         )
-        .body(Body::from(body))
+        .body(Body::from(gzip_body))
         .map_err(|_| database_unavailable())
+}
+
+fn gzip_text(body: &str) -> std::io::Result<Vec<u8>> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(body.as_bytes())?;
+    encoder.finish()
 }
 
 async fn download_workflow_run_log_archive_route(

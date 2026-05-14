@@ -333,7 +333,11 @@ describe("RepositoryActionsJobLogPage", () => {
       ).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("Type error")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Download log" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Raw view" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=error&match=1&timestamps=false&raw=true",
+    );
+    expect(screen.getByRole("link", { name: "Download gzip" })).toHaveAttribute(
       "href",
       "/mona/octo-app/actions/jobs/job-1/logs/download",
     );
@@ -504,7 +508,9 @@ describe("RepositoryActionsJobLogPage", () => {
     expect(
       within(status).getByText("workflow logs are unavailable"),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Download log" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Download gzip" }),
+    ).toBeDisabled();
   });
 
   it("shows backend validation errors while preserving the job shell", () => {

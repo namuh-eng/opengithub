@@ -35,3 +35,4 @@ pulldown-cmark.workspace = true
 ammonia.workspace = true
 regex.workspace = true
 dotenvy.workspace = true
+flate2.workspace = true

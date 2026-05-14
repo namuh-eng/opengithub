@@ -6577,5 +6577,58 @@
       ]
     },
     "qa_pass": true
+  },
+  {
+    "feature_id": "actions-007",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused RepositoryActionsJobLogPage component coverage passed for search, match navigation, line anchors/permalink copy, raw view link, gzip download action, expandable step groups, annotations, deleted-log state, and keyboard/responsive guardrails. Focused system-Chrome Playwright passed against the real local API/DB with seeded Actions run/job log data."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "POST /api/internal/actions/jobs/{job_id}/logs/chunks",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/stream",
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}/detail",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/download",
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs/archive",
+          "PATCH /api/repos/{owner}/{repo}/actions/log-preferences"
+        ],
+        "notes": "DB-backed Rust contract used TEST_DATABASE_URL from .env.test and did not self-skip: runner token denial, append/finalize metadata, SSE replay, raw/detail options, gzip job download, archive replay, runner/assignment completion, secret masking, private access denial, and finalized_at persistence all passed."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "runner_token_auth",
+          "private_repository_authz",
+          "secret_redaction",
+          "storage_key_non_disclosure"
+        ],
+        "notes": "Focused contracts verify incorrect runner tokens cannot append logs, private repositories deny anonymous/outsider reads, configured Actions secret values are masked in detail/SSE/download/archive responses, and S3/log storage keys do not leak to viewer detail responses."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component and Playwright checks verified accessible names for visible buttons, keyboard reachability for search/options/step controls, no dead links, and no horizontal overflow on mobile viewport."
+      }
+    },
+    "tested_steps": [
+      "make doctor",
+      "set -a; source .env.test; set +a; export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract -- --nocapture",
+      "cd web && npm test -- --run repository-actions-job-log.test.tsx api-docs.test.tsx",
+      "cd web && npx biome check --write tests/e2e/repository-actions-job-log.spec.ts && cd .. && set -a; source .env.test; set +a; cd web && export CARGO_TARGET_DIR=\"/home/jaeyunha/dev/namuh/opengithub-visible/actions-007-visible-20260513223102/.scratch/cargo-target\"; export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome; npx playwright test tests/e2e/repository-actions-job-log.spec.ts --project=chromium",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make check",
+      "make doctor"
+    ],
+    "bugs_found": [
+      "Job log download was a plain text attachment despite the actions-007 gzip download requirement.",
+      "The visible job log toolbar exposed download actions but no direct Raw view affordance.",
+      "The Next.js download proxy used response.text(), which is unsafe for binary gzip payloads.",
+      "Focused Playwright job-log test expected the options menu to remain open after preference save, conflicting with the component's saved-and-close behavior."
+    ],
+    "fix_description": "Implemented gzip job-log downloads with application/gzip attachments, preserved binary payloads through the Next proxy, added a Raw view link to the Editorial job log toolbar, and extended Rust/component/Playwright coverage for append/SSE/raw/download/finalization acceptance."
   }
 ]

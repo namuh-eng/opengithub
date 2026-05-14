@@ -32,7 +32,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     headers.set("content-disposition", disposition);
   }
 
-  return new Response(await response.text(), {
+  return new Response(await response.arrayBuffer(), {
     status: response.status,
     headers,
   });

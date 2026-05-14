@@ -467,6 +467,16 @@ export function RepositoryActionsJobLogPage({
               </div>
               {detail.logState.available ? (
                 <>
+                  <Link
+                    className="btn"
+                    href={searchHref(
+                      detail.search.query ?? "",
+                      selectedMatch || 1,
+                      { raw: true },
+                    )}
+                  >
+                    Raw view
+                  </Link>
                   <a
                     className="btn"
                     href={runArchiveHref(basePath, detail.run.id)}
@@ -477,16 +487,19 @@ export function RepositoryActionsJobLogPage({
                     className="btn primary"
                     href={jobDownloadHref(basePath, detail.job.id)}
                   >
-                    Download log
+                    Download gzip
                   </a>
                 </>
               ) : (
                 <>
                   <button className="btn" disabled type="button">
+                    Raw view
+                  </button>
+                  <button className="btn" disabled type="button">
                     Download run archive
                   </button>
                   <button className="btn primary" disabled type="button">
-                    Download log
+                    Download gzip
                   </button>
                 </>
               )}

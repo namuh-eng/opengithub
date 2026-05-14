@@ -8365,10 +8365,10 @@ data: {"nextCursor":121,"finalizedAt":null}`,
     path: "/api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/download",
     title: "Download workflow job log",
     description:
-      "Downloads one job log as a deterministic local-dev text attachment after repository read authorization.",
+      "Downloads one job log as a gzip attachment after repository read authorization.",
     auth: "Optional signed opengithub session cookie; private repositories require read access",
-    response: `2026-05-01T00:00:00Z Installing dependencies
-2026-05-01T00:01:00Z Running unit tests`,
+    response: `content-type: application/gzip
+content-disposition: attachment; filename="unit-web.log.gz"`,
     notes: [
       "Deleted or expired logs return the standard 410 gone envelope.",
       "Production storage can swap the body for a short-lived signed object URL while preserving the route contract.",

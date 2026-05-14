@@ -206,6 +206,34 @@ async fn get_text_with_content_type(
     )
 }
 
+async fn get_bytes_with_headers(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, Option<String>, Option<String>, Vec<u8>) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let content_disposition = response
+        .headers()
+        .get(header::CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (status, content_type, content_disposition, bytes.to_vec())
+}
+
 async fn seed_run_with_job_logs(
     pool: &PgPool,
     owner: &User,
@@ -780,6 +808,23 @@ async fn assigned_runner_appends_finalizes_and_streams_job_logs() {
     assert!(stream_body.contains("event: line"));
     assert!(stream_body.contains("run cargo test"));
     assert!(stream_body.contains("event: cursor"));
+
+    let download_uri = format!(
+        "/api/repos/{}/{}/actions/jobs/{}/logs/download",
+        owner.email, repo_name, job_id
+    );
+    let (download_status, download_type, download_disposition, download_body) =
+        get_bytes_with_headers(app.clone(), &download_uri, Some(&owner_cookie)).await;
+    assert_eq!(download_status, StatusCode::OK);
+    assert_eq!(download_type.as_deref(), Some("application/gzip"));
+    assert!(download_disposition
+        .as_deref()
+        .unwrap_or_default()
+        .contains("unit-web.log.gz"));
+    assert!(
+        download_body.starts_with(&[0x1f, 0x8b]),
+        "job log download must be gzip encoded"
+    );
 
     let row = sqlx::query(
         r#"

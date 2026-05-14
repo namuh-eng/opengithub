@@ -8,8 +8,8 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 95,
-    "features_failed": 0,
+    "features_passed": 96,
+    "features_failed": 23,
     "features_exhausted": 0,
     "features_crashed": 0
   },
@@ -3233,10 +3233,23 @@
       "feature_id": "actions-007",
       "description": "Live job log streaming and persistence. Streams stdout/stderr from runners to th",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass"
+        },
+        "api_contract": {
+          "status": "pass"
+        },
+        "security": {
+          "status": "pass"
+        },
+        "accessibility": {
+          "status": "pass"
+        }
+      }
     },
     {
       "feature_id": "actions-008",
