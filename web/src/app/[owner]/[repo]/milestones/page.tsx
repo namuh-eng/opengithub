@@ -13,6 +13,7 @@ type RepositoryMilestonesPageProps = {
   searchParams: Promise<{
     state?: string;
     sort?: string;
+    q?: string;
     page?: string;
   }>;
 };
@@ -49,6 +50,7 @@ export default async function RepositoryMilestonesPage({
       requestedSort && SORTS.has(requestedSort)
         ? requestedSort
         : "updated-desc",
+    q: typeof query.q === "string" ? query.q.trim() || null : null,
     page: Number.isFinite(page) ? page : 1,
     pageSize: 100,
   };

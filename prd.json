@@ -2048,8 +2048,8 @@
     "page": "/{owner}/{repo}/milestones",
     "priority": "P5",
     "core": false,
-    "ui_details": "Repository workspace shell with Milestones page. List view has Open and Closed tabs with counts, Sort button, permissioned New milestone button, and milestone cards/rows showing title link, due date or No due date, last updated timestamp, horizontal progress bar, percent complete, open issue count link, and closed issue count link. Sort menu options include Recently updated, Furthest due date, Closest due date, Least complete, Most complete, Alphabetical, Reverse alphabetical, Most issues, and Fewest issues. Detail page shows Back to Milestones, title, New issue button, state pill, due date, last updated text, percent complete, Open/Closed tabs, selectable issue rows with labels/comments/linked PRs/assignees, and permissioned Edit/Close/Reopen/Delete controls.",
-    "behavior": "Opening /milestones lists open milestones by default; Closed tab shows completed/closed milestones. Sort changes the list order and is shareable in URL state. Opening a milestone shows progress and issue/PR rows scoped to that milestone; New issue preselects the milestone. Selecting rows updates selected count and enables bulk metadata actions where the viewer has permission. Authorized users can create/edit title, due date, and Markdown description; close/reopen changes milestone state; delete removes the milestone but leaves associated issues and pull requests intact with milestone cleared. Issue prioritization by drag/drop is available when a milestone has 500 or fewer open items.",
+    "ui_details": "Repository workspace shell with Issues-adjacent Milestones page. Header shows Milestones, Open and Closed tabs/chips with counts, search/filter input labelled Search milestones, Sort button, and permissioned New milestone button. Milestone rows show title, due date or No due date, open/closed issue counts, progress bar with percent, description preview, and permissioned Edit/Close/Reopen/Delete actions. Detail page shows milestone title, description, due date, progress, linked issue list grouped by open/closed with keyboard-accessible Up/Down priority controls.",
+    "behavior": "Search filters milestones by title/description and preserves URL state across tabs/sort. Open/Closed tabs switch state. Sort choices update order by due date, completion, title, issue count, or update time. Write users can create/edit title, description, and due date; close/reopen changes state; delete detaches issues from the milestone without deleting issues. Detail page issue list can reprioritize open issues in the milestone. All mutations update counts/progress immediately and persist via API. Read-only users see no mutation controls.",
     "data_model": "Reads repositories, repository_permissions, milestones, issues, pull_requests, labels, assignees, linked pull requests, comments counts, milestone_item_order, and rendered_markdown_cache for descriptions. Writes milestones, issue milestone foreign keys, pull request milestone foreign keys, milestone_item_order, milestone state transitions, issue_timeline_events, pull_request_timeline_events, notifications for metadata changes, rendered Markdown cache, and audit events for create/edit/close/reopen/delete.",
     "dependent_on": [
       "infra-001",
@@ -2058,9 +2058,9 @@
       "prs-001",
       "labels-001"
     ],
-    "needs_structure": true,
+    "needs_structure": false,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "actions-006",

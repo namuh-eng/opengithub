@@ -6474,5 +6474,87 @@
       "Current main's wiki component tests failed in make test because client-side wiki validation blocked the expected backend validation response and wiki page sidebar links trusted fixture hrefs missing owner/repo context."
     ],
     "fix_description": "Refactored labels E2E through shared auth/psql helpers with podman-compatible fallback, added optimistic label list/count/status mutation feedback, strengthened focused component assertions, and fixed two current-main wiki regressions blocking the required broad test gate."
+  },
+  {
+    "feature_id": "milestones-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified repository milestone list/detail/search/sort/progress/create/edit/close/reopen/delete/issue-priority flows with focused component tests, DB-backed Rust contract, and system-Chrome Playwright. Fixed missing list search, missing list close/reopen controls, stale milestone detail repository scoping, and flaky/outdated milestone E2E setup/locators."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/milestones?state=&sort=&q=",
+          "POST /api/repos/{owner}/{repo}/milestones",
+          "GET /api/repos/{owner}/{repo}/milestones/{milestone_id}",
+          "PATCH /api/repos/{owner}/{repo}/milestones/{milestone_id}",
+          "POST /api/repos/{owner}/{repo}/milestones/{milestone_id}/close",
+          "POST /api/repos/{owner}/{repo}/milestones/{milestone_id}/reopen",
+          "PATCH /api/repos/{owner}/{repo}/milestones/{milestone_id}/order",
+          "DELETE /api/repos/{owner}/{repo}/milestones/{milestone_id}"
+        ],
+        "notes": "DB-backed repository_milestones_contract passed without self-skip against .env.test Postgres. Coverage asserts list progress, read-vs-write permissions, title/description search, markdown rendering, PR-backed items, edit, close, delete association clearing, timeline events, and audit rows."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "repository_access_control",
+          "writer_required_mutations",
+          "private_repo_anonymous_denial",
+          "cross_repository_milestone_scope",
+          "xss_sanitized_markdown",
+          "data_exposure"
+        ],
+        "notes": "Milestone mutations still require authenticated write users through Rust route auth. Detail lookup now scopes milestone id by repository_id to prevent cross-repository id access. Markdown descriptions render through the shared sanitizer and error envelopes do not expose stack/env data."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component/browser coverage checks accessible labels/buttons, no dead controls, keyboard-safe Up/Down reorder controls, desktop/mobile no-horizontal-overflow, labelled Search milestones input, labelled milestone form fields, and Editorial tokens/primitives."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first with CARGO_TARGET_DIR=$PWD/.scratch/cargo-target; Podman test Postgres and .env.test were healthy.",
+      "Inspected milestone pages, client components, same-origin Next mutation proxies, Rust domain/routes, DB-backed contract, and Playwright/component tests.",
+      "Ran focused Vitest: npm test -- --run repository-milestones-page.test.tsx repository-milestone-detail-page.test.tsx (11 passed).",
+      "Ran DB-backed Rust/API contract: ./hack/cargo_locked.sh test -p opengithub-api --test repository_milestones_contract -- --nocapture (1 passed, no self-skip).",
+      "Ran focused system-Chrome Playwright from web with .env.test and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome: repository-milestones.spec.ts --project=chromium (2 passed).",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran broad make test: Cargo workspace tests passed and web Vitest passed (672 passed)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "high",
+        "description": "Milestone detail loaded by milestone id without repository_id in the SQL predicate, allowing an actor with access to one repository to request a milestone id from another repository path.",
+        "fix": "Scoped repository_milestone_detail_for_actor_by_owner_name to milestones.repository_id = $1 AND milestones.id = $2."
+      },
+      {
+        "severity": "medium",
+        "description": "Milestones list did not implement the PRD Search milestones input or API title/description filtering.",
+        "fix": "Added q to Rust/TypeScript milestone list query, filtered title/description in SQL, preserved q in URL tab/sort links, and rendered a labelled Editorial search form."
+      },
+      {
+        "severity": "medium",
+        "description": "Milestone rows lacked permissioned Close/Reopen actions even though PRD required Edit/Close/Reopen/Delete on rows.",
+        "fix": "Added list-row Close/Reopen buttons wired through the same same-origin milestone action proxy and covered them in component tests."
+      },
+      {
+        "severity": "low",
+        "description": "Focused milestone E2E depended on unrelated repository-create UI and stale locators, causing false red browser evidence.",
+        "fix": "Seeded via existing dashboard repository fixture, switched to stable accessible locators, and used system Chrome as required."
+      },
+      {
+        "severity": "low",
+        "description": "Existing Rust contract compared text audit_events.target_id to a UUID bind and failed on the local DB.",
+        "fix": "Bound milestone id as string in the contract assertion."
+      }
+    ],
+    "artifacts": [
+      "ralph/screenshots/build/milestones-001-final-desktop.jpg",
+      "ralph/screenshots/build/milestones-001-final-mobile.jpg"
+    ]
   }
 ]

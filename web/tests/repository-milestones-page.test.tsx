@@ -145,6 +145,7 @@ function milestonesView(
     filters: overrides.filters ?? {
       state: "open",
       sort: "updated-desc",
+      q: null,
     },
     viewer: overrides.viewer ?? {
       permission: "write",
@@ -171,6 +172,7 @@ function renderMilestones(
       query={{
         state: view.filters.state,
         sort: view.filters.sort,
+        q: view.filters.q,
       }}
       repository={repository}
     />,
@@ -224,6 +226,7 @@ describe("RepositoryMilestonesPage", () => {
         filters: {
           state: "closed",
           sort: "due-asc",
+          q: "docs",
         },
       }),
     );
@@ -236,6 +239,36 @@ describe("RepositoryMilestonesPage", () => {
       repositoryMilestonesHref("mona", "octo-app", {
         state: "closed",
         sort: "issues-desc",
+        q: "docs",
+      }),
+    );
+  });
+
+  it("renders milestone search and preserves search in tab links", () => {
+    renderMilestones(
+      milestonesView({
+        filters: {
+          state: "open",
+          sort: "alpha-asc",
+          q: "launch",
+        },
+      }),
+    );
+
+    expect(screen.getByLabelText("Search milestones")).toHaveValue("launch");
+    expect(screen.getByRole("link", { name: /Closed 1/ })).toHaveAttribute(
+      "href",
+      repositoryMilestonesHref("mona", "octo-app", {
+        state: "closed",
+        sort: "alpha-asc",
+        q: "launch",
+      }),
+    );
+    expect(screen.getByRole("link", { name: "Clear" })).toHaveAttribute(
+      "href",
+      repositoryMilestonesHref("mona", "octo-app", {
+        state: "open",
+        sort: "alpha-asc",
       }),
     );
   });
@@ -272,7 +305,7 @@ describe("RepositoryMilestonesPage", () => {
     });
   });
 
-  it("edits and deletes permissioned milestones", async () => {
+  it("edits, closes, and deletes permissioned milestones", async () => {
     renderMilestones();
 
     const firstRow = screen.getByText("Launch readiness").closest("article");
@@ -289,8 +322,18 @@ describe("RepositoryMilestonesPage", () => {
       expect.objectContaining({ method: "PATCH" }),
     );
 
-    fireEvent.click(within(firstRow as HTMLElement).getByText("Delete"));
+    fireEvent.click(within(firstRow as HTMLElement).getByText("Close"));
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(2));
+    expect(fetch).toHaveBeenCalledWith(
+      "/mona/octo-app/milestones/actions/milestone-1",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ action: "close" }),
+      }),
+    );
+
+    fireEvent.click(within(firstRow as HTMLElement).getByText("Delete"));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(3));
     expect(fetch).toHaveBeenCalledWith(
       "/mona/octo-app/milestones/actions/milestone-1",
       { method: "DELETE" },

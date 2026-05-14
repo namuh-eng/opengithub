@@ -1066,6 +1066,7 @@ export function repositoryLabelsHref(
 export type RepositoryMilestonesRouteQuery = {
   state?: string | null;
   sort?: string | null;
+  q?: string | null;
   page?: number | null;
 };
 
@@ -1077,6 +1078,7 @@ export function repositoryMilestonesHref(
   const params = new URLSearchParams();
   if (query.state?.trim()) params.set("state", query.state.trim());
   if (query.sort?.trim()) params.set("sort", query.sort.trim());
+  if (query.q?.trim()) params.set("q", query.q.trim());
   if (query.page && query.page > 1) params.set("page", String(query.page));
   const suffix = params.size ? `?${params.toString()}` : "";
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones${suffix}`;

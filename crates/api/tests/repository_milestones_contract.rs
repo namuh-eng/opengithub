@@ -166,6 +166,7 @@ async fn repository_milestones_contract_lists_mutates_and_clears_associations() 
         RepositoryMilestonesQuery {
             state: MilestoneListState::Open,
             sort: MilestoneSort::IssuesDesc,
+            q: None,
         },
         1,
         30,
@@ -177,6 +178,24 @@ async fn repository_milestones_contract_lists_mutates_and_clears_associations() 
     assert_eq!(list.envelope.items[0].progress.closed_count, 1);
     assert_eq!(list.envelope.items[0].progress.percent_complete, 33);
     assert!(!list.viewer.can_edit_milestones);
+
+    let searched = repository_milestones_for_actor_by_owner_name(
+        &pool,
+        &repository.owner_login,
+        &repository.name,
+        Some(reader.id),
+        RepositoryMilestonesQuery {
+            state: MilestoneListState::Open,
+            sort: MilestoneSort::AlphaAsc,
+            q: Some("core".to_owned()),
+        },
+        1,
+        30,
+    )
+    .await
+    .expect("milestones should search title and description");
+    assert_eq!(searched.envelope.total, 1);
+    assert_eq!(searched.envelope.items[0].title, "Beta launch");
 
     let detail = repository_milestone_detail_for_actor_by_owner_name(
         &pool,
@@ -248,7 +267,7 @@ async fn repository_milestones_contract_lists_mutates_and_clears_associations() 
         "SELECT COUNT(*)::bigint FROM audit_events WHERE actor_user_id = $1 AND target_id = $2",
     )
     .bind(writer.id)
-    .bind(milestone.id)
+    .bind(milestone.id.to_string())
     .fetch_one(&pool)
     .await
     .expect("audit count should load");

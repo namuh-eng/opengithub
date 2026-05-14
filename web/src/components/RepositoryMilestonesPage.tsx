@@ -24,6 +24,7 @@ type RepositoryMilestonesPageProps = {
   query: {
     state?: string | null;
     sort?: string | null;
+    q?: string | null;
   };
 };
 
@@ -199,11 +200,13 @@ function SortMenu({
   repo,
   sort,
   state,
+  q,
 }: {
   owner: string;
   repo: string;
   sort: string;
   state: string;
+  q: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -229,6 +232,7 @@ function SortMenu({
               href={repositoryMilestonesHref(owner, repo, {
                 state,
                 sort: option.sort,
+                q,
               })}
               key={option.sort}
               onClick={() => setOpen(false)}
@@ -258,6 +262,7 @@ export function RepositoryMilestonesPage({
   const repo = repository.name;
   const state = milestones.filters.state || query.state || "open";
   const sort = milestones.filters.sort || query.sort || "updated-desc";
+  const search = milestones.filters.q || query.q || "";
   const canWrite =
     milestones.viewer.canEditMilestones && !milestones.repository.isArchived;
 
@@ -290,6 +295,36 @@ export function RepositoryMilestonesPage({
       setDeleteError(errorMessage(error, "Milestone could not be deleted."));
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function updateMilestoneState(
+    milestone: RepositoryMilestoneSummary,
+    action: "close" | "reopen",
+  ) {
+    setDeleteError(null);
+    try {
+      const response = await fetch(
+        `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones/actions/${encodeURIComponent(milestone.id)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const envelope = body as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ?? "Milestone state could not be updated.",
+          { cause: envelope },
+        );
+      }
+      router.refresh();
+    } catch (error) {
+      setDeleteError(
+        errorMessage(error, "Milestone state could not be updated."),
+      );
     }
   }
 
@@ -333,6 +368,7 @@ export function RepositoryMilestonesPage({
                 href={repositoryMilestonesHref(owner, repo, {
                   state: String(tabState),
                   sort,
+                  q: search,
                 })}
                 key={tabState}
               >
@@ -340,8 +376,47 @@ export function RepositoryMilestonesPage({
               </Link>
             ))}
           </nav>
-          <SortMenu owner={owner} repo={repo} sort={sort} state={state} />
+          <SortMenu
+            owner={owner}
+            repo={repo}
+            sort={sort}
+            state={state}
+            q={search}
+          />
         </div>
+
+        <form
+          action={repositoryMilestonesHref(owner, repo)}
+          className="card p-3"
+          method="get"
+        >
+          <div className="flex flex-wrap gap-3">
+            <input name="state" type="hidden" value={state} />
+            <input name="sort" type="hidden" value={sort} />
+            <label className="min-w-64 flex-1 t-sm">
+              <span className="sr-only">Search milestones</span>
+              <input
+                aria-label="Search milestones"
+                className="input w-full"
+                defaultValue={search}
+                name="q"
+                placeholder="Search milestones"
+                type="search"
+              />
+            </label>
+            <button className="btn" type="submit">
+              Search
+            </button>
+            {search ? (
+              <Link
+                className="btn"
+                href={repositoryMilestonesHref(owner, repo, { state, sort })}
+              >
+                Clear
+              </Link>
+            ) : null}
+          </div>
+        </form>
 
         {editing ? (
           <MilestoneForm
@@ -474,6 +549,27 @@ export function RepositoryMilestonesPage({
                         >
                           Delete
                         </button>
+                        {milestone.state === "open" ? (
+                          <button
+                            className="btn sm"
+                            onClick={() =>
+                              void updateMilestoneState(milestone, "close")
+                            }
+                            type="button"
+                          >
+                            Close
+                          </button>
+                        ) : (
+                          <button
+                            className="btn sm"
+                            onClick={() =>
+                              void updateMilestoneState(milestone, "reopen")
+                            }
+                            type="button"
+                          >
+                            Reopen
+                          </button>
+                        )}
                       </span>
                     ) : null}
                   </div>

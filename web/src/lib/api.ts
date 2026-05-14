@@ -7718,6 +7718,7 @@ export type MilestoneSort =
 export type RepositoryMilestoneListQuery = {
   state?: MilestoneListState;
   sort?: MilestoneSort;
+  q?: string | null;
   page?: number;
   pageSize?: number;
 };
@@ -7762,6 +7763,7 @@ export type RepositoryMilestonesView =
     filters: {
       state: MilestoneListState;
       sort: MilestoneSort;
+      q?: string | null;
     };
     viewer: MilestoneViewer;
     repository: {
@@ -13263,6 +13265,9 @@ export function repositoryMilestonesPath(
   }
   if (query.sort) {
     params.set("sort", query.sort);
+  }
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
   }
   if (query.page && query.page > 1) {
     params.set("page", String(query.page));

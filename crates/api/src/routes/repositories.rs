@@ -1019,6 +1019,7 @@ async fn delete_label(
 struct MilestonesQuery {
     state: Option<MilestoneListState>,
     sort: Option<MilestoneSort>,
+    q: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
 }
@@ -1046,6 +1047,7 @@ async fn milestones(
         RepositoryMilestonesQuery {
             state: query.state.unwrap_or_default(),
             sort: query.sort.unwrap_or_default(),
+            q: query.q,
         },
         pagination.page,
         pagination.page_size,

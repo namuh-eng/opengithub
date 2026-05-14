@@ -75,6 +75,7 @@ pub enum MilestoneSort {
 pub struct RepositoryMilestonesQuery {
     pub state: MilestoneListState,
     pub sort: MilestoneSort,
+    pub q: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -203,12 +204,24 @@ pub async fn repository_milestones_for_actor_by_owner_name(
     let viewer = milestone_viewer(pool, &repository, actor_user_id).await?;
     let offset = (page.saturating_sub(1)) * page_size;
     let state_filter = query.state.as_filter();
+    let search = normalize_search(query.q.as_deref());
 
     let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*)::bigint FROM milestones WHERE repository_id = $1 AND ($2::text IS NULL OR state = $2)",
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM milestones
+        WHERE repository_id = $1
+          AND ($2::text IS NULL OR state = $2)
+          AND (
+            $3::text IS NULL
+            OR lower(title) LIKE $3 ESCAPE '\'
+            OR lower(coalesce(description, '')) LIKE $3 ESCAPE '\'
+          )
+        "#,
     )
     .bind(repository.id)
     .bind(state_filter)
+    .bind(search.as_deref())
     .fetch_one(pool)
     .await?;
     let open_count = milestone_state_count(pool, repository.id, "open").await?;
@@ -218,6 +231,7 @@ pub async fn repository_milestones_for_actor_by_owner_name(
         pool,
         repository.id,
         state_filter,
+        search.as_deref(),
         &query.sort,
         page_size,
         offset,
@@ -252,12 +266,14 @@ pub async fn repository_milestone_detail_for_actor_by_owner_name(
 ) -> Result<RepositoryMilestoneDetail, MilestonesError> {
     let repository = repository_for_optional_actor(pool, owner, repo, actor_user_id).await?;
     let viewer = milestone_viewer(pool, &repository, actor_user_id).await?;
-    let row = sqlx::query(&milestone_select_sql("milestones.id = $2"))
-        .bind(repository.id)
-        .bind(milestone_id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(MilestonesError::MilestoneNotFound)?;
+    let row = sqlx::query(&milestone_select_sql(
+        "milestones.repository_id = $1 AND milestones.id = $2",
+    ))
+    .bind(repository.id)
+    .bind(milestone_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(MilestonesError::MilestoneNotFound)?;
     let summary = summary_from_row(row, &repository)?;
     let description_html = render_markdown(
         Some(pool),
@@ -801,6 +817,7 @@ async fn milestone_rows(
     pool: &PgPool,
     repository_id: Uuid,
     state_filter: Option<&str>,
+    search: Option<&str>,
     sort: &MilestoneSort,
     limit: i64,
     offset: i64,
@@ -817,17 +834,39 @@ async fn milestone_rows(
         MilestoneSort::IssuesAsc => "total_count ASC, milestones.updated_at DESC",
     };
     let sql = format!(
-        "{} AND ($2::text IS NULL OR milestones.state = $2) ORDER BY {order_by} LIMIT $3 OFFSET $4",
-        milestone_select_sql("milestones.repository_id = $1")
+        "{} ORDER BY {order_by} LIMIT $4 OFFSET $5",
+        milestone_select_sql(
+            "milestones.repository_id = $1
+           AND ($2::text IS NULL OR milestones.state = $2)
+           AND (
+             $3::text IS NULL
+             OR lower(milestones.title) LIKE $3 ESCAPE '\'
+             OR lower(coalesce(milestones.description, '')) LIKE $3 ESCAPE '\'
+           )"
+        )
     );
     sqlx::query(&sql)
         .bind(repository_id)
         .bind(state_filter)
+        .bind(search)
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)
         .await
         .map_err(MilestonesError::Sqlx)
+}
+
+fn normalize_search(value: Option<&str>) -> Option<String> {
+    let trimmed = value?.trim().to_lowercase();
+    if trimmed.is_empty() {
+        None
+    } else {
+        let escaped = trimmed
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        Some(format!("%{escaped}%"))
+    }
 }
 
 fn milestone_select_sql(where_clause: &str) -> String {
