@@ -6710,5 +6710,78 @@
       "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
       "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "attempt": 1,
+    "status": "pass",
+    "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head SHA, gates merges via branch protection required-checks, exposes per-step annotations.",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 1,
+    "exhausted": false,
+    "timestamp": "2026-05-14T15:03:00Z",
+    "tested_steps": [
+      "Inspected actions-009 PRD row, qa report state, retry7 preserved Playwright error context/trace metadata, current Actions run detail component/routes, Rust Actions/pulls domain routes, and focused E2E/API tests.",
+      "Diagnosed retry7 failure as test budget exhaustion: trace timing showed the re-run status expect started at the end of the default 30s test timeout, so the status remained in the pending text only because the test was interrupted before the request could settle.",
+      "Scoped fix: added test.describe.configure({ timeout: 90_000 }) to web/tests/e2e/repository-actions-run.spec.ts so the real Actions acceptance path has enough budget for DB seeding, route warm-up, screenshots, log search, re-run/cancel/delete, and mobile reload without changing assertions.",
+      "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor \u2014 healthy local verification stack.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture \u2014 3 passed, 0 failed, no self-skip.",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture \u2014 2 passed, 0 failed, no self-skip.",
+      "rm -rf web/.next && make check \u2014 Cargo check, Web typecheck, Clippy, and Biome passed.",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts \u2014 5 passed, 0 failed, no no-env/self-skip."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "description": "The Actions run detail E2E exercised DB seeding, route warm-up, multiple screenshots, log search, re-run/cancel/delete-log controls, and mobile reload under Playwright's default 30s test timeout; on retry7 the test timeout interrupted the re-run status assertion almost immediately, producing a false functional failure.",
+        "file": "web/tests/e2e/repository-actions-run.spec.ts"
+      }
+    ],
+    "fix_description": "Increased only the Actions run detail E2E scenario timeout to 90s, preserving all functional assertions including the Re Run Failed Jobs queued status, cancel run, delete logs, annotations, artifacts, and responsive checks.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "System-Chrome browser acceptance passed all 5 tests with .env.test loaded; Actions run detail re-run/cancel/delete-log controls reached queued/deleted statuses and PR detail flows passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/actions/runs/:run_id",
+          "POST /api/repos/:owner/:repo/actions/runs/:run_id/rerun",
+          "POST /api/repos/:owner/:repo/actions/runs/:run_id/cancel",
+          "DELETE /api/repos/:owner/:repo/actions/runs/:run_id/logs",
+          "GET /api/repos/:owner/:repo/pulls/:number and raw diff/patch checks endpoints exercised by pull request detail contract"
+        ],
+        "notes": "Required DB-backed Rust contracts passed 3/3 and 2/2 with TEST_DATABASE_URL loaded and no self-skip."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "authz for private repository Actions mutations",
+          "required-check/mergeability contract coverage",
+          "no self-skip DB-backed verification"
+        ],
+        "notes": "Contracts verify outsider mutation denial and repository-scoped pull request/check behavior; no stack traces or secret leakage observed in required focused gates."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "E2E retained accessible-role assertions, keyboard focus checks, no dead controls, and desktop/mobile horizontal overflow checks on the Actions run path and pull request detail paths."
+      }
+    },
+    "verification": {
+      "commands": [
+        "export CARGO_TARGET_DIR=\"$PWD/.scratch/cargo-target\"; make doctor",
+        "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture",
+        "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture",
+        "rm -rf web/.next && make check",
+        "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test --project=chromium tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-pull-request-detail.spec.ts"
+      ],
+      "artifacts": [
+        "retry7 diagnostic: /home/jaeyunha/dev/namuh/opengithub-visible/actions-009-visible-retry7-20260514071926/web/test-results/repository-actions-run-sig-9f807-s-annotations-and-artifacts-chromium/error-context.md",
+        "Final browser output: 5 passed (49.1s)"
+      ]
+    }
   }
 ]

@@ -11,6 +11,8 @@ test.skip(
   "repository Actions run E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
+test.describe.configure({ timeout: 90_000 });
+
 test("signed-in workflow run detail renders jobs, annotations, and artifacts", async ({
   page,
   seed,

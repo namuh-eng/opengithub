@@ -2122,7 +2122,9 @@
       "actions-007",
       "repopulls-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "QA passed on retry8 after scoped E2E timeout hardening for the Actions run detail scenario; all required DB-backed API, check, and system-Chrome browser gates passed."
   },
   {
     "id": "actions-010",
