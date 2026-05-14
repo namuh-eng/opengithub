@@ -40,7 +40,9 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
   ).toBeVisible();
   await expect(page.getByText("playwright-report")).toBeVisible();
   await expect(page.getByText("sha256:abc123")).toBeVisible();
-  await expect(page.getByText("Installing dependencies")).toBeVisible();
+  await expect(page.getByText("Installing dependencies")).toBeVisible({
+    timeout: 15_000,
+  });
   await page.getByRole("textbox", { name: "Search job log" }).fill("error");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(

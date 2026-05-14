@@ -3,6 +3,7 @@ use axum::{
     http::{header, Method, Request, StatusCode},
 };
 use chrono::{Duration, Utc};
+use flate2::read::GzDecoder;
 use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
@@ -20,6 +21,7 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
+use std::io::Read;
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -127,12 +129,28 @@ async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     let request = builder.body(Body::empty()).expect("request should build");
     let response = app.oneshot(request).await.expect("request should run");
     let status = response.status();
+    let is_gzip = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == "application/gzip")
+        .unwrap_or(false);
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should read");
+    let body_bytes = if is_gzip {
+        let mut decoder = GzDecoder::new(bytes.as_ref());
+        let mut decoded = String::new();
+        decoder
+            .read_to_string(&mut decoded)
+            .expect("gzip response should decode as utf8");
+        return (status, decoded);
+    } else {
+        bytes.to_vec()
+    };
     (
         status,
-        String::from_utf8(bytes.to_vec()).expect("response should be utf8"),
+        String::from_utf8(body_bytes).expect("response should be utf8"),
     )
 }
 
@@ -452,13 +470,44 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
         "/api/repos/{}/{}/actions/artifacts/{}/download",
         owner.email, repo_name, artifact_id
     );
-    let (artifact_status, artifact_body) = get_json(app, &artifact_uri, None).await;
+    let (artifact_status, artifact_body) = get_json(app.clone(), &artifact_uri, None).await;
     assert_eq!(artifact_status, StatusCode::OK);
     assert_eq!(artifact_body["filename"], "playwright-report.zip");
     assert!(artifact_body["downloadUrl"]
         .as_str()
         .expect("download url")
         .contains(artifact_id));
+    assert!(
+        artifact_body.get("storageKey").is_none(),
+        "artifact download response must not expose internal storage keys: {artifact_body:?}"
+    );
+
+    let artifact_list_uri = format!("/_apis/pipelines/workflows/{}/artifacts", run.id);
+    let (artifact_list_unauth_status, artifact_list_unauth_body) =
+        get_json(app.clone(), &artifact_list_uri, None).await;
+    assert_eq!(artifact_list_unauth_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        artifact_list_unauth_body["error"]["code"],
+        "not_authenticated"
+    );
+    let (artifact_list_status, artifact_list_body) =
+        get_json(app.clone(), &artifact_list_uri, Some(&owner_cookie)).await;
+    assert_eq!(
+        artifact_list_status,
+        StatusCode::OK,
+        "{artifact_list_body:?}"
+    );
+    assert_eq!(artifact_list_body["count"], 1);
+    assert_eq!(
+        artifact_list_body["artifacts"][0]["name"],
+        "playwright-report"
+    );
+    assert!(
+        artifact_list_body["artifacts"][0]
+            .get("storageKey")
+            .is_none(),
+        "artifact list response must not expose internal storage keys: {artifact_list_body:?}"
+    );
 
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
     let upload_uri = format!("/_apis/pipelines/workflows/{}/artifacts", run.id);

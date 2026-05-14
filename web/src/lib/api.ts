@@ -7134,7 +7134,6 @@ export type ActionsArtifactDownload = {
   name: string;
   filename: string;
   downloadUrl: string;
-  storageKey: string;
   expiresAt: string;
 };
 

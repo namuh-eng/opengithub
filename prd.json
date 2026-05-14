@@ -2105,7 +2105,9 @@
     "dependent_on": [
       "actions-007"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true,
+    "qa_notes": "QA verified on 2026-05-14: focused DB/API/component/browser gates pass, including the env-loaded system-Chrome Playwright command for repository-actions-run and repository-actions specs. Browser acceptance was hardened by allowing the first job-log fetch enough time during cold route compilation."
   },
   {
     "id": "actions-009",

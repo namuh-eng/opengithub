@@ -32,14 +32,15 @@ use crate::{
             rerun_workflow_run, reserve_actions_cache_for_actor, schedule_queued_action_jobs,
             transition_workflow_run, update_actions_log_preferences_for_viewer,
             update_actions_runner_settings, upload_workflow_artifact_for_actor,
-            workflow_artifact_download_for_viewer, workflow_job_log_download_for_viewer,
-            workflow_job_log_stream_for_viewer, workflow_job_logs_for_viewer,
-            workflow_run_log_archive_for_viewer, ActionsArtifactUpload, ActionsCacheReserve,
-            ActionsDashboardQuery, ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery,
-            AppendWorkflowJobLogChunk, AutomationError, CreateActionsRunner, CreateWorkflow,
-            CreateWorkflowRun, DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView,
-            RerunWorkflowRun, RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun,
-            UpdateActionsLogPreferences, UpdateActionsRunnerSettings, WorkflowRunRerunMode,
+            workflow_artifact_download_for_viewer, workflow_artifacts_for_actor,
+            workflow_job_log_download_for_viewer, workflow_job_log_stream_for_viewer,
+            workflow_job_logs_for_viewer, workflow_run_log_archive_for_viewer,
+            ActionsArtifactUpload, ActionsCacheReserve, ActionsDashboardQuery,
+            ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery, AppendWorkflowJobLogChunk,
+            AutomationError, CreateActionsRunner, CreateWorkflow, CreateWorkflowRun,
+            DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun,
+            RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun, UpdateActionsLogPreferences,
+            UpdateActionsRunnerSettings, WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -138,7 +139,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/_apis/pipelines/workflows/:run_id/artifacts",
-            post(upload_workflow_artifact_route),
+            get(list_workflow_artifacts_route).post(upload_workflow_artifact_route),
         )
         .route(
             "/_apis/artifactcache/cache/:owner/:repo",
@@ -1168,6 +1169,30 @@ async fn download_workflow_artifact_route(
     .map_err(map_automation_error)?;
 
     Ok(Json(json!(download)))
+}
+
+async fn list_workflow_artifacts_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id = sqlx::query("SELECT repository_id FROM workflow_runs WHERE id = $1")
+        .bind(run_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| database_unavailable())?
+        .map(|row| row.get::<Uuid, _>("repository_id"))
+        .ok_or_else(|| map_automation_error(AutomationError::WorkflowRunNotFound))?;
+    let artifacts = workflow_artifacts_for_actor(pool, repository_id, run_id, actor.0.id)
+        .await
+        .map_err(map_automation_error)?;
+    let count = artifacts.len();
+    Ok(Json(json!({
+        "artifacts": artifacts,
+        "count": count,
+    })))
 }
 
 async fn upload_workflow_artifact_route(

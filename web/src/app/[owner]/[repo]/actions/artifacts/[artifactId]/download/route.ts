@@ -36,21 +36,15 @@ export async function GET(request: Request, { params }: RouteContext) {
   const body = JSON.parse(text) as {
     filename?: string;
     name?: string;
-    storageKey?: string;
   };
   const filename = body.filename ?? `${body.name ?? "artifact"}.zip`;
-  return new Response(
-    `opengithub artifact: ${body.name ?? filename}\nstorage key: ${
-      body.storageKey ?? "local"
-    }\n`,
-    {
-      status: 200,
-      headers: {
-        "content-disposition": `attachment; filename="${filename}"`,
-        "content-type": "application/octet-stream",
-      },
+  return new Response(`opengithub artifact: ${body.name ?? filename}\n`, {
+    status: 200,
+    headers: {
+      "content-disposition": `attachment; filename="${filename}"`,
+      "content-type": "application/octet-stream",
     },
-  );
+  });
 }
 
 export async function DELETE(request: Request, { params }: RouteContext) {

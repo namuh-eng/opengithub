@@ -6630,5 +6630,85 @@
       "Focused Playwright job-log test expected the options menu to remain open after preference save, conflicting with the component's saved-and-close behavior."
     ],
     "fix_description": "Implemented gzip job-log downloads with application/gzip attachments, preserved binary payloads through the Next proxy, added a Raw view link to the Editorial job log toolbar, and extended Rust/component/Playwright coverage for append/SSE/raw/download/finalization acceptance."
+  },
+  {
+    "feature_id": "actions-008",
+    "attempt": 2,
+    "status": "pass",
+    "description": "Workflow artifact upload/download and dependency cache. Implements the artifact API (actions/upload-artifact, actions/download-artifact) and the cache API (actions/cache).",
+    "category": "feature",
+    "qa_pass": true,
+    "attempts": 2,
+    "exhausted": false,
+    "timestamp": "2026-05-14T07:15:00Z",
+    "tested_steps": [
+      "make check passed after browser hardening.",
+      "Focused DB-backed api_repository_actions_run_detail_contract passed 3/3 without self-skip.",
+      "Focused Vitest repository-actions-run.test.tsx and repository-actions-caches-page.test.tsx passed 9/9.",
+      "Env-loaded system-Chrome Playwright command passed: tests/e2e/repository-actions-run.spec.ts and tests/e2e/repository-actions.spec.ts --project=chromium (3/3).",
+      "Artifact upload/list/download/delete and dependency cache reserve/list/delete paths verified by focused gates."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Artifact download metadata exposed internal storageKey/S3 key to clients.",
+        "file": "crates/api/src/domain/actions.rs"
+      },
+      {
+        "severity": "major",
+        "description": "Internal /_apis/pipelines/workflows/{run_id}/artifacts endpoint lacked a GET/list path needed by download-artifact clients.",
+        "file": "crates/api/src/routes/actions.rs"
+      },
+      {
+        "severity": "minor",
+        "description": "Actions run API contract helper treated gzipped log downloads as UTF-8 text and failed before artifact/cache assertions.",
+        "file": "crates/api/tests/api_repository_actions_run_detail_contract.rs"
+      }
+    ],
+    "fix_description": "Added authenticated artifact listing, redacted internal storage keys from artifact metadata, updated Next artifact proxy/types/tests, fixed gzip-aware contract helper, and hardened the browser acceptance wait for cold job-log route loading.",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused component gates passed 9/9. Env-loaded system-Chrome Playwright command for repository-actions-run plus repository-actions passed 3/3 after increasing the job-log line visibility wait to tolerate cold route/API startup latency."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /_apis/pipelines/workflows/{run_id}/artifacts",
+          "POST /_apis/pipelines/workflows/{run_id}/artifacts",
+          "GET /api/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/download",
+          "DELETE /api/repos/{owner}/{repo}/actions/artifacts/{artifact_id}",
+          "GET /_apis/artifactcache/cache/{owner}/{repo}",
+          "POST /_apis/artifactcache/cache/{owner}/{repo}",
+          "DELETE /_apis/artifactcache/cache/{owner}/{repo}/{cache_id}",
+          "GET /api/repos/{owner}/{repo}/actions/caches",
+          "DELETE /api/repos/{owner}/{repo}/actions/caches/{cache_id}"
+        ],
+        "notes": "DB-backed Rust contract api_repository_actions_run_detail_contract passed 3/3 without self-skip. Artifact list requires auth and returns metadata without internal storage keys."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "data_exposure",
+          "cache_eviction"
+        ],
+        "notes": "Internal artifact list requires a signed session. Artifact/cache viewer responses no longer serialize internal S3/storage keys; validation rejects invalid artifact/cache storage inputs."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright repository Actions flows passed existing no-dead-controls/no-horizontal-overflow coverage; cache page component coverage verifies disabled read-only delete state and no dead hrefs."
+      }
+    },
+    "overall_status": "pass",
+    "blockers": [],
+    "gates": [
+      "make check: pass",
+      "./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_run_detail_contract -- --nocapture: pass 3/3",
+      "cd web && npm test -- repository-actions-run.test.tsx repository-actions-caches-page.test.tsx --run: pass 9/9",
+      "cd web && PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npx playwright test tests/e2e/repository-actions-run.spec.ts tests/e2e/repository-actions.spec.ts --project=chromium: pass 3/3"
+    ]
   }
 ]

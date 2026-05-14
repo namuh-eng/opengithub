@@ -377,7 +377,6 @@ describe("RepositoryActionsRunPage", () => {
             filename: "playwright-report.zip",
             downloadUrl:
               "/api/repos/mona/octo-app/actions/artifacts/artifact-1/download?token=dev-local",
-            storageKey: "actions/artifacts/report.zip",
             expiresAt: "2026-05-01T00:16:00Z",
           }),
           ok: true,

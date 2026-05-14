@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 96,
-    "features_failed": 23,
+    "features_passed": 97,
+    "features_failed": 22,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 89,
+      "pass": 90,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 85,
+      "pass": 86,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 85,
+      "pass": 86,
       "fail": 0,
       "skip": 4
     },
     "accessibility": {
-      "pass": 51,
+      "pass": 52,
       "fail": 0,
       "skip": 39
     }
@@ -3255,10 +3255,46 @@
       "feature_id": "actions-008",
       "description": "Workflow artifact upload/download and dependency cache. Implements the artifact ",
       "category": "feature",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused component gates passed 9/9. Env-loaded system-Chrome Playwright command for repository-actions-run plus repository-actions passed 3/3 after increasing the job-log line visibility wait to tolerate cold route/API startup latency."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /_apis/pipelines/workflows/{run_id}/artifacts",
+            "POST /_apis/pipelines/workflows/{run_id}/artifacts",
+            "GET /api/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/download",
+            "DELETE /api/repos/{owner}/{repo}/actions/artifacts/{artifact_id}",
+            "GET /_apis/artifactcache/cache/{owner}/{repo}",
+            "POST /_apis/artifactcache/cache/{owner}/{repo}",
+            "DELETE /_apis/artifactcache/cache/{owner}/{repo}/{cache_id}",
+            "GET /api/repos/{owner}/{repo}/actions/caches",
+            "DELETE /api/repos/{owner}/{repo}/actions/caches/{cache_id}"
+          ],
+          "notes": "DB-backed Rust contract api_repository_actions_run_detail_contract passed 3/3 without self-skip. Artifact list requires auth and returns metadata without internal storage keys."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_validation",
+            "data_exposure",
+            "cache_eviction"
+          ],
+          "notes": "Internal artifact list requires a signed session. Artifact/cache viewer responses no longer serialize internal S3/storage keys; validation rejects invalid artifact/cache storage inputs."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Focused Playwright repository Actions flows passed existing no-dead-controls/no-horizontal-overflow coverage; cache page component coverage verifies disabled read-only delete state and no dead hrefs."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "actions-009",

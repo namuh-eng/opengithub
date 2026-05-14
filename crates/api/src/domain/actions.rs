@@ -474,6 +474,7 @@ pub struct ActionsArtifactDownload {
     pub name: String,
     pub filename: String,
     pub download_url: String,
+    #[serde(skip_serializing)]
     pub storage_key: String,
     pub expires_at: DateTime<Utc>,
 }
@@ -4719,6 +4720,16 @@ pub async fn workflow_run_log_archive_for_viewer(
         content_type: "text/plain; charset=utf-8".to_owned(),
         body,
     })
+}
+
+pub async fn workflow_artifacts_for_actor(
+    pool: &PgPool,
+    repository_id: Uuid,
+    run_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<Vec<ActionsRunArtifact>, AutomationError> {
+    get_workflow_run_for_actor(pool, repository_id, run_id, actor_user_id).await?;
+    actions_run_artifacts(pool, run_id).await
 }
 
 pub async fn workflow_artifact_download_for_viewer(
