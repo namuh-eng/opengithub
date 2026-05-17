@@ -58,8 +58,8 @@ All commands route through `make` — never reach for `cargo`/`npx` directly whe
 
 ## Ports
 
-- Rust API: `:3016` (exposes `GET /` and `GET /health`)
-- Next.js: `:3015`
+- Rust API: `:3016` (exposes `GET /`, `GET /health` liveness, and `GET /ready` readiness)
+- Next.js: `:3015` (exposes public `GET /healthz`)
 
 ## Production Docker smoke tests
 

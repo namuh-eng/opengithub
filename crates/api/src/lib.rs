@@ -34,6 +34,7 @@ pub fn build_app_with_config(db: Option<DbPool>, config: AppConfig) -> Router {
     Router::new()
         .route("/", get(root))
         .route("/health", get(routes::health::health))
+        .route("/ready", get(routes::health::ready))
         .merge(routes::git::router())
         .merge(routes::gists::router())
         .merge(routes::auth::router())
