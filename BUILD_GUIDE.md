@@ -101,3 +101,9 @@ Then update `web/package.json` scripts: `dev`, `build`, `start`, `test`, `test:e
 
 ## Loop runtime
 All ralph loops (inspect, architecture, build, QA) run via `codex exec` — the OpenAI Codex CLI. Prompts in `ralph/*.sh` inline file contents (codex doesn't honor `@filename`). The helper `ralph/lib/inline.sh` provides `inline_files <paths...>`.
+
+## Deployment pipeline
+
+Production and staging ECS rollouts are driven by `.github/workflows/deploy.yml`, which invokes `scripts/deploy.sh`. The deploy action builds `Dockerfile.api` and `Dockerfile.web`, tags both images with the current git SHA, pushes to ECR, runs SQLx migrations before rollout, registers ECS task definitions, updates API/web ECS services, waits for ECS stability, verifies API `/ready` and web `/healthz`, and invalidates CloudFront when `CLOUDFRONT_DISTRIBUTION_ID` is set. Use `DRY_RUN=1` for local/staging command-construction verification without AWS credentials.
+
+Rollback uses `scripts/deploy.sh rollback <environment>` with `ROLLBACK_API_TASK_DEFINITION` and `ROLLBACK_WEB_TASK_DEFINITION` set to the previous known-good ECS task definition ARNs. See `docs/deployment.md` for exact staging deploy and rollback commands.
