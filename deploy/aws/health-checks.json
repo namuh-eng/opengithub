@@ -1,0 +1,22 @@
+{
+  "albTargetGroups": {
+    "api": {
+      "healthCheckPath": "/ready",
+      "matcher": "200",
+      "description": "API readiness must fail rollout when RDS or other critical dependencies are unavailable."
+    },
+    "web": {
+      "healthCheckPath": "/healthz",
+      "matcher": "200",
+      "description": "Next.js liveness endpoint is public and does not require authentication."
+    }
+  },
+  "ecsContainerHealthChecks": {
+    "api": ["CMD-SHELL", "curl -fsS http://127.0.0.1:3016/health >/dev/null || exit 1"],
+    "web": ["CMD-SHELL", "curl -fsS http://127.0.0.1:3015/healthz >/dev/null || exit 1"]
+  },
+  "deployWaitChecks": {
+    "api": "/ready",
+    "web": "/healthz"
+  }
+}

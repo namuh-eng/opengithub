@@ -73,7 +73,7 @@ Google OAuth redirect URIs:
 - **Rust API**: `:3016`
 - **Next.js**: `:3015`
 
-The Rust API exposes `GET /` and `GET /health` for sanity. Add new routes under `crates/api/src/routes/`.
+The Rust API exposes `GET /` and lightweight `GET /health` for liveness, plus `GET /ready` for production readiness. `/ready` returns HTTP 200 only when RDS/Postgres is reachable and non-2xx when critical dependencies are unavailable. Next.js exposes public `GET /healthz` without auth. AWS ALB target groups should use `/ready` for the API target group and `/healthz` for the web target group; ECS container health checks should use `/health` for API liveness and `/healthz` for web liveness. The machine-readable contract lives in `deploy/aws/health-checks.json`, and `scripts/deploy.sh` waits on `/ready` and `/healthz` before declaring rollout success.
 
 ## Adding a Rust dependency
 Edit `Cargo.toml` (workspace root) — add the dep to `[workspace.dependencies]` first, then reference it from `crates/api/Cargo.toml` as `dep.workspace = true`. This keeps versions in sync across crates.
