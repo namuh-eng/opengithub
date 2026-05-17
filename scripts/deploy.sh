@@ -12,6 +12,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${DEPLOY_HEALTH_INTERVAL_SECONDS:=5}"
 : "${DRY_RUN:=0}"
 : "${MIGRATION_COMMAND:=sqlx migrate run --source crates/api/migrations}"
+: "${RUN_DB_MIGRATIONS:=1}"
+: "${MIGRATION_CONTAINER_NAME:=migration}"
+: "${MIGRATION_ASSIGN_PUBLIC_IP:=DISABLED}"
 : "${AWS_REGION:=${AWS_DEFAULT_REGION:-}}"
 : "${GIT_SHA:=$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
 
@@ -25,12 +28,13 @@ Usage:
   scripts/deploy.sh rollback <staging|production>
 
 Required env for deploy:
-  AWS_REGION AWS_ACCOUNT_ID ECR_API_REPOSITORY ECR_WEB_REPOSITORY ECS_CLUSTER
-  ECS_API_SERVICE ECS_WEB_SERVICE ECS_API_TASK_FAMILY ECS_WEB_TASK_FAMILY
+  AWS_REGION AWS_ACCOUNT_ID ECR_API_REPOSITORY ECR_WEB_REPOSITORY ECR_MIGRATION_REPOSITORY ECS_CLUSTER
+  ECS_API_SERVICE ECS_WEB_SERVICE ECS_API_TASK_FAMILY ECS_WEB_TASK_FAMILY MIGRATION_TASK_DEFINITION
+  ECS_SUBNETS ECS_SECURITY_GROUPS
   API_URL WEB_URL
 Optional:
   ECR_WORKER_REPOSITORY ECS_WORKER_SERVICE ECS_WORKER_TASK_FAMILY
-  CLOUDFRONT_DISTRIBUTION_ID, MIGRATION_COMMAND, DRY_RUN=1
+  CLOUDFRONT_DISTRIBUTION_ID, RUN_DB_MIGRATIONS=0, MIGRATION_CONTAINER_NAME, MIGRATION_ASSIGN_PUBLIC_IP, DRY_RUN=1
 
 Required env for rollback:
   AWS_REGION ECS_CLUSTER ECS_API_SERVICE ECS_WEB_SERVICE
@@ -154,6 +158,46 @@ PYJSON
   rm -f "$raw"
 }
 
+run_migration_task() {
+  if [[ "$RUN_DB_MIGRATIONS" == "0" ]]; then
+    log "skipping migrations because RUN_DB_MIGRATIONS=0"
+    return 0
+  fi
+  require_env MIGRATION_TASK_DEFINITION ECS_SUBNETS ECS_SECURITY_GROUPS
+  log "starting SQLx migration task before service rollout: ${MIGRATION_COMMAND}"
+  local network_config task_arn status exit_code reason stopped_reason
+  network_config="awsvpcConfiguration={subnets=[$ECS_SUBNETS],securityGroups=[$ECS_SECURITY_GROUPS],assignPublicIp=$MIGRATION_ASSIGN_PUBLIC_IP}"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "+ aws --region $AWS_REGION ecs run-task --cluster $ECS_CLUSTER --task-definition $MIGRATION_TASK_DEFINITION --launch-type FARGATE --network-configuration $network_config"
+    log "SQLx migrations succeeded: task=dry-run-${GIT_SHA} status=STOPPED exit=0"
+    return 0
+  fi
+  task_arn="$(aws --region "$AWS_REGION" ecs run-task \
+    --cluster "$ECS_CLUSTER" \
+    --task-definition "$MIGRATION_TASK_DEFINITION" \
+    --launch-type FARGATE \
+    --network-configuration "$network_config" \
+    --started-by "opengithub-deploy-migration" \
+    --query 'tasks[0].taskArn' \
+    --output text)"
+  if [[ -z "$task_arn" || "$task_arn" == "None" ]]; then
+    fatal "failed to start migration task"
+  fi
+  log "migration task started: $task_arn"
+  log "waiting for migration task to stop; CloudWatch logs use the migration task log group and ecs/migration stream prefix"
+  aws --region "$AWS_REGION" ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
+  status="$(aws --region "$AWS_REGION" ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" --query "tasks[0].containers[?name=='$MIGRATION_CONTAINER_NAME'].lastStatus | [0]" --output text)"
+  exit_code="$(aws --region "$AWS_REGION" ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" --query "tasks[0].containers[?name=='$MIGRATION_CONTAINER_NAME'].exitCode | [0]" --output text)"
+  reason="$(aws --region "$AWS_REGION" ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" --query "tasks[0].containers[?name=='$MIGRATION_CONTAINER_NAME'].reason | [0]" --output text)"
+  stopped_reason="$(aws --region "$AWS_REGION" ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" --query 'tasks[0].stoppedReason' --output text)"
+  if [[ "$exit_code" == "0" ]]; then
+    log "SQLx migrations succeeded: task=$task_arn status=$status exit=$exit_code"
+    return 0
+  fi
+  log "SQLx migrations failed: task=$task_arn status=$status exit=$exit_code reason=${reason:-none} stoppedReason=${stopped_reason:-none}"
+  fatal "blocking service rollout because database migrations did not complete successfully"
+}
+
 register_task() {
   local family="$1" image="$2" tmp arn
   tmp="$(mktemp)"
@@ -165,7 +209,7 @@ register_task() {
 }
 
 deploy() {
-  require_env AWS_REGION AWS_ACCOUNT_ID ECR_API_REPOSITORY ECR_WEB_REPOSITORY ECS_CLUSTER ECS_API_SERVICE ECS_WEB_SERVICE ECS_API_TASK_FAMILY ECS_WEB_TASK_FAMILY API_URL WEB_URL
+  require_env AWS_REGION AWS_ACCOUNT_ID ECR_API_REPOSITORY ECR_WEB_REPOSITORY ECR_MIGRATION_REPOSITORY ECS_CLUSTER ECS_API_SERVICE ECS_WEB_SERVICE ECS_API_TASK_FAMILY ECS_WEB_TASK_FAMILY MIGRATION_TASK_DEFINITION ECS_SUBNETS ECS_SECURITY_GROUPS API_URL WEB_URL
   log "starting deploy environment=${ENVIRONMENT_ARG} git_sha=${GIT_SHA} dry_run=${DRY_RUN}"
   log "logging in to ECR registry ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -173,14 +217,14 @@ deploy() {
   else
     aws --region "$AWS_REGION" ecr get-login-password | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
   fi
-  local api_image web_image worker_image api_task web_task worker_task
+  local api_image web_image migration_image worker_image api_task web_task worker_task
   api_image="$(build_and_push api Dockerfile.api "$ECR_API_REPOSITORY")"
   web_image="$(build_and_push web Dockerfile.web "$ECR_WEB_REPOSITORY")"
+  migration_image="$(build_and_push migration Dockerfile.migration "$ECR_MIGRATION_REPOSITORY")"
   if [[ -n "${ECR_WORKER_REPOSITORY:-}" ]]; then
     worker_image="$(build_and_push worker Dockerfile.worker "$ECR_WORKER_REPOSITORY")"
   fi
-  log "running migrations before service rollout: ${MIGRATION_COMMAND}"
-  if [[ "$DRY_RUN" == "1" ]]; then log "+ ${MIGRATION_COMMAND}"; else (cd "$ROOT_DIR" && eval "$MIGRATION_COMMAND"); fi
+  run_migration_task
   api_task="$(register_task "$ECS_API_TASK_FAMILY" "$api_image")"
   web_task="$(register_task "$ECS_WEB_TASK_FAMILY" "$web_image")"
   if [[ -n "${worker_image:-}" ]]; then

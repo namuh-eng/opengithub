@@ -12,11 +12,15 @@ const baseEnv: NodeJS.ProcessEnv = {
   AWS_ACCOUNT_ID: "123456789012",
   ECR_API_REPOSITORY: "opengithub-api",
   ECR_WEB_REPOSITORY: "opengithub-web",
+  ECR_MIGRATION_REPOSITORY: "opengithub-migration",
   ECS_CLUSTER: "opengithub-staging",
   ECS_API_SERVICE: "api",
   ECS_WEB_SERVICE: "web",
   ECS_API_TASK_FAMILY: "opengithub-api",
   ECS_WEB_TASK_FAMILY: "opengithub-web",
+  MIGRATION_TASK_DEFINITION: "opengithub-migration",
+  ECS_SUBNETS: "subnet-1,subnet-2",
+  ECS_SECURITY_GROUPS: "sg-1",
   API_URL: "https://api.staging.example.com",
   WEB_URL: "https://staging.example.com",
   GIT_SHA: "abc123def456",
@@ -42,6 +46,9 @@ describe("scripts/deploy.sh", () => {
     expect(result.combined).toContain(
       "sqlx migrate run --source crates/api/migrations",
     );
+    expect(result.combined).toContain("Dockerfile.migration");
+    expect(result.combined).toContain("ecs run-task");
+    expect(result.combined).toContain("SQLx migrations succeeded");
     expect(result.combined).toContain("ecs wait services-stable");
     expect(result.combined).toContain("api image digest: dry-run-abc123def456");
   });

@@ -3,6 +3,7 @@ locals {
   ses_identity_domain = coalesce(var.ses_identity_domain, var.domain_name)
   api_image           = var.api_image != "" ? var.api_image : "public.ecr.aws/docker/library/nginx:stable-alpine"
   web_image           = var.web_image != "" ? var.web_image : "public.ecr.aws/docker/library/nginx:stable-alpine"
+  migration_image     = var.migration_image != "" ? var.migration_image : local.api_image
   worker_enabled      = var.worker_image != "" && var.worker_desired_count > 0
   tags = {
     Project     = var.project
@@ -180,6 +181,12 @@ resource "aws_ecr_repository" "worker" {
   image_scanning_configuration { scan_on_push = true }
 }
 
+resource "aws_ecr_repository" "migration" {
+  name                 = "${local.name}/migration"
+  image_tag_mutability = "IMMUTABLE"
+  image_scanning_configuration { scan_on_push = true }
+}
+
 resource "aws_s3_bucket" "storage" {
   bucket = "${local.name}-storage-${data.aws_caller_identity.current.account_id}"
 }
@@ -265,7 +272,7 @@ resource "aws_ssm_parameter" "ses_domain" {
 }
 
 resource "aws_cloudwatch_log_group" "app" {
-  for_each          = toset(["api", "web", "worker"])
+  for_each          = toset(["api", "web", "worker", "migration"])
   name              = "/ecs/${local.name}/${each.key}"
   retention_in_days = 30
 }
@@ -304,6 +311,11 @@ resource "aws_iam_role" "web_task" {
 
 resource "aws_iam_role" "worker_task" {
   name               = "${local.name}-worker-task"
+  assume_role_policy = aws_iam_role.api_task.assume_role_policy
+}
+
+resource "aws_iam_role" "migration_task" {
+  name               = "${local.name}-migration-task"
   assume_role_policy = aws_iam_role.api_task.assume_role_policy
 }
 
@@ -441,6 +453,36 @@ resource "aws_lb_listener_rule" "api" {
 }
 
 resource "aws_ecs_cluster" "main" { name = local.name }
+
+
+resource "aws_ecs_task_definition" "migration" {
+  family                   = "${local.name}-migration"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.migration_cpu
+  memory                   = var.migration_memory
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.migration_task.arn
+  container_definitions = jsonencode([{
+    name      = "migration"
+    image     = local.migration_image
+    essential = true
+    command   = ["sqlx", "migrate", "run", "--source", "crates/api/migrations"]
+    secrets   = [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }]
+    environment = [
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "SQLX_MIGRATIONS_SOURCE", value = "crates/api/migrations" }
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.app["migration"].name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "ecs"
+      }
+    }
+  }])
+}
 
 resource "aws_ecs_task_definition" "api" {
   family                   = "${local.name}-api"

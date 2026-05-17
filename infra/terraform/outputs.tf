@@ -18,7 +18,8 @@ output "ecr_repositories" {
   value = {
     api    = aws_ecr_repository.api.repository_url
     web    = aws_ecr_repository.web.repository_url
-    worker = aws_ecr_repository.worker.repository_url
+    worker    = aws_ecr_repository.worker.repository_url
+    migration = aws_ecr_repository.migration.repository_url
   }
 }
 
@@ -44,4 +45,20 @@ output "ses_dns_records" {
     verification_txt_value = aws_ses_domain_identity.main.verification_token
     dkim_tokens            = aws_ses_domain_dkim.main.dkim_tokens
   }
+}
+
+
+output "migration_run_task" {
+  description = "Inputs for the pre-rollout ECS RunTask that applies SQLx migrations against RDS."
+  value = {
+    cluster             = aws_ecs_cluster.main.name
+    task_definition     = aws_ecs_task_definition.migration.arn
+    container_name      = "migration"
+    subnet_ids          = aws_subnet.private[*].id
+    security_group_ids  = [aws_security_group.ecs.id]
+    log_group           = aws_cloudwatch_log_group.app["migration"].name
+    command             = "sqlx migrate run --source crates/api/migrations"
+    database_secret_arn = aws_secretsmanager_secret.database_url.arn
+  }
+  sensitive = true
 }
