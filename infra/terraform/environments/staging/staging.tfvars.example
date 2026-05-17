@@ -8,6 +8,7 @@ domain_name  = "opengithub-staging.example.com"
 # api_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/api@sha256:..."
 # web_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/web@sha256:..."
 # worker_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/worker@sha256:..."
+# migration_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/migration@sha256:..."
 
 rds_instance_class        = "db.t4g.micro"
 rds_allocated_storage    = 20

@@ -27,6 +27,8 @@ static_checks() {
   grep -q 'aws_cloudfront_distribution' "$TF_DIR/main.tf"
   grep -q 'aws_ses_domain_identity' "$TF_DIR/main.tf"
   grep -q 'aws_ecr_repository' "$TF_DIR/main.tf"
+  grep -q 'aws_ecs_task_definition" "migration' "$TF_DIR/main.tf"
+  grep -q '"sqlx", "migrate", "run", "--source", "crates/api/migrations"' "$TF_DIR/main.tf"
 }
 
 case "$CMD" in
