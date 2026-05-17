@@ -1,0 +1,50 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: staging or production
+        required: true
+        default: staging
+      action:
+        description: deploy or rollback
+        required: true
+        default: deploy
+      rollback_api_task_definition:
+        description: Previous API task definition ARN for rollback
+        required: false
+      rollback_web_task_definition:
+        description: Previous web task definition ARN for rollback
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy or rollback ECS
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
+          ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+          ECS_WEB_SERVICE: ${{ vars.ECS_WEB_SERVICE }}
+          ECS_API_TASK_FAMILY: ${{ vars.ECS_API_TASK_FAMILY }}
+          ECS_WEB_TASK_FAMILY: ${{ vars.ECS_WEB_TASK_FAMILY }}
+          API_URL: ${{ vars.API_URL }}
+          WEB_URL: ${{ vars.WEB_URL }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          ROLLBACK_API_TASK_DEFINITION: ${{ inputs.rollback_api_task_definition }}
+          ROLLBACK_WEB_TASK_DEFINITION: ${{ inputs.rollback_web_task_definition }}
+        run: scripts/deploy.sh "${{ inputs.action }}" "${{ inputs.environment }}"
