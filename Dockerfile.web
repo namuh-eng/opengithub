@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+
+FROM node:24-bookworm-slim AS deps
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+FROM node:24-bookworm-slim AS builder
+WORKDIR /app/web
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=deps /app/web/node_modules ./node_modules
+COPY web ./
+RUN npm run build
+
+FROM node:24-bookworm-slim AS runtime
+WORKDIR /app/web
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3015 \
+    HOSTNAME=0.0.0.0
+
+RUN groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs --home-dir /app/web --shell /usr/sbin/nologin nextjs
+
+COPY --from=builder --chown=nextjs:nodejs /app/web/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/web/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3015
+CMD ["node", "server.js"]
