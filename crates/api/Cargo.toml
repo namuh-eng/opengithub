@@ -8,6 +8,10 @@ license.workspace = true
 name = "api"
 path = "src/main.rs"
 
+[[bin]]
+name = "worker"
+path = "src/bin/worker.rs"
+
 [dependencies]
 axum.workspace = true
 tokio.workspace = true

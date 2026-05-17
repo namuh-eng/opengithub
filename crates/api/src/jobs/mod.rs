@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub mod pages;
 pub mod repository_imports;
 pub mod webhooks;
+pub mod worker;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct JobLease {
@@ -79,6 +80,43 @@ pub async fn acquire_job_lease(
     )
     .bind(queue)
     .bind(lease_key)
+    .bind(worker_id)
+    .bind(lease_seconds)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(job_lease_from_row))
+}
+
+pub async fn acquire_next_job_lease(
+    pool: &PgPool,
+    queue: &str,
+    worker_id: &str,
+    lease_seconds: i64,
+) -> Result<Option<JobLease>, JobLeaseError> {
+    let row = sqlx::query(
+        r#"
+        WITH candidate AS (
+            SELECT id
+            FROM job_leases
+            WHERE queue = $1
+              AND completed_at IS NULL
+              AND (locked_until IS NULL OR locked_until <= now() OR locked_by = $2)
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        )
+        UPDATE job_leases
+        SET locked_by = $2,
+            locked_until = now() + ($3::bigint * interval '1 second'),
+            attempts = attempts + 1,
+            last_error = NULL
+        WHERE id = (SELECT id FROM candidate)
+        RETURNING id, queue, lease_key, payload, locked_by, locked_until, attempts,
+                  last_error, completed_at, created_at, updated_at
+        "#,
+    )
+    .bind(queue)
     .bind(worker_id)
     .bind(lease_seconds)
     .fetch_optional(pool)
