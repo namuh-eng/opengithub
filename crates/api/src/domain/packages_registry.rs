@@ -5,17 +5,18 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, QueryBuilder, Row};
-use std::path::{Path, PathBuf};
-use tokio::{
-    fs::{self, OpenOptions},
-    io::AsyncWriteExt,
-};
+use std::{io, path::PathBuf};
 use uuid::Uuid;
 
-use crate::domain::{
-    repositories::RepositoryVisibility,
-    tokens::{hash_personal_access_token, verify_personal_access_token, PersonalAccessTokenError},
-    webhooks::{enqueue_repository_webhook_event, WebhookError},
+use crate::{
+    domain::{
+        repositories::RepositoryVisibility,
+        tokens::{
+            hash_personal_access_token, verify_personal_access_token, PersonalAccessTokenError,
+        },
+        webhooks::{enqueue_repository_webhook_event, WebhookError},
+    },
+    storage::{ObjectStorage, StorageError},
 };
 
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
@@ -357,20 +358,23 @@ pub async fn start_blob_upload(
     let package = require_package_write(pool, namespace, image, auth).await?;
     let upload_id = Uuid::new_v4();
     let storage_key = upload_storage_key(package.id, upload_id);
-    let path = registry_storage_path(&storage_key)?;
-    ensure_parent_dir(&path).await?;
-    fs::write(&path, []).await?;
+    let storage = registry_storage()?;
+    storage
+        .put(&storage_key, Vec::new())
+        .await
+        .map_err(storage_error)?;
     sqlx::query(
         r#"
         INSERT INTO package_registry_uploads (
             id, package_id, actor_user_id, storage_kind, storage_key, status, expires_at
         )
-        VALUES ($1, $2, $3, 'local', $4, 'active', $5)
+        VALUES ($1, $2, $3, $4, $5, 'active', $6)
         "#,
     )
     .bind(upload_id)
     .bind(package.id)
     .bind(auth.actor_user_id())
+    .bind(storage.storage_kind())
     .bind(&storage_key)
     .bind(Utc::now() + Duration::hours(1))
     .execute(pool)
@@ -407,16 +411,14 @@ pub async fn append_blob_upload(
     auth: &RegistryAuth,
 ) -> Result<RegistryUploadProgress, RegistryError> {
     let upload = active_upload(pool, namespace, image, upload_id, auth).await?;
-    let path = registry_storage_path(&upload.storage_key)?;
-    ensure_parent_dir(&path).await?;
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .await?;
-    file.write_all(chunk).await?;
-    file.flush().await?;
-    let size = fs::metadata(&path).await?.len() as i64;
+    let storage = registry_storage()?;
+    let mut bytes: Vec<u8> = (storage.get(&upload.storage_key).await).unwrap_or_default();
+    bytes.extend_from_slice(chunk);
+    let size = bytes.len() as i64;
+    storage
+        .put(&upload.storage_key, bytes)
+        .await
+        .map_err(storage_error)?;
     sqlx::query("UPDATE package_registry_uploads SET size_bytes = $1 WHERE id = $2")
         .bind(size)
         .bind(upload_id)
@@ -446,19 +448,24 @@ pub async fn complete_blob_upload(
         append_blob_upload(pool, namespace, image, upload_id, final_chunk, auth).await?;
     }
     let upload = active_upload(pool, namespace, image, upload_id, auth).await?;
-    let path = registry_storage_path(&upload.storage_key)?;
-    let bytes = fs::read(&path).await?;
+    let storage = registry_storage()?;
+    let bytes = storage
+        .get(&upload.storage_key)
+        .await
+        .map_err(storage_error)?;
     let actual_digest = sha256_digest(&bytes);
     if actual_digest != digest {
         return Err(RegistryError::DigestMismatch);
     }
     let storage_key = blob_storage_key(upload.package_id, &digest);
-    let final_path = registry_storage_path(&storage_key)?;
-    ensure_parent_dir(&final_path).await?;
-    if fs::rename(&path, &final_path).await.is_err() {
-        fs::copy(&path, &final_path).await?;
-        fs::remove_file(&path).await?;
-    }
+    storage
+        .put(&storage_key, bytes.clone())
+        .await
+        .map_err(storage_error)?;
+    storage
+        .delete(&upload.storage_key)
+        .await
+        .map_err(storage_error)?;
     let size = bytes.len() as i64;
     sqlx::query(
         r#"
@@ -478,7 +485,7 @@ pub async fn complete_blob_upload(
         INSERT INTO package_blobs (
             package_id, digest, media_type, size_bytes, byte_size, storage_kind, storage_key
         )
-        VALUES ($1, $2, 'application/octet-stream', $3, $3, 'local', $4)
+        VALUES ($1, $2, 'application/octet-stream', $3, $3, $4, $5)
         ON CONFLICT (package_id, lower(digest)) DO UPDATE
         SET size_bytes = EXCLUDED.size_bytes,
             byte_size = EXCLUDED.byte_size,
@@ -489,6 +496,7 @@ pub async fn complete_blob_upload(
     .bind(upload.package_id)
     .bind(&digest)
     .bind(size)
+    .bind(storage.storage_kind())
     .bind(&storage_key)
     .execute(pool)
     .await?;
@@ -531,7 +539,7 @@ pub async fn cancel_blob_upload(
     .bind(upload_id)
     .execute(pool)
     .await?;
-    let _ = fs::remove_file(registry_storage_path(&upload.storage_key)?).await;
+    let _ = registry_storage()?.delete(&upload.storage_key).await;
     audit_registry_event(
         pool,
         RegistryAuditEvent {
@@ -763,7 +771,10 @@ pub async fn read_registry_blob(
         return Err(RegistryError::BlobNotFound);
     };
     let storage_key: String = row.try_get("storage_key")?;
-    let bytes = fs::read(registry_storage_path(&storage_key)?).await?;
+    let bytes = registry_storage()?
+        .get(&storage_key)
+        .await
+        .map_err(storage_error)?;
     let package_version_id: Option<Uuid> = row.try_get("package_version_id")?;
     record_download(pool, package.id, package_version_id, auth.actor_user_id()).await?;
     audit_registry_event(
@@ -1440,7 +1451,10 @@ async fn read_package_blob_json(
     let Some(storage_key) = storage_key else {
         return Ok(None);
     };
-    let bytes = fs::read(registry_storage_path(&storage_key)?).await?;
+    let bytes = registry_storage()?
+        .get(&storage_key)
+        .await
+        .map_err(storage_error)?;
     Ok(serde_json::from_slice(&bytes).ok())
 }
 
@@ -1737,13 +1751,12 @@ fn registry_storage_root() -> PathBuf {
         .unwrap_or_else(|_| std::env::temp_dir().join("opengithub-package-registry"))
 }
 
-fn registry_storage_path(storage_key: &str) -> Result<PathBuf, RegistryError> {
-    if storage_key.contains("..") {
-        return Err(RegistryError::InvalidReference(
-            "storage key may not contain parent traversal".to_owned(),
-        ));
-    }
-    Ok(registry_storage_root().join(storage_key))
+fn registry_storage() -> Result<ObjectStorage, RegistryError> {
+    ObjectStorage::from_env_with_local(registry_storage_root()).map_err(storage_error)
+}
+
+fn storage_error(error: StorageError) -> RegistryError {
+    RegistryError::Storage(io::Error::other(error.to_string()))
 }
 
 fn upload_storage_key(package_id: Uuid, upload_id: Uuid) -> String {
@@ -1752,13 +1765,6 @@ fn upload_storage_key(package_id: Uuid, upload_id: Uuid) -> String {
 
 fn blob_storage_key(package_id: Uuid, digest: &str) -> String {
     format!("blobs/{package_id}/{}", digest.replace(':', "-"))
-}
-
-async fn ensure_parent_dir(path: &Path) -> Result<(), RegistryError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).await?;
-    }
-    Ok(())
 }
 
 fn sha256_digest(bytes: &[u8]) -> String {

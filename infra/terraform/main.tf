@@ -311,6 +311,7 @@ resource "aws_iam_role_policy" "api_task" {
   role = aws_iam_role.api_task.id
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.storage.arn}/api/*" },
+    { Effect = "Allow", Action = ["s3:ListBucket"], Resource = aws_s3_bucket.storage.arn, Condition = { StringLike = { "s3:prefix" = ["api/*"] } } },
     { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = aws_ses_domain_identity.main.arn }
   ] })
 }
@@ -318,7 +319,8 @@ resource "aws_iam_role_policy" "api_task" {
 resource "aws_iam_role_policy" "worker_task" {
   role = aws_iam_role.worker_task.id
   policy = jsonencode({ Version = "2012-10-17", Statement = [
-    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"], Resource = [aws_s3_bucket.storage.arn, "${aws_s3_bucket.storage.arn}/worker/*"] },
+    { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.storage.arn}/worker/*" },
+    { Effect = "Allow", Action = ["s3:ListBucket"], Resource = aws_s3_bucket.storage.arn, Condition = { StringLike = { "s3:prefix" = ["worker/*"] } } },
     { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = aws_ses_domain_identity.main.arn }
   ] })
 }
@@ -450,7 +452,7 @@ resource "aws_ecs_task_definition" "api" {
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.api_task.arn
-  container_definitions    = jsonencode([{ name = "api", image = local.api_image, essential = true, portMappings = [{ containerPort = 8080, protocol = "tcp" }], secrets = concat([{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], [for k, s in aws_secretsmanager_secret.app : { name = k, valueFrom = s.arn }]), environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "SES_DOMAIN", value = local.ses_identity_domain }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["api"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
+  container_definitions    = jsonencode([{ name = "api", image = local.api_image, essential = true, portMappings = [{ containerPort = 8080, protocol = "tcp" }], secrets = concat([{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], [for k, s in aws_secretsmanager_secret.app : { name = k, valueFrom = s.arn }]), environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "OPENGITHUB_BLOB_STORAGE", value = "s3" }, { name = "OPENGITHUB_S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "OPENGITHUB_S3_PREFIX", value = "api" }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "SES_DOMAIN", value = local.ses_identity_domain }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["api"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
 }
 
 resource "aws_ecs_task_definition" "web" {
@@ -473,7 +475,7 @@ resource "aws_ecs_task_definition" "worker" {
   memory                   = var.worker_memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.worker_task.arn
-  container_definitions    = jsonencode([{ name = "worker", image = var.worker_image, essential = true, secrets = [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["worker"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
+  container_definitions    = jsonencode([{ name = "worker", image = var.worker_image, essential = true, secrets = [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "OPENGITHUB_BLOB_STORAGE", value = "s3" }, { name = "OPENGITHUB_S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "OPENGITHUB_S3_PREFIX", value = "worker" }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["worker"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
 }
 
 resource "aws_ecs_service" "api" {
