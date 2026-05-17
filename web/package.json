@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3015",
     "build": "next build",
-    "start": "next start -p 3015",
+    "start": "node scripts/validate-production-env.mjs && next start -p ${PORT:-3015}",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "biome check .",

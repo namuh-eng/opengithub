@@ -10,12 +10,15 @@ Authoritative stack reference for the build loop. Read this before running any c
 - **Cloud**: AWS — ECS Fargate (Rust API), RDS Postgres, S3, SES, CloudFront, ECR. DNS on Cloudflare (zone `namuh.co`).
 
 ## Auth env contract
-- `APP_URL` / `PUBLIC_APP_URL`: browser-facing Next.js origin, local default `http://localhost:3015`.
-- `API_URL`: Rust API origin used for OAuth callbacks, local default `http://localhost:3016`.
-- `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`: Google OAuth client credentials.
-- `SESSION_SECRET`: signing secret for OAuth state and the later session cookie.
+- Full production contract: `docs/production-runtime-env.md`.
+- `APP_ENV=staging|production` (or `ENVIRONMENT`) enables fail-fast production validation.
+- `APP_URL` / `PUBLIC_APP_URL`: browser-facing Next.js origin, local default `http://localhost:3015`; HTTPS required in staging/production.
+- `API_URL`: Rust API origin used for OAuth callbacks, local default `http://localhost:3016`; HTTPS required in staging/production.
+- `PORT`: Rust API listen port; defaults to `3016`. Web `npm start` uses `PORT`, defaulting to `3015`.
+- `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`: Google OAuth client credentials; required in staging/production.
+- `SESSION_SECRET`: signing secret for OAuth state and the later session cookie; required in staging/production.
 - `SESSION_COOKIE_NAME`: defaults to `__Host-session`.
-- `SESSION_COOKIE_SECURE`: defaults to `false` for localhost and `true` for non-local API URLs.
+- `SESSION_COOKIE_SECURE`: defaults to `false` for localhost and `true` for deployed environments; must be `true` in staging/production.
 
 ## Git transport env contract (git-001)
 - `OPENGITHUB_GIT_STORAGE_DIR`: local bare-repository root for development and tests. Defaults to `${TMPDIR}/opengithub-git-storage`.
