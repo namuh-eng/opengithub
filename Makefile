@@ -76,7 +76,7 @@ format:
 test: test-header
 	@. ./hack/run_silent.sh && \
 	if [ -n "$(HAS_CARGO)" ]; then \
-	  run_silent "Cargo tests passed" "$(CARGO_LOCKED) test --workspace --all-targets"; \
+	  run_silent "Cargo tests passed" "$(CARGO_LOCKED) test --workspace --all-targets -- --test-threads=1"; \
 	fi && \
 	if [ -n "$(HAS_WEB)" ]; then \
 	  run_silent_with_test_count "Web tests passed" "cd web && npx vitest run" "vitest"; \

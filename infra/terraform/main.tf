@@ -1,10 +1,11 @@
 locals {
   name                = "${var.project}-${var.environment}"
-  ses_identity_domain = coalesce(var.ses_identity_domain, var.domain_name)
+  ses_identity_domain = var.ses_identity_domain != "" ? var.ses_identity_domain : var.domain_name
   api_image           = var.api_image != "" ? var.api_image : "public.ecr.aws/docker/library/nginx:stable-alpine"
   web_image           = var.web_image != "" ? var.web_image : "public.ecr.aws/docker/library/nginx:stable-alpine"
   migration_image     = var.migration_image != "" ? var.migration_image : local.api_image
   worker_enabled      = var.worker_image != "" && var.worker_desired_count > 0
+  ses_from_address    = var.ses_from_address != "" ? var.ses_from_address : "noreply@${local.ses_identity_domain}"
   tags = {
     Project     = var.project
     Environment = var.environment
@@ -271,6 +272,19 @@ resource "aws_ssm_parameter" "ses_domain" {
   value = local.ses_identity_domain
 }
 
+resource "aws_ssm_parameter" "ses_from_address" {
+  name  = "/${local.name}/EMAIL_FROM_ADDRESS"
+  type  = "String"
+  value = local.ses_from_address
+}
+
+resource "aws_ssm_parameter" "ses_configuration_set" {
+  count = var.ses_configuration_set == "" ? 0 : 1
+  name  = "/${local.name}/SES_CONFIGURATION_SET"
+  type  = "String"
+  value = var.ses_configuration_set
+}
+
 resource "aws_cloudwatch_log_group" "app" {
   for_each          = toset(["api", "web", "worker", "migration"])
   name              = "/ecs/${local.name}/${each.key}"
@@ -294,7 +308,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue", "ssm:GetParameters", "ssm:GetParameter"]
-      Resource = concat([aws_secretsmanager_secret.database_url.arn], [for s in aws_secretsmanager_secret.app : s.arn], [aws_ssm_parameter.storage_bucket.arn, aws_ssm_parameter.ses_domain.arn])
+      Resource = concat([aws_secretsmanager_secret.database_url.arn], [for s in aws_secretsmanager_secret.app : s.arn], [aws_ssm_parameter.storage_bucket.arn, aws_ssm_parameter.ses_domain.arn, aws_ssm_parameter.ses_from_address.arn], [for p in aws_ssm_parameter.ses_configuration_set : p.arn])
     }]
   })
 }
@@ -324,7 +338,7 @@ resource "aws_iam_role_policy" "api_task" {
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.storage.arn}/api/*" },
     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = aws_s3_bucket.storage.arn, Condition = { StringLike = { "s3:prefix" = ["api/*"] } } },
-    { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = aws_ses_domain_identity.main.arn }
+    { Effect = "Allow", Action = ["ses:SendEmail"], Resource = aws_ses_domain_identity.main.arn, Condition = { StringLike = { "ses:FromAddress" = local.ses_from_address } } }
   ] })
 }
 
@@ -333,7 +347,7 @@ resource "aws_iam_role_policy" "worker_task" {
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.storage.arn}/worker/*" },
     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = aws_s3_bucket.storage.arn, Condition = { StringLike = { "s3:prefix" = ["worker/*"] } } },
-    { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = aws_ses_domain_identity.main.arn }
+    { Effect = "Allow", Action = ["ses:SendEmail"], Resource = aws_ses_domain_identity.main.arn, Condition = { StringLike = { "ses:FromAddress" = local.ses_from_address } } }
   ] })
 }
 
@@ -494,7 +508,7 @@ resource "aws_ecs_task_definition" "api" {
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.api_task.arn
-  container_definitions    = jsonencode([{ name = "api", image = local.api_image, essential = true, portMappings = [{ containerPort = 8080, protocol = "tcp" }], secrets = concat([{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], [for k, s in aws_secretsmanager_secret.app : { name = k, valueFrom = s.arn }]), environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "OPENGITHUB_BLOB_STORAGE", value = "s3" }, { name = "OPENGITHUB_S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "OPENGITHUB_S3_PREFIX", value = "api" }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "SES_DOMAIN", value = local.ses_identity_domain }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["api"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
+  container_definitions    = jsonencode([{ name = "api", image = local.api_image, essential = true, portMappings = [{ containerPort = 8080, protocol = "tcp" }], secrets = concat([{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], [for k, s in aws_secretsmanager_secret.app : { name = k, valueFrom = s.arn }]), environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "OPENGITHUB_BLOB_STORAGE", value = "s3" }, { name = "OPENGITHUB_S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "OPENGITHUB_S3_PREFIX", value = "api" }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "SES_DOMAIN", value = local.ses_identity_domain }, { name = "EMAIL_DELIVERY_PROVIDER", value = "ses" }, { name = "EMAIL_FROM_ADDRESS", value = local.ses_from_address }, { name = "SES_CONFIGURATION_SET", value = var.ses_configuration_set }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["api"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
 }
 
 resource "aws_ecs_task_definition" "web" {
@@ -517,7 +531,7 @@ resource "aws_ecs_task_definition" "worker" {
   memory                   = var.worker_memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.worker_task.arn
-  container_definitions    = jsonencode([{ name = "worker", image = var.worker_image, essential = true, secrets = [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "OPENGITHUB_BLOB_STORAGE", value = "s3" }, { name = "OPENGITHUB_S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "OPENGITHUB_S3_PREFIX", value = "worker" }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["worker"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
+  container_definitions    = jsonencode([{ name = "worker", image = var.worker_image, essential = true, secrets = [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }], environment = [{ name = "AWS_REGION", value = var.aws_region }, { name = "OPENGITHUB_BLOB_STORAGE", value = "s3" }, { name = "OPENGITHUB_S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "OPENGITHUB_S3_PREFIX", value = "worker" }, { name = "S3_BUCKET", value = aws_s3_bucket.storage.bucket }, { name = "SES_DOMAIN", value = local.ses_identity_domain }, { name = "EMAIL_DELIVERY_PROVIDER", value = "ses" }, { name = "EMAIL_FROM_ADDRESS", value = local.ses_from_address }, { name = "SES_CONFIGURATION_SET", value = var.ses_configuration_set }], logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.app["worker"].name, awslogs-region = var.aws_region, awslogs-stream-prefix = "ecs" } } }])
 }
 
 resource "aws_ecs_service" "api" {
@@ -576,6 +590,10 @@ resource "aws_ses_domain_identity" "main" {
 
 resource "aws_ses_domain_dkim" "main" {
   domain = aws_ses_domain_identity.main.domain
+}
+
+resource "aws_ses_email_identity" "sender" {
+  email = local.ses_from_address
 }
 
 resource "aws_route53_record" "ses_verification" {

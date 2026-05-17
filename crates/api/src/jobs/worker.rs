@@ -6,8 +6,8 @@ use tokio::time::{sleep, timeout};
 use uuid::Uuid;
 
 use crate::jobs::{
-    acquire_next_job_lease, complete_job_lease, fail_job_lease, repository_imports, webhooks,
-    JobLease, JobLeaseError,
+    acquire_next_job_lease, complete_job_lease, email_delivery, fail_job_lease, repository_imports,
+    webhooks, JobLease, JobLeaseError,
 };
 
 pub const REPOSITORY_IMPORT_QUEUE: &str = "repository_import";
@@ -64,6 +64,8 @@ pub enum WorkerError {
     RepositoryImport(#[from] repository_imports::RepositoryImportWorkerError),
     #[error(transparent)]
     Webhook(#[from] webhooks::WebhookDeliveryWorkerError),
+    #[error(transparent)]
+    EmailDelivery(#[from] email_delivery::EmailDeliveryError),
 }
 
 pub async fn run_until_shutdown(
@@ -114,13 +116,10 @@ pub async fn run_once(pool: &PgPool, config: &WorkerConfig) -> Result<WorkerRunS
             idle: false,
         });
     }
-    if process_next_generic_queue(
-        pool,
-        EMAIL_FANOUT_QUEUE,
-        &config.worker_id,
-        config.lease_seconds,
-    )
-    .await?
+    let email_config = email_delivery::EmailDeliveryConfig::from_env();
+    if email_delivery::run_next_email_delivery(pool, &config.worker_id, &email_config)
+        .await?
+        .is_some()
     {
         return Ok(WorkerRunStats {
             processed: 1,
