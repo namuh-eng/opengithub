@@ -27,6 +27,10 @@ Required in staging/production:
 | `OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR` | task env | Local package blob root for development/tests only. Ignored for production S3 storage except as local fallback root. |
 | `OPENAI_API_KEY` | Secrets Manager/SSM | Required when AI features are enabled. |
 | `ACTIONS_SECRETS_KEY` | Secrets Manager/SSM | Required when Actions secret storage is enabled. |
+| `EMAIL_DELIVERY_PROVIDER` | task env | Must be `ses` in staging/production. Local/test may use `noop` or `log`. |
+| `EMAIL_FROM_ADDRESS` | task env / SSM | Verified SES sender, e.g. `OpenGitHub <noreply@example.com>` or `noreply@example.com`. Never a secret. |
+| `AWS_REGION` | task env | Region where SES identity is verified and where the ECS task runs. |
+| `SES_CONFIGURATION_SET` | task env / SSM | Optional SES configuration set name for delivery metrics/events. |
 
 Boot behavior: `crates/api/src/main.rs` validates production configuration before binding the listener. Missing required values, non-HTTPS deployed URLs, invalid `PORT`, or `SESSION_COOKIE_SECURE=false` terminate startup with a clear error.
 
@@ -63,6 +67,20 @@ Workers should receive the same server-side runtime contract as the API task, ex
 - `SESSION_SECRET`
 - `SESSION_COOKIE_SECURE=true`
 - feature secrets used by jobs (`OPENAI_API_KEY`, `ACTIONS_SECRETS_KEY`, storage credentials)
+- `EMAIL_DELIVERY_PROVIDER=ses`
+- `EMAIL_FROM_ADDRESS` verified in SES
+- `AWS_REGION` / optional `SES_CONFIGURATION_SET`
+
+The worker binary processes `email_delivery` jobs from `job_leases` and records every attempt in `email_deliveries`. Provider failures are persisted with redacted messages and leave the lease retryable instead of crashing the worker. To queue and process a staging SES smoke email after migrations:
+
+```bash
+opengithub-worker --send-test-email you@example.com --once
+# or set SES_TEST_RECIPIENT=you@example.com and run opengithub-worker --once
+```
+
+## SES Terraform/IAM contract
+
+`infra/terraform` creates an SES domain identity, DKIM records, and a verified sender identity. When `route53_zone_id` is set, SES verification/DKIM DNS records are managed automatically; otherwise use `terraform output ses_dns_records` to create them manually. Worker/API task roles grant only `ses:SendEmail` against the SES domain identity and constrain `ses:FromAddress` to the configured `ses_from_address`. SES credentials are not stored or exposed by the API; ECS tasks use their IAM task role.
 
 ## Deployment pipeline wiring checklist
 
@@ -72,3 +90,4 @@ Workers should receive the same server-side runtime contract as the API task, ex
 4. Register the Google OAuth callback matching `API_URL`: `${API_URL}/api/auth/google/callback`.
 5. Grant ECS task roles least-privilege S3 access only to their configured prefix (`api/*` for API, `worker/*` for worker).
 6. Run `make build` in CI to verify the Rust release binary and Next.js standalone output.
+7. After SES DNS verification is complete, run the worker smoke command with `--send-test-email` in staging and confirm an `email_deliveries.status = sent` row.

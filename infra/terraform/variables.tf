@@ -33,6 +33,19 @@ variable "ses_identity_domain" {
   default     = ""
 }
 
+
+variable "ses_from_address" {
+  description = "Verified SES sender used by OpenGitHub emails. Defaults to noreply@ses_identity_domain."
+  type        = string
+  default     = ""
+}
+
+variable "ses_configuration_set" {
+  description = "Optional SES configuration set name to attach to sent emails."
+  type        = string
+  default     = ""
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC."
   type        = string

@@ -86,6 +86,9 @@ impl AppConfig {
             "AUTH_GOOGLE_ID",
             "AUTH_GOOGLE_SECRET",
             "DATABASE_URL",
+            "EMAIL_DELIVERY_PROVIDER",
+            "EMAIL_FROM_ADDRESS",
+            "AWS_REGION",
         ] {
             if non_empty_env(name).is_none() {
                 errors.push(format!("{name} is required"));
@@ -101,6 +104,17 @@ impl AppConfig {
         if !uses_https(&self.api_url) {
             errors.push("API_URL must use https in staging/production".to_owned());
         }
+        match std::env::var("EMAIL_DELIVERY_PROVIDER")
+            .ok()
+            .map(|value| value.trim().to_ascii_lowercase())
+        {
+            Some(provider) if provider == "ses" => {}
+            Some(provider) => errors.push(format!(
+                "EMAIL_DELIVERY_PROVIDER must be ses in staging/production, got {provider}"
+            )),
+            None => errors.push("EMAIL_DELIVERY_PROVIDER is required".to_owned()),
+        }
+
         if self.auth.is_none() {
             errors.push(
                 "AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, and SESSION_SECRET must all be configured"
@@ -211,6 +225,11 @@ mod tests {
             "AUTH_GOOGLE_ID",
             "AUTH_GOOGLE_SECRET",
             "DATABASE_URL",
+            "EMAIL_DELIVERY_PROVIDER",
+            "EMAIL_FROM_ADDRESS",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "SES_CONFIGURATION_SET",
             "PORT",
             "OPENGITHUB_BLOB_STORAGE",
             "OPENGITHUB_S3_BUCKET",
@@ -261,6 +280,9 @@ mod tests {
             assert!(error.contains("AUTH_GOOGLE_ID is required"));
             assert!(error.contains("AUTH_GOOGLE_SECRET is required"));
             assert!(error.contains("DATABASE_URL is required"));
+            assert!(error.contains("EMAIL_DELIVERY_PROVIDER is required"));
+            assert!(error.contains("EMAIL_FROM_ADDRESS is required"));
+            assert!(error.contains("AWS_REGION is required"));
             assert!(error.contains("SESSION_COOKIE_SECURE must be true"));
             assert!(error.contains("OPENGITHUB_S3_BUCKET"));
         });
@@ -277,6 +299,9 @@ mod tests {
             env::set_var("AUTH_GOOGLE_ID", "google-id");
             env::set_var("AUTH_GOOGLE_SECRET", "google-secret");
             env::set_var("DATABASE_URL", "postgresql://example");
+            env::set_var("EMAIL_DELIVERY_PROVIDER", "ses");
+            env::set_var("EMAIL_FROM_ADDRESS", "OpenGitHub <noreply@example.com>");
+            env::set_var("AWS_REGION", "us-east-1");
             env::set_var("OPENGITHUB_S3_BUCKET", "opengithub-storage");
 
             let config = AppConfig::from_env().unwrap();
