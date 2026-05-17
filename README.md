@@ -61,6 +61,31 @@ All commands route through `make` — never reach for `cargo`/`npx` directly whe
 - Rust API: `:3016` (exposes `GET /` and `GET /health`)
 - Next.js: `:3015`
 
+## Production Docker smoke tests
+
+Build the production images from the repository root:
+
+```bash
+docker build -f Dockerfile.api -t opengithub-api:local .
+docker build -f Dockerfile.web -t opengithub-web:local .
+```
+
+Smoke the API image on port `3016`:
+
+```bash
+docker run --rm -p 3016:3016 --name opengithub-api-smoke opengithub-api:local
+curl -fsS http://localhost:3016/health
+```
+
+Smoke the web image on port `3015`:
+
+```bash
+docker run --rm -p 3015:3015 --name opengithub-web-smoke opengithub-web:local
+curl -fsSI http://localhost:3015/
+```
+
+Runtime secrets such as `DATABASE_URL`, `SESSION_SECRET`, OAuth credentials, and provider API keys must be injected by the orchestrator at container start time. The Docker build context excludes `.env*` files so local secrets are not baked into either image.
+
 ## Phases
 
 The clone is built by four sequential autonomous loops, all driven by `codex exec`:
