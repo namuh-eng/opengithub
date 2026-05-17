@@ -8,6 +8,8 @@ use sqlx::{PgPool, Row};
 use tokio::{fs, process::Command};
 use uuid::Uuid;
 
+use crate::storage::{ObjectStorage, StorageError};
+
 use super::{
     git_transport::{materialize_bare_repository, GitTransportError},
     repositories::{
@@ -85,23 +87,22 @@ pub async fn ensure_repository_archive(
     let store = materialize_bare_repository(pool, &repository).await?;
     let bare_path = PathBuf::from(store.storage_path);
     let commit_oid = resolve_ref(&bare_path, &repository, ref_name).await?;
-    let storage_path = archive_storage_path(repository.id, ref_name, &commit_oid);
+    let storage = git_blob_storage()?;
+    let storage_key = archive_storage_key(repository.id, ref_name, &commit_oid);
 
     if let Some(existing) = archive_row(pool, repository.id, ref_name, &commit_oid).await? {
-        if Path::new(&existing.storage_key).exists() {
-            let bytes = fs::read(&existing.storage_key)
-                .await
-                .map_err(storage_error)?;
+        if let Ok(bytes) = storage.get(&existing.storage_key).await {
             if bytes.len() as u64 <= MAX_ARCHIVE_BYTES {
                 return Ok((existing, bytes));
             }
         }
     }
 
-    if let Some(parent) = storage_path.parent() {
-        fs::create_dir_all(parent).await.map_err(storage_error)?;
-    }
-    let tmp_path = storage_path.with_extension(format!("{}.tmp", Uuid::new_v4()));
+    let tmp_path = std::env::temp_dir().join(format!(
+        "opengithub-archive-{}-{}.zip",
+        repository.id,
+        Uuid::new_v4()
+    ));
     let prefix = format!(
         "{}-{}/",
         repository.name,
@@ -124,16 +125,18 @@ pub async fn ensure_repository_archive(
         let _ = fs::remove_file(&tmp_path).await;
         return Err(GitTransportError::RequestTooLarge);
     }
-    fs::rename(&tmp_path, &storage_path)
+    let bytes = fs::read(&tmp_path).await.map_err(storage_error)?;
+    let _ = fs::remove_file(&tmp_path).await;
+    storage
+        .put(&storage_key, bytes.clone())
         .await
-        .map_err(storage_error)?;
-    let bytes = fs::read(&storage_path).await.map_err(storage_error)?;
+        .map_err(blob_storage_error)?;
     let archive = upsert_archive(
         pool,
         &repository,
         ref_name,
         &commit_oid,
-        &storage_path,
+        &storage_key,
         bytes.len() as i64,
         actor_user_id,
     )
@@ -246,7 +249,7 @@ async fn upsert_archive(
     repository: &Repository,
     ref_name: &str,
     target_oid: &str,
-    storage_path: &Path,
+    storage_key: &str,
     byte_size: i64,
     actor_user_id: Option<Uuid>,
 ) -> Result<RepositoryArchive, GitTransportError> {
@@ -269,7 +272,7 @@ async fn upsert_archive(
     .bind(repository.id)
     .bind(ref_name)
     .bind(target_oid)
-    .bind(storage_path.to_string_lossy().as_ref())
+    .bind(storage_key)
     .bind(byte_size)
     .bind(actor_user_id)
     .fetch_one(pool)
@@ -293,15 +296,21 @@ fn archive_from_row(row: sqlx::postgres::PgRow) -> RepositoryArchive {
     }
 }
 
-fn archive_storage_path(repository_id: Uuid, ref_name: &str, target_oid: &str) -> PathBuf {
-    git_storage_root()
-        .join("archives")
-        .join(repository_id.to_string())
-        .join(format!(
-            "{}-{}.zip",
-            sanitize_storage_segment(ref_name),
-            target_oid.get(..12).unwrap_or(target_oid)
-        ))
+fn archive_storage_key(repository_id: Uuid, ref_name: &str, target_oid: &str) -> String {
+    format!(
+        "archives/{}/{}-{}.zip",
+        repository_id,
+        sanitize_storage_segment(ref_name),
+        target_oid.get(..12).unwrap_or(target_oid)
+    )
+}
+
+fn git_blob_storage() -> Result<ObjectStorage, GitTransportError> {
+    ObjectStorage::from_env_with_local(git_storage_root()).map_err(blob_storage_error)
+}
+
+fn blob_storage_error(error: StorageError) -> GitTransportError {
+    GitTransportError::Storage(error.to_string())
 }
 
 fn git_storage_root() -> PathBuf {

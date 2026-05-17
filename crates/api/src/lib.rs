@@ -6,6 +6,7 @@ pub mod domain;
 pub mod jobs;
 pub mod middleware;
 pub mod routes;
+pub mod storage;
 
 use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use config::AppConfig;

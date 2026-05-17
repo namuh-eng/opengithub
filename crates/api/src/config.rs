@@ -3,6 +3,8 @@ use std::env;
 use thiserror::Error;
 use url::Url;
 
+use crate::storage::storage_config_from_env;
+
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub app_url: Url,
@@ -105,6 +107,11 @@ impl AppConfig {
                     .to_owned(),
             );
         }
+        if let Err(error) =
+            storage_config_from_env(std::env::temp_dir().join("opengithub-storage-validation"))
+        {
+            errors.push(error.to_string());
+        }
 
         if errors.is_empty() {
             Ok(())
@@ -205,6 +212,10 @@ mod tests {
             "AUTH_GOOGLE_SECRET",
             "DATABASE_URL",
             "PORT",
+            "OPENGITHUB_BLOB_STORAGE",
+            "OPENGITHUB_S3_BUCKET",
+            "S3_BUCKET",
+            "OPENGITHUB_S3_PREFIX",
         ];
         let original: Vec<_> = names
             .iter()
@@ -251,6 +262,7 @@ mod tests {
             assert!(error.contains("AUTH_GOOGLE_SECRET is required"));
             assert!(error.contains("DATABASE_URL is required"));
             assert!(error.contains("SESSION_COOKIE_SECURE must be true"));
+            assert!(error.contains("OPENGITHUB_S3_BUCKET"));
         });
     }
 
@@ -265,6 +277,7 @@ mod tests {
             env::set_var("AUTH_GOOGLE_ID", "google-id");
             env::set_var("AUTH_GOOGLE_SECRET", "google-secret");
             env::set_var("DATABASE_URL", "postgresql://example");
+            env::set_var("OPENGITHUB_S3_BUCKET", "opengithub-storage");
 
             let config = AppConfig::from_env().unwrap();
 

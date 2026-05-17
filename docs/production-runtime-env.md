@@ -20,7 +20,11 @@ Required in staging/production:
 | `SESSION_COOKIE_SECURE` | task env | Must be `true` in staging/production. The API fails fast if explicitly false. |
 | `AUTH_GOOGLE_ID` | Secrets Manager/SSM | Google OAuth client ID. |
 | `AUTH_GOOGLE_SECRET` | Secrets Manager/SSM | Google OAuth client secret. |
-| `OPENGITHUB_GIT_STORAGE_DIR` | task env / volume | Durable git object storage path for the current local-bare phase. |
+| `OPENGITHUB_BLOB_STORAGE` | task env | Must be `s3` in staging/production; local filesystem remains the dev/test default. |
+| `OPENGITHUB_S3_BUCKET` | task env / SSM | Durable blob bucket for archives, package blobs, and other object-backed features. `S3_BUCKET` is accepted for compatibility. |
+| `OPENGITHUB_S3_PREFIX` | task env | Prefix scoped to the task role, for example `api` or `worker`. Defaults to `api`. |
+| `OPENGITHUB_GIT_STORAGE_DIR` | task env | Local bare Git cache/work area. New archive/package blobs are written through the configured blob adapter instead of relying on this path in production. |
+| `OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR` | task env | Local package blob root for development/tests only. Ignored for production S3 storage except as local fallback root. |
 | `OPENAI_API_KEY` | Secrets Manager/SSM | Required when AI features are enabled. |
 | `ACTIONS_SECRETS_KEY` | Secrets Manager/SSM | Required when Actions secret storage is enabled. |
 
@@ -66,4 +70,5 @@ Workers should receive the same server-side runtime contract as the API task, ex
 2. Set `SESSION_COOKIE_SECURE=true` for every staging/production API, web, and worker task.
 3. Set `PORT` explicitly in ECS task definitions (`3016` API, `3015` web) or rely on the documented defaults.
 4. Register the Google OAuth callback matching `API_URL`: `${API_URL}/api/auth/google/callback`.
-5. Run `make build` in CI to verify the Rust release binary and Next.js standalone output.
+5. Grant ECS task roles least-privilege S3 access only to their configured prefix (`api/*` for API, `worker/*` for worker).
+6. Run `make build` in CI to verify the Rust release binary and Next.js standalone output.
