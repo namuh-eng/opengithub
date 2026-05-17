@@ -7,6 +7,12 @@ license.workspace = true
 [[bin]]
 name = "api"
 path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "worker"
+path = "src/bin/worker.rs"
+test = false
 
 [dependencies]
 axum.workspace = true

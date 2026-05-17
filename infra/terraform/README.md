@@ -10,7 +10,7 @@ This directory provisions the AWS-only production shape required by issue #2. It
 - ECR repositories for API, web, worker, and SQLx migration images with immutable tags and scan-on-push.
 - Private RDS Postgres 16 with encryption, backups, deletion protection, and an ingress rule that only allows the ECS task security group.
 - Private S3 storage bucket with public access blocked, versioning, encryption, and per-role prefix-scoped IAM.
-- SES domain identity and DKIM records; Route 53 records are created when `route53_zone_id` is set.
+- SES domain identity, verified sender, and DKIM records; Route 53 records are created when `route53_zone_id` is set.
 - Regional ACM certificate for the ALB and us-east-1 ACM certificate for CloudFront.
 - CloudFront distribution in front of the ALB and optional Route 53 app alias.
 - Secrets Manager/SSM entries for runtime configuration and outputs listing required secret names.
@@ -38,6 +38,7 @@ Build and push images to the output ECR repositories, then pin each image by dig
 ```hcl
 api_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/api@sha256:<digest>"
 web_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/web@sha256:<digest>"
+worker_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/worker@sha256:<digest>"
 migration_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/migration@sha256:<digest>"
 ```
 
@@ -63,7 +64,7 @@ Use `terraform output -json migration_run_task` to populate `ECS_CLUSTER`, `MIGR
 - `AUTH_GOOGLE_SECRET`
 - `OPENAI_API_KEY`
 
-`DATABASE_URL` and SSM storage/SES parameters are managed by Terraform.
+`DATABASE_URL` and SSM storage/SES parameters are managed by Terraform. `EMAIL_FROM_ADDRESS` is generated from `ses_from_address` (default `noreply@ses_identity_domain`) and injected into API/worker tasks along with `EMAIL_DELIVERY_PROVIDER=ses`.
 
 ## Validation
 

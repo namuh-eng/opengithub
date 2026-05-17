@@ -28,7 +28,7 @@ output "secret_names" {
   value = concat(
     [aws_secretsmanager_secret.database_url.name],
     [for s in aws_secretsmanager_secret.app : s.name],
-    [aws_ssm_parameter.storage_bucket.name, aws_ssm_parameter.ses_domain.name]
+    [aws_ssm_parameter.storage_bucket.name, aws_ssm_parameter.ses_domain.name, aws_ssm_parameter.ses_from_address.name]
   )
 }
 
@@ -44,6 +44,7 @@ output "ses_dns_records" {
     verification_txt_name  = "_amazonses.${local.ses_identity_domain}"
     verification_txt_value = aws_ses_domain_identity.main.verification_token
     dkim_tokens            = aws_ses_domain_dkim.main.dkim_tokens
+    verified_sender        = aws_ses_email_identity.sender.email
   }
 }
 

@@ -4,6 +4,7 @@ use serde_json::Value;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+pub mod email_delivery;
 pub mod pages;
 pub mod repository_imports;
 pub mod webhooks;
