@@ -55,3 +55,12 @@ drizzle/
 packages/sdk/dist/
 
 # Language-specific ignores are appended by onboarding (setup-stack.sh)
+
+# Terraform local state/plugins
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
