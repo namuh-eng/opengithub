@@ -6,8 +6,8 @@ This directory provisions the AWS-only production shape required by issue #2. It
 
 - VPC with public ALB subnets and private ECS/RDS subnets.
 - Public ALB with HTTP-to-HTTPS redirect, HTTPS listener, and `/api/*`, `/git/*`, `/health` routing to the API target group.
-- ECS Fargate cluster, services, and task definitions for `api`, `web`, and optional `worker`.
-- ECR repositories for API, web, and worker images with immutable tags and scan-on-push.
+- ECS Fargate cluster, services, task definitions for `api`, `web`, optional `worker`, and a one-off SQLx migration task.
+- ECR repositories for API, web, worker, and SQLx migration images with immutable tags and scan-on-push.
 - Private RDS Postgres 16 with encryption, backups, deletion protection, and an ingress rule that only allows the ECS task security group.
 - Private S3 storage bucket with public access blocked, versioning, encryption, and per-role prefix-scoped IAM.
 - SES domain identity and DKIM records; Route 53 records are created when `route53_zone_id` is set.
@@ -38,9 +38,21 @@ Build and push images to the output ECR repositories, then pin each image by dig
 ```hcl
 api_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/api@sha256:<digest>"
 web_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/web@sha256:<digest>"
+migration_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/migration@sha256:<digest>"
 ```
 
 Run `terraform apply -var-file=staging.tfvars`. Terraform registers new task definitions and updates the ECS services.
+
+
+## Database migration gate
+
+Build `Dockerfile.migration`, push it to the `migration` ECR repository, and pin `migration_image` by digest before rolling ECS services. The task definition injects `DATABASE_URL` from Secrets Manager and runs:
+
+```bash
+sqlx migrate run --source crates/api/migrations
+```
+
+Use `terraform output -json migration_run_task` to populate `ECS_CLUSTER`, `MIGRATION_TASK_DEFINITION`, `ECS_SUBNETS`, and `ECS_SECURITY_GROUPS`, then run `scripts/deploy.sh`. A failed migration task exits non-zero and blocks rollout; success/failure is visible in the migration CloudWatch log group. See `docs/deploy/database-migrations.md` for rollback boundaries.
 
 ## Required secret population
 

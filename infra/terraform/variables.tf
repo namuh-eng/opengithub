@@ -63,6 +63,12 @@ variable "worker_image" {
   default     = ""
 }
 
+variable "migration_image" {
+  description = "Migration image URI pinned by digest. Defaults to api_image for bootstrap, but production should publish Dockerfile.migration and pin it here."
+  type        = string
+  default     = ""
+}
+
 variable "api_desired_count" {
   type    = number
   default = 1
@@ -95,6 +101,18 @@ variable "worker_cpu" {
 variable "worker_memory" {
   type    = number
   default = 1024
+}
+
+variable "migration_cpu" {
+  description = "CPU units for the one-off SQLx migration task."
+  type        = number
+  default     = 512
+}
+
+variable "migration_memory" {
+  description = "Memory MiB for the one-off SQLx migration task."
+  type        = number
+  default     = 1024
 }
 
 variable "rds_instance_class" {
