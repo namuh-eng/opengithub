@@ -1,0 +1,15 @@
+project      = "opengithub"
+environment  = "staging"
+aws_region   = "us-west-2"
+domain_name  = "opengithub-staging.example.com"
+# route53_zone_id = "Z1234567890"
+
+# Pin deploys by digest so ECS service updates are reproducible:
+# api_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/api@sha256:..."
+# web_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/web@sha256:..."
+# worker_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/opengithub-staging/worker@sha256:..."
+
+rds_instance_class        = "db.t4g.micro"
+rds_allocated_storage    = 20
+rds_backup_retention_days = 7
+rds_deletion_protection  = true
