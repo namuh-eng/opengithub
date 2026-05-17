@@ -29,6 +29,7 @@ Required env for deploy:
   ECS_API_SERVICE ECS_WEB_SERVICE ECS_API_TASK_FAMILY ECS_WEB_TASK_FAMILY
   API_URL WEB_URL
 Optional:
+  ECR_WORKER_REPOSITORY ECS_WORKER_SERVICE ECS_WORKER_TASK_FAMILY
   CLOUDFRONT_DISTRIBUTION_ID, MIGRATION_COMMAND, DRY_RUN=1
 
 Required env for rollback:
@@ -85,7 +86,11 @@ wait_for_url() {
 }
 
 wait_for_services() {
-  aws_cmd ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_API_SERVICE" "$ECS_WEB_SERVICE"
+  local services=("$ECS_API_SERVICE" "$ECS_WEB_SERVICE")
+  if [[ -n "${ECS_WORKER_SERVICE:-}" ]]; then
+    services+=("$ECS_WORKER_SERVICE")
+  fi
+  aws_cmd ecs wait services-stable --cluster "$ECS_CLUSTER" --services "${services[@]}"
 }
 
 image_uri() {
@@ -168,22 +173,32 @@ deploy() {
   else
     aws --region "$AWS_REGION" ecr get-login-password | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
   fi
-  local api_image web_image api_task web_task
+  local api_image web_image worker_image api_task web_task worker_task
   api_image="$(build_and_push api Dockerfile.api "$ECR_API_REPOSITORY")"
   web_image="$(build_and_push web Dockerfile.web "$ECR_WEB_REPOSITORY")"
+  if [[ -n "${ECR_WORKER_REPOSITORY:-}" ]]; then
+    worker_image="$(build_and_push worker Dockerfile.worker "$ECR_WORKER_REPOSITORY")"
+  fi
   log "running migrations before service rollout: ${MIGRATION_COMMAND}"
   if [[ "$DRY_RUN" == "1" ]]; then log "+ ${MIGRATION_COMMAND}"; else (cd "$ROOT_DIR" && eval "$MIGRATION_COMMAND"); fi
   api_task="$(register_task "$ECS_API_TASK_FAMILY" "$api_image")"
   web_task="$(register_task "$ECS_WEB_TASK_FAMILY" "$web_image")"
+  if [[ -n "${worker_image:-}" ]]; then
+    require_env ECS_WORKER_SERVICE ECS_WORKER_TASK_FAMILY
+    worker_task="$(register_task "$ECS_WORKER_TASK_FAMILY" "$worker_image")"
+  fi
   aws_cmd ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_API_SERVICE" --task-definition "$api_task"
   aws_cmd ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_WEB_SERVICE" --task-definition "$web_task"
+  if [[ -n "${worker_task:-}" ]]; then
+    aws_cmd ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_WORKER_SERVICE" --task-definition "$worker_task"
+  fi
   wait_for_services
   wait_for_url "api readiness" "${API_URL%/}/ready"
   wait_for_url "web health" "${WEB_URL%/}/healthz"
   if [[ -n "${CLOUDFRONT_DISTRIBUTION_ID:-}" ]]; then
     aws_cmd cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths '/*'
   fi
-  log "deploy complete environment=${ENVIRONMENT_ARG} git_sha=${GIT_SHA} api_image=${api_image} web_image=${web_image}"
+  log "deploy complete environment=${ENVIRONMENT_ARG} git_sha=${GIT_SHA} api_image=${api_image} web_image=${web_image} worker_image=${worker_image:-disabled}"
 }
 
 rollback() {
@@ -191,6 +206,9 @@ rollback() {
   log "starting rollback environment=${ENVIRONMENT_ARG} git_sha=${GIT_SHA} dry_run=${DRY_RUN}"
   aws_cmd ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_API_SERVICE" --task-definition "$ROLLBACK_API_TASK_DEFINITION"
   aws_cmd ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_WEB_SERVICE" --task-definition "$ROLLBACK_WEB_TASK_DEFINITION"
+  if [[ -n "${ECS_WORKER_SERVICE:-}" && -n "${ROLLBACK_WORKER_TASK_DEFINITION:-}" ]]; then
+    aws_cmd ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_WORKER_SERVICE" --task-definition "$ROLLBACK_WORKER_TASK_DEFINITION"
+  fi
   wait_for_services
   if [[ -n "${API_URL:-}" ]]; then wait_for_url "api readiness" "${API_URL%/}/ready"; fi
   if [[ -n "${WEB_URL:-${APP_URL:-}}" ]]; then rollback_web_url="${WEB_URL:-${APP_URL}}"; wait_for_url "web health" "${rollback_web_url%/}/healthz"; fi
